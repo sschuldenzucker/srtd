@@ -74,7 +74,8 @@ myModifyModelState :: AppState -> (Model -> Model) -> IO AppState
 myModifyModelState s@(AppState {modelServer, asRoot, asFilter}) f = do
   modifyModelOnServer modelServer f
   model <- getModel modelServer
-  return s {asSubtree = runFilter asFilter asRoot model}
+  let subtree = runFilter asFilter asRoot model
+  return s {asSubtree = subtree, asList = forestToBrickList (stForest subtree)}
 
 myHandleEvent :: BrickEvent AppResourceName e -> EventM AppResourceName AppState ()
 myHandleEvent ev = case ev of
