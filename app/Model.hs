@@ -1,10 +1,11 @@
-module Model(Model(..), ModelServer, getModel, startModelServer, modifyModelOnServer) where
+module Model (Model (..), ModelServer, getModel, startModelServer, modifyModelOnServer) where
+
 import Control.Concurrent.STM
 
 -- TODO dummy
-data Model = Model {
-  val :: Int
-}
+data Model = Model
+  { val :: Int
+  }
 
 emptyModel :: Model
 emptyModel = Model 0
@@ -26,4 +27,3 @@ startModelServer :: IO ModelServer
 startModelServer = do
   mv <- newTVarIO emptyModel
   return (ModelServer mv)
-
