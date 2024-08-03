@@ -9,14 +9,20 @@ import qualified Brick.AttrMap
 import Brick.Widgets.Core (str)
 import Brick.Types ( Widget, BrickEvent(..) )
 import Brick.Types (EventM)
-import Control.Monad.State (modify)
+import Control.Monad.State (modify, liftIO)
 
+import System.Log.Logger (logL, Priority(ERROR, WARNING, INFO, DEBUG))
+import Log
 
 -- main :: IO ()
 -- main = putStrLn "Hello, Haskell!" >> ffun 1 2
 
 main :: IO()
-main = void $ defaultMain app 1
+main = do
+  setupLogger
+  glogL INFO "App starting"
+  void $ defaultMain app 1
+  glogL INFO "App did quit normally"
 
 myAttrMap :: Brick.AttrMap.AttrMap
 myAttrMap = themeToAttrMap $ newTheme (green `on` black) []
@@ -26,8 +32,12 @@ ui i = str (show i)
 
 myHandleEvent :: BrickEvent () e -> EventM () Int ()
 myHandleEvent ev = case ev of
-  (VtyEvent (EvKey (KChar 'q') [])) -> halt
-  (VtyEvent (EvKey (KChar '+') [])) -> modify (+1)
+  (VtyEvent (EvKey (KChar 'q') [])) -> do
+    liftIO (glogL INFO "quitting...")
+    halt
+  (VtyEvent (EvKey (KChar '+') [])) -> do
+    liftIO (glogL INFO "adding 1")
+    modify (+1)
   (VtyEvent (EvKey (KChar '-') [])) -> modify (\x -> x-1)
   _ -> return ()
 
