@@ -51,10 +51,24 @@ insertNewNormalWithNewId uuid attr loc (Model forest) = Model (forestInsertAtId 
 
 -- There's probably some clever monadic way of doing this but I'm not smart enough for that.
 
+splitFind :: (a -> Bool) -> [a] -> Maybe ([a], a, [a])
+splitFind p xs = case break p xs of
+  (before, x : after) -> Just (before, x, after)
+  _ -> Nothing
+
 forestInsertAtId :: (Eq id) => InsertLoc id -> (id, a) -> Forest (id, a) -> Forest (id, a)
-forestInsertAtId (Before tgt) idattr (n@(Node (i, _) _) : rst) | i == tgt = Node idattr [] : n : rst
-forestInsertAtId (After tgt) idattr (n@(Node (i, _) _) : rst) | i == tgt = n : Node idattr [] : rst
+-- forestInsertAtId (Before tgt) idattr (n@(Node (i, _) _) : rst) | i == tgt = Node idattr [] : n : rst
+-- forestInsertAtId (After tgt) idattr (n@(Node (i, _) _) : rst) | i == tgt = n : Node idattr [] : rst
+forestInsertAtId loc@(Before tgt) idattr forest = case splitFind (treeHasID tgt) forest of
+  Just (before, n, after) -> before ++ (Node idattr [] : n : after)
+  Nothing -> map (treeInsertAtId loc idattr) forest
+forestInsertAtId loc@(After tgt) idattr forest = case splitFind (treeHasID tgt) forest of
+  Just (before, n, after) -> before ++ (n : Node idattr [] : after)
+  Nothing -> map (treeInsertAtId loc idattr) forest
 forestInsertAtId loc idattr forest = map (treeInsertAtId loc idattr) forest
+
+treeHasID :: (Eq id) => id -> Tree (id, a) -> Bool
+treeHasID tgt (Node (i, _) _) = tgt == i
 
 treeInsertAtId :: (Eq id) => InsertLoc id -> (id, a) -> Tree (id, a) -> Tree (id, a)
 treeInsertAtId (FirstChild tgt) idattr (Node (i, attr) children) | i == tgt = Node (i, attr) (Node idattr [] : children)
