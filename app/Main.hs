@@ -13,6 +13,7 @@ import Control.Concurrent.STM (TVar)
 import Control.Monad (void)
 import Control.Monad.State (MonadState (get, put), liftIO, modify)
 import Data.Function ((&))
+import Data.Maybe (fromMaybe)
 import Data.Tree (flatten)
 import Data.UUID
 import Data.UUID.V4 (nextRandom)
@@ -25,6 +26,7 @@ import Todo
 
 data AppState = AppState
   { modelServer :: ModelServer,
+    -- TODO is this redundant? Same as subtree root?
     asRoot :: EID,
     asFilter :: Filter,
     asSubtree :: Subtree,
@@ -99,11 +101,21 @@ myHandleEvent ev = case ev of
     liftIO $ glogL INFO ("new UUID: " ++ show uuid)
     state <- get
     let attr = Attr {name = "foobar"}
-    let root = asRoot state
+    let tgtLoc = asCur state & maybe (LastChild (asRoot state)) After
     liftIO $ glogL INFO ("State PRE " ++ show state)
-    state' <- liftIO $ myModifyModelState state (insertNewNormalWithNewId uuid attr (LastChild root))
+    -- TODO this somehow doesn't work when we have selected something that's not a first child.
+    state' <- liftIO $ myModifyModelState state (insertNewNormalWithNewId uuid attr tgtLoc)
     liftIO $ glogL INFO ("State POST " ++ show state')
     put state'
+  (VtyEvent (EvKey (KChar 's') [])) -> do
+    liftIO (glogL INFO "creating new subnode")
+    uuid <- liftIO nextRandom
+    state <- get
+    let attr = Attr {name = "foobar"}
+    case asCur state of
+      Just cur -> (liftIO $ myModifyModelState state (insertNewNormalWithNewId uuid attr (LastChild cur))) >>= put
+      Nothing -> return ()
+
   -- SOMEDAY use lenses. Is this actually useful tho? (this one would be `zoom`)
   (VtyEvent e) -> do
     state <- get
@@ -112,6 +124,9 @@ myHandleEvent ev = case ev of
     (listState', ()) <- nestEventM listState (L.handleListEventVi (const $ return ()) e)
     put (state {asList = listState'})
   _ -> return ()
+
+asCur :: AppState -> Maybe EID
+asCur (AppState {asList}) = L.listSelectedElement asList & fmap (\(_, (_, i, _)) -> i)
 
 app :: App AppState e AppResourceName
 app =
