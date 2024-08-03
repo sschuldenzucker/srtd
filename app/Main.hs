@@ -12,6 +12,8 @@ import Control.Concurrent.STM (TVar)
 import Control.Monad (void)
 import Control.Monad.State (MonadState (get, put), liftIO, modify)
 import Data.Tree (flatten)
+import Data.UUID
+import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), black, blue, green, magenta, white, yellow)
 import Log
@@ -82,6 +84,17 @@ myHandleEvent ev = case ev of
   (VtyEvent (EvKey (KChar 'q') [])) -> do
     liftIO (glogL INFO "quitting...")
     halt
+  (VtyEvent (EvKey (KChar 'n') [])) -> do
+    liftIO (glogL INFO "creating new node")
+    uuid <- liftIO nextRandom
+    liftIO $ glogL INFO ("new UUID: " ++ show uuid)
+    state <- get
+    let attr = Attr {name = "foobar"}
+    let root = asRoot state
+    liftIO $ glogL INFO ("State PRE " ++ show state)
+    state' <- liftIO $ myModifyModelState state (insertNewNormalWithNewId uuid attr (LastChild root))
+    liftIO $ glogL INFO ("State POST " ++ show state')
+    put state'
   _ -> return ()
 
 app :: App AppState e AppResourceName
