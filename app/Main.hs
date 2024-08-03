@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Brick (on, vBox, withDefAttr, (<=>))
+import Brick (nestEventM, on, vBox, withDefAttr, (<=>))
 import Brick.AttrMap qualified
 import Brick.AttrMap qualified as A
 import Brick.Main
@@ -100,6 +100,13 @@ myHandleEvent ev = case ev of
     state' <- liftIO $ myModifyModelState state (insertNewNormalWithNewId uuid attr (LastChild root))
     liftIO $ glogL INFO ("State POST " ++ show state')
     put state'
+  -- SOMEDAY use lenses. Is this actually useful tho? (this one would be `zoom`)
+  (VtyEvent e) -> do
+    state <- get
+    let listState = asList state
+    -- Why does the Vi variant have a fallback but the other one doesn't?! (not using the fallback here)
+    (listState', ()) <- nestEventM listState (L.handleListEventVi (const $ return ()) e)
+    put (state {asList = listState'})
   _ -> return ()
 
 app :: App AppState e AppResourceName
