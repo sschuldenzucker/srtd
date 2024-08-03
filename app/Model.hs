@@ -8,11 +8,12 @@ import Data.UUID (UUID)
 
 -- import Data.UUID.V4 (nextRandom)
 
-data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq)
+data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
 
 data Attr = Attr
   { name :: String
   }
+  deriving (Show)
 
 leaf :: a -> Tree a
 leaf x = Node x []
@@ -23,6 +24,7 @@ type MForest = Forest (EID, Attr)
 data Model = Model
   { forest :: MForest
   }
+  deriving (Show)
 
 emptyModel :: Model
 emptyModel =
@@ -38,6 +40,7 @@ data InsertLoc id
   | After id
   | FirstChild id
   | LastChild id
+  deriving (Show)
 
 -- TODO these should have Either return types b/c it's possible that the loc node was deleted just before we were trying to insert.
 -- Currently, insert does nothing in these cases.
@@ -64,8 +67,9 @@ data Subtree = Subtree
     rootAttr :: Attr,
     stForest :: MForest
   }
+  deriving (Show)
 
-data IdNotFoundError = IdNotFoundError
+data IdNotFoundError = IdNotFoundError deriving (Show)
 
 modelGetSubtreeBelow :: EID -> Model -> Either IdNotFoundError Subtree
 modelGetSubtreeBelow i (Model forest) = forestGetSubtreeBelow i forest
@@ -98,6 +102,10 @@ forestGetSubtreeBelow tgt forest = case forestFindTree tgt forest of
 -- SOMEDAY unclear if this is the right structure.
 newtype Filter = Filter {runFilter :: EID -> Model -> Subtree}
 
+-- SOMEDAY maybe these should have a name actually. Also for display.
+instance Show Filter where
+  show _ = "<Filter>"
+
 -- SOMEDAY decide on error handling
 f_identity = Filter (\i m -> fromRight (error "root EID not found") $ modelGetSubtreeBelow i m)
 
@@ -105,6 +113,9 @@ f_identity = Filter (\i m -> fromRight (error "root EID not found") $ modelGetSu
 
 -- There's not actually a server here but we *may* want to make it one later.
 newtype ModelServer = ModelServer (TVar Model)
+
+instance Show ModelServer where
+  show _ = "<ModelServer>"
 
 getModel :: ModelServer -> IO Model
 getModel (ModelServer mv) = readTVarIO mv

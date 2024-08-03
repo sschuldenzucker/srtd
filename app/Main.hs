@@ -27,6 +27,7 @@ data AppState = AppState
     -- SOMEDAY we may wanna pre-render a bit more here. E.g. put the fully rendered stuff and the EID in there. Or something.
     asList :: L.List AppResourceName (Int, EID, Attr)
   }
+  deriving (Show)
 
 data AppResourceName = MainList deriving (Eq, Ord, Show)
 
