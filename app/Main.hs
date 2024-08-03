@@ -12,6 +12,7 @@ import Brick.Widgets.List qualified as L
 import Control.Concurrent.STM (TVar)
 import Control.Monad (void)
 import Control.Monad.State (MonadState (get, put), liftIO, modify)
+import Data.Function ((&))
 import Data.Tree (flatten)
 import Data.UUID
 import Data.UUID.V4 (nextRandom)
@@ -78,11 +79,14 @@ forestToBrickList forest = L.list MainList (Vec.fromList contents) 1
     contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels forest
 
 myModifyModelState :: AppState -> (Model -> Model) -> IO AppState
-myModifyModelState s@(AppState {modelServer, asRoot, asFilter}) f = do
+myModifyModelState s@(AppState {modelServer, asRoot, asFilter, asList}) f = do
   modifyModelOnServer modelServer f
   model <- getModel modelServer
   let subtree = runFilter asFilter asRoot model
-  return s {asSubtree = subtree, asList = forestToBrickList (stForest subtree)}
+  -- TODO what happens when an element is deleted and this is not possible?
+  let resetPosition = L.listSelected asList & maybe id L.listMoveTo
+  let asList' = resetPosition $ forestToBrickList (stForest subtree)
+  return s {asSubtree = subtree, asList = asList'}
 
 myHandleEvent :: BrickEvent AppResourceName e -> EventM AppResourceName AppState ()
 myHandleEvent ev = case ev of
