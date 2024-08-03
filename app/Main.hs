@@ -1,7 +1,8 @@
 module Main (main) where
 
-import Brick (on, vBox, (<=>))
+import Brick (on, vBox, withDefAttr, (<=>))
 import Brick.AttrMap qualified
+import Brick.AttrMap qualified as A
 import Brick.Main
 import Brick.Themes
 import Brick.Types (BrickEvent (..), EventM, Widget)
@@ -53,8 +54,11 @@ main = do
       )
   glogL INFO "App did quit normally"
 
+selectedItemRowAttr :: A.AttrName
+selectedItemRowAttr = A.attrName "selectedItemRow"
+
 myAttrMap :: Brick.AttrMap.AttrMap
-myAttrMap = themeToAttrMap $ newTheme (green `on` black) []
+myAttrMap = themeToAttrMap $ newTheme (green `on` black) [(selectedItemRowAttr, black `on` green)]
 
 ui :: AppState -> Widget AppResourceName
 -- ui _s = str "ok I guess TODO"
@@ -64,8 +68,9 @@ ui AppState {asList, asSubtree = Subtree {root, rootAttr}} = box
     box = renderRow False rootRow <=> L.renderList renderRow True asList
     rootRow = (-1, root, rootAttr)
     renderRow :: Bool -> (Int, EID, Attr) -> Widget AppResourceName
-    -- todo use selected and set attrs
-    renderRow sel (lvl, _, Attr {name}) = str (concat (replicate (lvl + 1) "  ") ++ name)
+    renderRow sel (lvl, _, Attr {name}) = withSelAttr sel $ str (concat (replicate (lvl + 1) "  ") ++ name)
+    withSelAttr True = withDefAttr selectedItemRowAttr
+    withSelAttr False = id
 
 forestToBrickList :: MForest -> L.List AppResourceName (Int, EID, Attr)
 forestToBrickList forest = L.list MainList (Vec.fromList contents) 1
