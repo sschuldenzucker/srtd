@@ -121,6 +121,7 @@ instance Show Filter where
   show _ = "<Filter>"
 
 -- SOMEDAY decide on error handling
+f_identity :: Filter
 f_identity = Filter (\i m -> fromRight (error "root EID not found") $ modelGetSubtreeBelow i m)
 
 -- SOMEDAY put this into a separate module
