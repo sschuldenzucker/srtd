@@ -1,0 +1,47 @@
+-- | Synchronization framework for concurrent model access.
+--
+-- There's not actually a server here but we *may* want to make it one later.
+module ModelServer (ModelServer, MsgModelUpdated (..), getModel, modifyModelOnServer, startModelServer, subscribe) where
+
+import Control.Concurrent.STM
+import Control.Monad (forM_)
+import Model
+
+data MsgModelUpdated = MsgModelUpdated
+
+-- | Stores the model and a list of subscribers (which are represented as arbitrary IO actions)
+--
+-- Note: You should be careful to make sure the notifiers don't lead to deadlock. Usually, these will be of type `putChan xxx`.
+--
+-- SOMEDAY some safety when we can't run one of the subscribers b/c someone else crashed? Should we just force them to be channels?
+data ModelServer = ModelServer (TVar Model) (TVar [MsgModelUpdated -> IO ()])
+
+instance Show ModelServer where
+  show _ = "<ModelServer>"
+
+getModel :: ModelServer -> IO Model
+getModel (ModelServer mv _) = readTVarIO mv
+
+-- SOMEDAY this prob shouldn't exist?
+-- SOMEDAY flip arguments?
+modifyModelOnServer :: ModelServer -> (Model -> Model) -> IO ()
+modifyModelOnServer server@(ModelServer mv _) f = do
+  atomically $ modifyTVar' mv f
+  notifyAll msg server
+  where
+    -- Dummy right now but might do something later when we accept more structured updates.
+    msg = MsgModelUpdated
+
+startModelServer :: IO ModelServer
+startModelServer = do
+  mv <- newTVarIO emptyModel
+  subs <- newTVarIO []
+  return (ModelServer mv subs)
+
+subscribe :: ModelServer -> (MsgModelUpdated -> IO ()) -> IO ()
+subscribe (ModelServer _ msubs) sub = atomically $ modifyTVar' msubs (sub :)
+
+notifyAll :: MsgModelUpdated -> ModelServer -> IO ()
+notifyAll msg (ModelServer _ msubs) = do
+  subs <- readTVarIO msubs
+  forM_ subs $ \f -> f msg

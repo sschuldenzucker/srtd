@@ -24,13 +24,14 @@ import Graphics.Vty (Event (..), Key (..), black, blue, green, magenta, white, y
 import Lens.Micro.Platform
 import Log
 import Model
+import ModelServer
 import System.Log.Logger (Priority (DEBUG, ERROR, INFO, WARNING), logL)
 import Todo
 
 data AppResourceName = MainList deriving (Eq, Ord, Show)
 
 data AppState = AppState
-  { _asModelServer :: ModelServer,
+  { _asModelServer :: ModelServer.ModelServer,
     -- NB this is a bit redundant (same as subtree root) but the subtree can change so I'm keeping it.
     _asRoot :: EID,
     _asFilter :: Filter,

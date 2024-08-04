@@ -85,6 +85,7 @@ executable srtd-hs
     other-modules:
         Log,
         Model,
+        ModelServer,
         Todo,
 
     -- Directories containing source files.
