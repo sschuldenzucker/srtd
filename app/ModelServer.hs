@@ -3,9 +3,16 @@
 -- There's not actually a server here but we *may* want to make it one later.
 module ModelServer (ModelServer, MsgModelUpdated (..), getModel, modifyModelOnServer, startModelServer, subscribe) where
 
+import Config
 import Control.Concurrent.STM
+import Control.Exception
 import Control.Monad (forM_)
+import Data.Aeson
+import Data.Maybe
+import Log
 import Model
+import System.IO.Error
+import System.Log (Priority (..))
 
 data MsgModelUpdated = MsgModelUpdated
 
@@ -34,9 +41,28 @@ modifyModelOnServer server@(ModelServer mv _) f = do
 
 startModelServer :: IO ModelServer
 startModelServer = do
-  mv <- newTVarIO emptyModel
+  mmodel <- readModelFromFile
+  let model = fromMaybe emptyModel mmodel
+  mv <- newTVarIO model
   subs <- newTVarIO []
   return (ModelServer mv subs)
+
+-- SOMEDAY would be nice if ModelSaver did *not* override
+-- the model when reading failed, not to lose data Actually, we probably
+-- wanna error-exit in that case.
+readModelFromFile :: IO (Maybe Model)
+readModelFromFile = run `catch` handleFileNotFound
+  where
+    handleFileNotFound e
+      | isDoesNotExistError e = return Nothing
+      | otherwise = throwIO e
+    run = do
+      emodel <- eitherDecodeFileStrict model_filename :: IO (Either String Model)
+      case emodel of
+        Left e -> do
+          glogL ERROR ("Failed to decode file: " ++ e)
+          return Nothing
+        Right m -> return $ Just m
 
 subscribe :: ModelServer -> (MsgModelUpdated -> IO ()) -> IO ()
 subscribe (ModelServer _ msubs) sub = atomically $ modifyTVar' msubs (sub :)
