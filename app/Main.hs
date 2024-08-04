@@ -26,13 +26,13 @@ import System.Log.Logger (Priority (DEBUG, ERROR, INFO, WARNING), logL)
 import Todo
 
 data AppState = AppState
-  { asModelServer :: ModelServer,
+  { _asModelServer :: ModelServer,
     -- NB this is a bit redundant (same as subtree root) but the subtree can change so I'm keeping it.
-    asRoot :: EID,
-    asFilter :: Filter,
-    asSubtree :: Subtree,
+    _asRoot :: EID,
+    _asFilter :: Filter,
+    _asSubtree :: Subtree,
     -- SOMEDAY we may wanna pre-render a bit more here. E.g. put the fully rendered stuff and the EID in there. Or something.
-    asList :: L.List AppResourceName (Int, EID, Attr)
+    _asList :: L.List AppResourceName (Int, EID, Attr)
   }
   deriving (Show)
 
@@ -49,11 +49,11 @@ main = do
     defaultMain
       app
       ( AppState
-          { asModelServer = modelServer,
-            asRoot = Inbox,
-            asFilter = f_identity,
-            asSubtree = subtree,
-            asList = forestToBrickList (stForest subtree)
+          { _asModelServer = modelServer,
+            _asRoot = Inbox,
+            _asFilter = f_identity,
+            _asSubtree = subtree,
+            _asList = forestToBrickList (stForest subtree)
           }
       )
   glogL INFO "App did quit normally"
@@ -67,9 +67,9 @@ myAttrMap = themeToAttrMap $ newTheme (green `on` black) [(selectedItemRowAttr, 
 ui :: AppState -> Widget AppResourceName
 -- ui _s = str "ok I guess TODO"
 -- TODO render root. Prob just another, unselected element.
-ui AppState {asList, asSubtree = Subtree {root, rootAttr}} = box
+ui AppState {_asList, _asSubtree = Subtree {root, rootAttr}} = box
   where
-    box = renderRow False rootRow <=> L.renderList renderRow True asList
+    box = renderRow False rootRow <=> L.renderList renderRow True _asList
     rootRow = (-1, root, rootAttr)
     renderRow :: Bool -> (Int, EID, Attr) -> Widget AppResourceName
     renderRow sel (lvl, _, Attr {name}) = withSelAttr sel $ str (concat (replicate (lvl + 1) "  ") ++ name)
@@ -82,14 +82,14 @@ forestToBrickList forest = L.list MainList (Vec.fromList contents) 1
     contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels forest
 
 myModifyModelState :: AppState -> (Model -> Model) -> IO AppState
-myModifyModelState s@(AppState {asModelServer, asRoot, asFilter, asList}) f = do
-  modifyModelOnServer asModelServer f
-  model <- getModel asModelServer
-  let subtree = runFilter asFilter asRoot model
+myModifyModelState s@(AppState {_asModelServer, _asRoot, _asFilter, _asList}) f = do
+  modifyModelOnServer _asModelServer f
+  model <- getModel _asModelServer
+  let subtree = runFilter _asFilter _asRoot model
   -- TODO what happens when an element is deleted and this is not possible?
-  let resetPosition = L.listSelected asList & maybe id L.listMoveTo
+  let resetPosition = L.listSelected _asList & maybe id L.listMoveTo
   let asList' = resetPosition $ forestToBrickList (stForest subtree)
-  return s {asSubtree = subtree, asList = asList'}
+  return s {_asSubtree = subtree, _asList = asList'}
 
 myHandleEvent :: BrickEvent AppResourceName e -> EventM AppResourceName AppState ()
 myHandleEvent ev = case ev of
@@ -102,7 +102,7 @@ myHandleEvent ev = case ev of
     liftIO $ glogL INFO ("new UUID: " ++ show uuid)
     state <- get
     let attr = Attr {name = "foobar"}
-    let tgtLoc = asCur state & maybe (LastChild (asRoot state)) After
+    let tgtLoc = asCur state & maybe (LastChild (_asRoot state)) After
     liftIO $ glogL INFO ("State PRE " ++ show state)
     -- TODO this somehow doesn't work when we have selected something that's not a first child.
     state' <- liftIO $ myModifyModelState state (insertNewNormalWithNewId uuid attr tgtLoc)
@@ -120,14 +120,14 @@ myHandleEvent ev = case ev of
   -- SOMEDAY use lenses. Is this actually useful tho? (this one would be `zoom`)
   (VtyEvent e) -> do
     state <- get
-    let listState = asList state
+    let listState = _asList state
     -- Why does the Vi variant have a fallback but the other one doesn't?! (not using the fallback here)
     (listState', ()) <- nestEventM listState (L.handleListEventVi (const $ return ()) e)
-    put (state {asList = listState'})
+    put (state {_asList = listState'})
   _ -> return ()
 
 asCur :: AppState -> Maybe EID
-asCur (AppState {asList}) = L.listSelectedElement asList & fmap (\(_, (_, i, _)) -> i)
+asCur (AppState {_asList}) = L.listSelectedElement _asList & fmap (\(_, (_, i, _)) -> i)
 
 app :: App AppState e AppResourceName
 app =
