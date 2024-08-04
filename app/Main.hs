@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Main (main) where
 
 import Brick (nestEventM, on, vBox, withDefAttr, (<=>))
@@ -25,6 +27,8 @@ import Model
 import System.Log.Logger (Priority (DEBUG, ERROR, INFO, WARNING), logL)
 import Todo
 
+data AppResourceName = MainList deriving (Eq, Ord, Show)
+
 data AppState = AppState
   { _asModelServer :: ModelServer,
     -- NB this is a bit redundant (same as subtree root) but the subtree can change so I'm keeping it.
@@ -36,7 +40,7 @@ data AppState = AppState
   }
   deriving (Show)
 
-data AppResourceName = MainList deriving (Eq, Ord, Show)
+makeLenses ''AppState
 
 main :: IO ()
 main = do
@@ -116,14 +120,8 @@ myHandleEvent ev = case ev of
     case asCur state of
       Just cur -> (liftIO $ myModifyModelState state (insertNewNormalWithNewId uuid attr (LastChild cur))) >>= put
       Nothing -> return ()
-
-  -- SOMEDAY use lenses. Is this actually useful tho? (this one would be `zoom`)
   (VtyEvent e) -> do
-    state <- get
-    let listState = _asList state
-    -- Why does the Vi variant have a fallback but the other one doesn't?! (not using the fallback here)
-    (listState', ()) <- nestEventM listState (L.handleListEventVi (const $ return ()) e)
-    put (state {_asList = listState'})
+    zoom asList $ L.handleListEventVi (const $ return ()) e
   _ -> return ()
 
 asCur :: AppState -> Maybe EID

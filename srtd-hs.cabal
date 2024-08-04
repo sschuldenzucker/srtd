@@ -78,6 +78,7 @@ executable srtd-hs
         containers ^>= 0.7,
         random ^>= 1.2,
         vector ^>= 0.13,
+        microlens-platform >= 0.4,
 
     other-modules:
         Log,
