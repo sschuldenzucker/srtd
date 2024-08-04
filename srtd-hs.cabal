@@ -86,6 +86,8 @@ executable srtd-hs
         Log,
         Model,
         ModelServer,
+        ModelJSON,
+        Attr,
         Todo,
 
     -- Directories containing source files.

@@ -2,6 +2,7 @@
 
 module Main (main) where
 
+import Attr
 import Brick (nestEventM, on, vBox, withDefAttr, (<=>))
 import Brick.AttrMap qualified
 import Brick.AttrMap qualified as A

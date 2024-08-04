@@ -3,25 +3,16 @@
 
 module Model where
 
-import Control.Concurrent.STM
+import Attr (Attr (..), EID (..))
 import Data.Aeson
-import Data.Aeson.Types qualified as AT
 import Data.Either (fromRight)
 import Data.List (find)
-import Data.Text qualified as Text
 import Data.Tree
 import Data.UUID (UUID)
-import Data.UUID qualified as UUID
 import GHC.Generics
+import ModelJSON qualified
 
 -- import Data.UUID.V4 (nextRandom)
-
-data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
-
-data Attr = Attr
-  { name :: String
-  }
-  deriving (Show, Generic)
 
 leaf :: a -> Tree a
 leaf x = Node x []
@@ -34,32 +25,29 @@ data Model = Model
   }
   deriving (Show, Generic)
 
-instance ToJSON Attr where
-  toEncoding = genericToEncoding defaultOptions
+-- We do *not* use the generic JSON instance b/c the ToJSON instance of Tree (provided by aeson)
+-- makes for kinda messy JSON. It encodes the whole thing as a list (not an object). While we're
+-- at it, we also transform the presentation of attr and id. The whole thing is a bit slow b/c we
+-- transmogrify the whole structure.
 
--- LATER As soon as we add more here, we prob want an implementation with optional fields (which can be configured somehow abstractly)
-instance FromJSON Attr
+modelToJSONModel :: Model -> ModelJSON.Model
+modelToJSONModel (Model forest) = ModelJSON.Model forestJSON
+  where
+    forestJSON = map treeToJSONTree forest
+    treeToJSONTree = foldTree $ \(i, attr) children -> ModelJSON.Tree i attr children
 
--- We use a custom instance here to get more readable JSON.
-instance ToJSON EID where
-  -- SOMEDAY implement toEncoding, I can't be bothered rn.
-  toJSON Inbox = String "INBOX"
-  toJSON Vault = String "VAULT"
-  toJSON (EIDNormal uuid) = String (UUID.toText uuid)
-
-instance FromJSON EID where
-  parseJSON (String txt)
-    | txt == "INBOX" = return Inbox
-    | txt == "VAULT" = return Vault
-    | otherwise = case UUID.fromText txt of
-        Just uuid -> return $ EIDNormal uuid
-        Nothing -> fail $ "Invalid UUID: " ++ Text.unpack txt
-  parseJSON val = AT.typeMismatch "String" val
+modelFromJSONModel :: ModelJSON.Model -> Model
+modelFromJSONModel (ModelJSON.Model forestJSON) = Model forest
+  where
+    forest = jsonForestToForest forestJSON
+    jsonForestToForest = unfoldForest $ \(ModelJSON.Tree i attr children) -> ((i, attr), children)
 
 instance ToJSON Model where
-  toEncoding = genericToEncoding defaultOptions
+  toJSON = toJSON . modelToJSONModel
+  toEncoding = toEncoding . modelToJSONModel
 
-instance FromJSON Model
+instance FromJSON Model where
+  parseJSON = fmap modelFromJSONModel . parseJSON
 
 emptyModel :: Model
 emptyModel =
