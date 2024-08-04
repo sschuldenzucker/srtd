@@ -1,10 +1,18 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Model where
 
 import Control.Concurrent.STM
+import Data.Aeson
+import Data.Aeson.Types qualified as AT
 import Data.Either (fromRight)
 import Data.List (find)
+import Data.Text qualified as Text
 import Data.Tree
 import Data.UUID (UUID)
+import Data.UUID qualified as UUID
+import GHC.Generics
 
 -- import Data.UUID.V4 (nextRandom)
 
@@ -13,18 +21,45 @@ data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
 data Attr = Attr
   { name :: String
   }
-  deriving (Show)
+  deriving (Show, Generic)
 
 leaf :: a -> Tree a
 leaf x = Node x []
 
+-- TODO custom encoding for EID and Attr to get cleaner JSON?
 type MForest = Forest (EID, Attr)
 
--- TODO dummy
 data Model = Model
   { forest :: MForest
   }
-  deriving (Show)
+  deriving (Show, Generic)
+
+instance ToJSON Attr where
+  toEncoding = genericToEncoding defaultOptions
+
+-- LATER As soon as we add more here, we prob want an implementation with optional fields (which can be configured somehow abstractly)
+instance FromJSON Attr
+
+-- We use a custom instance here to get more readable JSON.
+instance ToJSON EID where
+  -- SOMEDAY implement toEncoding, I can't be bothered rn.
+  toJSON Inbox = String "INBOX"
+  toJSON Vault = String "VAULT"
+  toJSON (EIDNormal uuid) = String (UUID.toText uuid)
+
+instance FromJSON EID where
+  parseJSON (String txt)
+    | txt == "INBOX" = return Inbox
+    | txt == "VAULT" = return Vault
+    | otherwise = case UUID.fromText txt of
+        Just uuid -> return $ EIDNormal uuid
+        Nothing -> fail $ "Invalid UUID: " ++ Text.unpack txt
+  parseJSON val = AT.typeMismatch "String" val
+
+instance ToJSON Model where
+  toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON Model
 
 emptyModel :: Model
 emptyModel =

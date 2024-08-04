@@ -79,6 +79,8 @@ executable srtd-hs
         random ^>= 1.2,
         vector ^>= 0.13,
         microlens-platform >= 0.4,
+        aeson ^>= 2.2.3,
+        text,
 
     other-modules:
         Log,
