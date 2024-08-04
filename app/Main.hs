@@ -19,14 +19,15 @@ import Data.UUID
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), black, blue, green, magenta, white, yellow)
+import Lens.Micro.Platform
 import Log
 import Model
 import System.Log.Logger (Priority (DEBUG, ERROR, INFO, WARNING), logL)
 import Todo
 
 data AppState = AppState
-  { modelServer :: ModelServer,
-    -- TODO is this redundant? Same as subtree root?
+  { asModelServer :: ModelServer,
+    -- NB this is a bit redundant (same as subtree root) but the subtree can change so I'm keeping it.
     asRoot :: EID,
     asFilter :: Filter,
     asSubtree :: Subtree,
@@ -48,7 +49,7 @@ main = do
     defaultMain
       app
       ( AppState
-          { modelServer = modelServer,
+          { asModelServer = modelServer,
             asRoot = Inbox,
             asFilter = f_identity,
             asSubtree = subtree,
@@ -81,9 +82,9 @@ forestToBrickList forest = L.list MainList (Vec.fromList contents) 1
     contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels forest
 
 myModifyModelState :: AppState -> (Model -> Model) -> IO AppState
-myModifyModelState s@(AppState {modelServer, asRoot, asFilter, asList}) f = do
-  modifyModelOnServer modelServer f
-  model <- getModel modelServer
+myModifyModelState s@(AppState {asModelServer, asRoot, asFilter, asList}) f = do
+  modifyModelOnServer asModelServer f
+  model <- getModel asModelServer
   let subtree = runFilter asFilter asRoot model
   -- TODO what happens when an element is deleted and this is not possible?
   let resetPosition = L.listSelected asList & maybe id L.listMoveTo
