@@ -81,11 +81,14 @@ executable srtd-hs
         microlens-platform >= 0.4,
         aeson ^>= 2.2.3,
         text,
+        aeson-pretty,
+        bytestring
 
     other-modules:
         Log,
         Model,
         ModelServer,
+        ModelSaver,
         ModelJSON,
         Attr,
         Config,

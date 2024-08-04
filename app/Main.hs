@@ -25,6 +25,7 @@ import Graphics.Vty (Event (..), Key (..), black, blue, green, magenta, white, y
 import Lens.Micro.Platform
 import Log
 import Model
+import ModelSaver (startModelSaver)
 import ModelServer
 import System.Log.Logger (Priority (DEBUG, ERROR, INFO, WARNING), logL)
 import Todo
@@ -49,6 +50,8 @@ main = do
   setupLogger
   glogL INFO "App starting"
   modelServer <- startModelServer
+  -- SOMEDAY I should probably do something with the returned thread ID.
+  _ <- startModelSaver modelServer
   model <- getModel modelServer
   let subtree = runFilter f_identity Inbox model
   void $
