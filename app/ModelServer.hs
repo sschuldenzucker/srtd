@@ -46,9 +46,6 @@ startModelServer = do
   subs <- newTVarIO []
   return (ModelServer mv subs)
 
--- SOMEDAY would be nice if ModelSaver did *not* override
--- the model when reading failed, not to lose data Actually, we probably
--- wanna error-exit in that case.
 readModelFromFile :: IO (Maybe Model)
 readModelFromFile = run `catch` handleFileNotFound
   where
@@ -59,8 +56,8 @@ readModelFromFile = run `catch` handleFileNotFound
       emodel <- eitherDecodeFileStrict model_filename :: IO (Either String Model)
       case emodel of
         Left e -> do
-          glogL ERROR ("Failed to decode file: " ++ e)
-          return Nothing
+          glogL ERROR ("Failed to decode file " ++ model_filename ++ ": " ++ e)
+          throwIO $ AesonException e
         Right m -> return $ Just m
 
 subscribe :: ModelServer -> (MsgModelUpdated -> IO ()) -> IO ()
