@@ -2,14 +2,13 @@
 -- Some convenience helpers for logging.
 --
 -- May see some changes going forward (e.g., for concurrency)
-module Log where
+module Log (setupLogger, glogL, uglogL, Priority (..)) where
 
 import GHC.IO.Unsafe (unsafePerformIO)
 import System.Log.Formatter
 import System.Log.Handler (setFormatter)
 import System.Log.Handler.Simple
 import System.Log.Logger hiding (getLogger)
-import System.Log.Logger qualified as L
 
 -- | Setup global "Srtd" logger.
 setupLogger :: IO ()

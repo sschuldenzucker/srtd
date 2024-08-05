@@ -3,37 +3,24 @@
 module Main (main) where
 
 import Attr
-import Brick (nestEventM, on, vBox, withDefAttr, (<=>))
-import Brick.AttrMap qualified
-import Brick.AttrMap qualified as A
-import Brick.Main
+import Brick
 import Brick.Themes
-import Brick.Types (BrickEvent (..), EventM, Widget)
-import Brick.Widgets.Center qualified as C
-import Brick.Widgets.Core (str)
 import Brick.Widgets.List qualified as L
-import Control.Concurrent.STM (TVar)
 import Control.Monad (void)
-import Control.Monad.State (MonadState (get, put), liftIO, modify)
-import Data.Function ((&))
-import Data.Maybe (fromMaybe)
-import Data.Tree (flatten)
-import Data.UUID
+import Control.Monad.State (liftIO)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
-import Graphics.Vty (Event (..), Key (..), black, blue, green, magenta, white, yellow)
+import Graphics.Vty (Event (..), Key (..), black, green)
 import Lens.Micro.Platform
 import Log
 import Model
 import ModelSaver (startModelSaver)
 import ModelServer
-import System.Log.Logger (Priority (DEBUG, ERROR, INFO, WARNING), logL)
-import Todo
 
 data AppResourceName = MainList deriving (Eq, Ord, Show)
 
 data AppState = AppState
-  { _asModelServer :: ModelServer.ModelServer,
+  { _asModelServer :: ModelServer,
     -- NB this is a bit redundant (same as subtree root) but the subtree can change so I'm keeping it.
     _asRoot :: EID,
     _asFilter :: Filter,
@@ -43,7 +30,7 @@ data AppState = AppState
   }
   deriving (Show)
 
-makeLenses ''AppState
+makeLensesFor [("_asList", "asList")] ''AppState
 
 main :: IO ()
 main = do
@@ -67,10 +54,10 @@ main = do
       )
   glogL INFO "App did quit normally"
 
-selectedItemRowAttr :: A.AttrName
-selectedItemRowAttr = A.attrName "selectedItemRow"
+selectedItemRowAttr :: AttrName
+selectedItemRowAttr = attrName "selectedItemRow"
 
-myAttrMap :: Brick.AttrMap.AttrMap
+myAttrMap :: AttrMap
 myAttrMap = themeToAttrMap $ newTheme (green `on` black) [(selectedItemRowAttr, black `on` green)]
 
 ui :: AppState -> Widget AppResourceName

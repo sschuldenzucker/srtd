@@ -3,7 +3,7 @@
 -- | Helpers for JSON encoding. We put them here not to pollute the namespace. Should be imported qualified.
 module ModelJSON where
 
-import Attr (Attr, EID)
+import Attr
 import Data.Aeson
 import GHC.Generics
 

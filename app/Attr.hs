@@ -5,7 +5,7 @@
 module Attr where
 
 import Data.Aeson
-import Data.Aeson.Types qualified as AT
+import Data.Aeson.Types (typeMismatch)
 import Data.Text qualified as Text
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
@@ -38,4 +38,4 @@ instance FromJSON EID where
     | otherwise = case UUID.fromText txt of
         Just uuid -> return $ EIDNormal uuid
         Nothing -> fail $ "Invalid UUID: " ++ Text.unpack txt
-  parseJSON val = AT.typeMismatch "String" val
+  parseJSON val = typeMismatch "String" val

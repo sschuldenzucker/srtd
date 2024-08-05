@@ -3,7 +3,7 @@
 
 module Model where
 
-import Attr (Attr (..), EID (..))
+import Attr
 import Data.Aeson
 import Data.Either (fromRight)
 import Data.List (find)

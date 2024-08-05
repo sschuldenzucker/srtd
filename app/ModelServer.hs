@@ -12,7 +12,6 @@ import Data.Maybe
 import Log
 import Model
 import System.IO.Error
-import System.Log (Priority (..))
 
 data MsgModelUpdated = MsgModelUpdated
 
