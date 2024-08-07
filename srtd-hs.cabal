@@ -93,6 +93,10 @@ executable srtd-hs
         Attr,
         Config,
         Todo,
+        AppMsg,
+        AppAttr,
+        Component,
+        Components.MainTree,
 
     -- Directories containing source files.
     hs-source-dirs:   app
