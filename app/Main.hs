@@ -17,6 +17,8 @@ import Model
 import ModelSaver (startModelSaver)
 import ModelServer
 
+-- TODO NEXT implement overlays. Our first use case is popping up an overlay to enter a task name on create.
+
 data AppState = AppState
   { asContext :: AppContext,
     -- TODO implement features to show & manage tabs. Rn  there's only one tab, lol.
