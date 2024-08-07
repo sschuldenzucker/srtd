@@ -29,7 +29,8 @@ getModel :: ModelServer -> IO Model
 getModel (ModelServer mv _) = readTVarIO mv
 
 -- SOMEDAY this prob shouldn't exist?
--- SOMEDAY flip arguments?
+-- The main issue seems to be that the caller currently assumes that the model is updated immediately after calling this.
+-- This needs to change if becomes an actual server (or this has to be a "call"-type transaction.).
 modifyModelOnServer :: ModelServer -> (Model -> Model) -> IO ()
 modifyModelOnServer server@(ModelServer mv _) f = do
   atomically $ modifyTVar' mv f
