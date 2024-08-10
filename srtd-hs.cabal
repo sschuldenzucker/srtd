@@ -93,10 +93,11 @@ executable srtd-hs
         Attr,
         Config,
         Todo,
-        AppMsg,
         AppAttr,
         Component,
         Components.MainTree,
+        Components.TestOverlay,
+        Components.NewNodeOverlay,
 
     -- Directories containing source files.
     hs-source-dirs:   app

@@ -13,7 +13,7 @@ import Log
 import Model
 import System.IO.Error
 
-data MsgModelUpdated = MsgModelUpdated
+data MsgModelUpdated = MsgModelUpdated deriving (Show)
 
 -- | Stores the model and a list of subscribers (which are represented as arbitrary IO actions)
 --
@@ -31,6 +31,7 @@ getModel (ModelServer mv _) = readTVarIO mv
 -- SOMEDAY this prob shouldn't exist?
 -- The main issue seems to be that the caller currently assumes that the model is updated immediately after calling this.
 -- This needs to change if becomes an actual server (or this has to be a "call"-type transaction.).
+-- NB There are quite a few function rn that assume that this is synchronous, including notifications.
 modifyModelOnServer :: ModelServer -> (Model -> Model) -> IO ()
 modifyModelOnServer server@(ModelServer mv _) f = do
   atomically $ modifyTVar' mv f

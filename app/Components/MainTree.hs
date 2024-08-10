@@ -3,25 +3,29 @@
 module Components.MainTree (MainTree (..), make) where
 
 import AppAttr
-import AppMsg
 import Attr
 import Brick
+import Brick.BChan (writeBChan)
 import Brick.Widgets.List qualified as L
 import Component
+import Components.NewNodeOverlay (newNodeOverlay)
+import Components.TestOverlay (TestOverlay (..))
 import Control.Monad.IO.Class (liftIO)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
-import Graphics.Vty (Event (..), Key (..))
+import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Lens.Micro.Platform
 import Log
 import Model
 import ModelServer
 
+type MyList = L.List AppResourceName (Int, EID, Attr)
+
 data MainTree = MainTree
   { mtRoot :: EID,
     mtFilter :: Filter,
     mtSubtree :: Subtree,
-    mtList :: L.List AppResourceName (Int, EID, Attr)
+    mtList :: MyList
   }
   deriving (Show)
 
@@ -33,7 +37,7 @@ make root filter_ model = MainTree root filter_ subtree list
     subtree = runFilter filter_ root model
     list = forestToBrickList $ stForest subtree
 
-forestToBrickList :: MForest -> L.List AppResourceName (Int, EID, Attr)
+forestToBrickList :: MForest -> MyList
 forestToBrickList forest = L.list MainList (Vec.fromList contents) 1
   where
     contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels forest
@@ -50,6 +54,34 @@ instance BrickComponent MainTree where
 
   handleEvent ctx ev = case ev of
     (VtyEvent (EvKey (KChar 'n') [])) -> do
+      let AppContext {acAppChan} = ctx
+      state <- get
+      let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) After
+      let cb = \name (AppContext {acModelServer}) -> do
+            let attr = Attr {name = name}
+            uuid <- nextRandom
+            modifyModelOnServer acModelServer (insertNewNormalWithNewId uuid attr tgtLoc)
+            return $ EIDNormal uuid
+      liftIO $ writeBChan acAppChan $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
+    (VtyEvent (EvKey (KChar 's') [])) -> do
+      state <- get
+      case mtCur state of
+        Just cur -> do
+          let AppContext {acAppChan} = ctx
+          let tgtLoc = LastChild cur
+          let cb = \name (AppContext {acModelServer}) -> do
+                let attr = Attr {name = name}
+                uuid <- nextRandom
+                modifyModelOnServer acModelServer (insertNewNormalWithNewId uuid attr tgtLoc)
+                return $ EIDNormal uuid
+          liftIO $ writeBChan acAppChan $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
+        Nothing -> return ()
+    (AppEvent (ModelUpdated _)) -> pullNewModel ctx
+    (AppEvent (PopOverlay (OREID eid))) -> do
+      -- We do not distinguish between *who* returned or *why* rn. That's a bit of a hole but not needed right now.
+      -- NB we really trust in synchronicity here b/c we don't reload the model. That's fine now but could be an issue later.
+      mtListL %= scrollListToEID eid
+    (VtyEvent (EvKey (KChar 'N') [])) -> do
       liftIO (glogL INFO "creating new node")
       uuid <- liftIO nextRandom
       liftIO $ glogL INFO ("new UUID: " ++ show uuid)
@@ -60,7 +92,7 @@ instance BrickComponent MainTree where
       state' <- liftIO $ myModifyModelState ctx state (insertNewNormalWithNewId uuid attr tgtLoc)
       liftIO $ glogL INFO ("State POST " ++ show state')
       put state'
-    (VtyEvent (EvKey (KChar 's') [])) -> do
+    (VtyEvent (EvKey (KChar 'S') [])) -> do
       liftIO (glogL INFO "creating new subnode")
       uuid <- liftIO nextRandom
       state <- get
@@ -68,6 +100,9 @@ instance BrickComponent MainTree where
       case mtCur state of
         Just cur -> (liftIO $ myModifyModelState ctx state (insertNewNormalWithNewId uuid attr (LastChild cur))) >>= put
         Nothing -> return ()
+    (VtyEvent (EvKey (KChar 'T') [])) -> do
+      let AppContext {acAppChan} = ctx
+      liftIO $ writeBChan acAppChan $ PushOverlay (const $ SomeBrickComponent TestOverlay)
     (VtyEvent e) -> do
       zoom mtListL $ L.handleListEventVi (const $ return ()) e
     _ -> return ()
@@ -84,3 +119,16 @@ myModifyModelState AppContext {acModelServer} s@(MainTree {mtRoot, mtFilter, mtL
   let resetPosition = L.listSelected mtList & maybe id L.listMoveTo
   let asList' = resetPosition $ forestToBrickList (stForest subtree)
   return s {mtSubtree = subtree, mtList = asList'}
+
+pullNewModel :: AppContext -> EventM n MainTree ()
+pullNewModel (AppContext {acModelServer}) = do
+  model <- liftIO $ getModel acModelServer
+  s@(MainTree {mtRoot, mtFilter, mtList}) <- get
+  let subtree = runFilter mtFilter mtRoot model
+  -- TODO what happens when an element is deleted and this is not possible?
+  let resetPosition = L.listSelected mtList & maybe id L.listMoveTo
+  let asList' = resetPosition $ forestToBrickList (stForest subtree)
+  put s {mtSubtree = subtree, mtList = asList'}
+
+scrollListToEID :: EID -> MyList -> MyList
+scrollListToEID eid = L.listFindBy $ \(_, eid', _) -> eid' == eid
