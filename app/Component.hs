@@ -8,6 +8,7 @@ module Component where
 import Attr (EID)
 import Brick
 import Brick.BChan (BChan)
+import Data.Text (Text)
 import Lens.Micro.Platform (lens)
 import ModelServer (ModelServer, MsgModelUpdated)
 
@@ -41,6 +42,11 @@ class BrickComponent s where
   -- | Handle an event. Like the `handleEvent` functions.
   handleEvent :: AppContext -> BrickEvent AppResourceName AppMsg -> EventM AppResourceName s ()
 
+  -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
+  --
+  -- (is toplevel, descriptions)
+  componentKeyDesc :: s -> (Bool, [(Text, Text)])
+
 data SomeBrickComponent = forall s. (BrickComponent s) => SomeBrickComponent s
 
 instance BrickComponent SomeBrickComponent where
@@ -54,3 +60,5 @@ instance BrickComponent SomeBrickComponent where
     -- Alternatively, we could make the actual transform and use unsafeCoerce. But this seems to work fine.
     let theLens = lens (const s) (const SomeBrickComponent)
     zoom theLens $ handleEvent ctx ev
+
+  componentKeyDesc (SomeBrickComponent s) = componentKeyDesc s

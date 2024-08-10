@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Components.NewNodeOverlay where
@@ -43,3 +44,5 @@ instance BrickComponent NewNodeOverlay where
     _ -> zoom nnEditor $ handleEditorEvent ev
     where
       AppContext {acAppChan} = ctx
+
+  componentKeyDesc _ = (True, [("esc", "cancel"), ("enter", "add")])

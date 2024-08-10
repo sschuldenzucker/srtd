@@ -26,6 +26,7 @@ data MainTree = MainTree
     mtFilter :: Filter,
     mtSubtree :: Subtree,
     mtList :: MyList
+    -- mlKeymap :: Keymap
   }
   deriving (Show)
 
@@ -125,6 +126,9 @@ instance BrickComponent MainTree where
     (VtyEvent e) -> do
       zoom mtListL $ L.handleListEventVi (const $ return ()) e
     _ -> return ()
+
+  -- TODO WIP use a keymap.
+  componentKeyDesc _ = (True, [])
 
 mtCur :: MainTree -> Maybe EID
 mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _)) -> i)

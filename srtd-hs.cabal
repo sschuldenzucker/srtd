@@ -98,6 +98,8 @@ executable srtd-hs
         Components.MainTree,
         Components.TestOverlay,
         Components.NewNodeOverlay,
+        Keymap,
+        Alignment,
 
     -- Directories containing source files.
     hs-source-dirs:   app

@@ -3,31 +3,37 @@
 
 module Main (main) where
 
+import Alignment
 import AppAttr
 import Attr
 import Brick
 import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Border
 import Brick.Widgets.Center
+import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
 import Component
 import Components.MainTree qualified as MainTree
 import Control.Monad (void)
 import Control.Monad.State (liftIO)
 import Data.Traversable (forM)
-import Graphics.Vty (Event (..), Key (..))
+import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Lens.Micro.Platform
 import Log
 import Model
 import ModelSaver (startModelSaver)
 import ModelServer
+import Todo
 
 data AppState = AppState
   { asContext :: AppContext,
     -- TODO implement features to show & manage tabs. Rn  there's only one tab, lol.
     -- TODO we may wanna keep these as MainTree so we can clone. Or 'new tab' should be a shortcut of MainTree, not sure.
     asTabs :: [SomeBrickComponent],
-    asOverlays :: [SomeBrickComponent]
+    asOverlays :: [SomeBrickComponent],
+    asHelpAlways :: Bool
   }
+
+suffixLenses ''AppState
 
 main :: IO ()
 main = do
@@ -44,7 +50,8 @@ main = do
         AppState
           { asContext = AppContext modelServer appChan,
             asTabs = [SomeBrickComponent $ MainTree.make Inbox f_identity model],
-            asOverlays = []
+            asOverlays = [],
+            asHelpAlways = False
           }
 
   -- let buildVty = Graphics.Vty.CrossPlatform.mkVty Graphics.Vty.Config.defaultConfig
@@ -60,28 +67,40 @@ main = do
   glogL INFO "App did quit normally"
 
 myAppDraw :: AppState -> [Widget AppResourceName]
-myAppDraw AppState {asTabs, asOverlays} = map renderOverlay asOverlays ++ [renderComponent tab0]
+myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ [renderComponent tab0]
   where
     tab0 = case asTabs of
       [t] -> t
       _ -> error "Wrong number of tabs."
     -- renderOverlay o = hLimitPercent 70 $ renderComponent o
     renderOverlay =
-      hCenterLayer
-        . vCenterLayer
+      centerLayer
         . Brick.hLimitPercent 80
         . Brick.vLimitPercent 75
         -- TODO give overlays names so user knows what to do. (should prob be a Component method)
         -- . borderWithLabel (txt "Overlay")
         . border
         . renderComponent
+    renderKeyHelp pairs =
+      let configTable = surroundingBorder False . rowBorders False . columnBorders False
+          inner = configTable $ table [[padRight (Pad 1) (txt keydesc), txt actdesc] | (keydesc, actdesc) <- pairs]
+       in alignBottomRightLayer . borderWithLabel (str "Help") $ renderTable inner
+    keyHelpUI =
+      let (isToplevel, keydescs) = componentKeyDesc $ state ^. activeComponentL
+       in if not isToplevel || (asHelpAlways state) then renderKeyHelp keydescs else emptyWidget
 
 myHandleEvent :: BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
 myHandleEvent ev =
   dbgprint >> case ev of
+    -- TODO fix: we can't type q in a task (lol). I prob want a toplevel check on overlays (or loop through the chan)
+    -- (or just make this Ctrl+q for the global version at least)
     (VtyEvent (EvKey (KChar 'q') [])) -> do
       liftIO (glogL INFO "quitting...")
       halt
+    -- Toggle: Always show overlay. (o/w only at the top level)
+    -- TODO I have no idea why Ctrl+/ is registered as Ctrl+_ but here we are.
+    (VtyEvent (EvKey (KChar '_') [MCtrl])) -> do
+      asHelpAlwaysL %= not
     (AppEvent (PopOverlay _)) -> do
       modify popOverlay
       -- This is some unclean design right here. Ideally the caller-callee relationship should specify return values. :/
