@@ -101,6 +101,13 @@ treeInsertAtId (FirstChild tgt) idattr (Node (i, attr) children) | i == tgt = No
 treeInsertAtId (LastChild tgt) idattr (Node (i, attr) children) | i == tgt = Node (i, attr) (children ++ [Node idattr []])
 treeInsertAtId loc idattr (Node (i, attr) children) = Node (i, attr) (forestInsertAtId loc idattr children)
 
+deleteSubtree :: EID -> Model -> Model
+deleteSubtree eid (Model forest) = Model (filterForest (\(eid', _) -> eid' /= eid) forest)
+
+-- | Only leaves the initial segments of the forest where the predicate all applies.
+filterForest :: (a -> Bool) -> Forest a -> Forest a
+filterForest p forest = [Node x (filterForest p children) | Node x children <- forest, p x]
+
 data Subtree = Subtree
   { breadcrumbs :: [EID],
     root :: EID,

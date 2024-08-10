@@ -95,6 +95,12 @@ instance BrickComponent MainTree where
           model <- liftIO $ getModel acModelServer
           MainTree {mtFilter} <- get
           put $ make parent mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
+    -- TODO this is really not very nice. Prob should disappear.
+    (VtyEvent (EvKey (KChar 'd') [])) -> do
+      state <- get
+      case mtCur state of
+        Just cur -> liftIO (myModifyModelState ctx state $ deleteSubtree cur) >>= put
+        Nothing -> return ()
     (VtyEvent (EvKey (KChar 'N') [])) -> do
       liftIO (glogL INFO "creating new node")
       uuid <- liftIO nextRandom
