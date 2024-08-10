@@ -1,9 +1,12 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Model where
 
 import Attr
+-- Really just a helper here. Should prob not import this for separation
+import Brick (suffixLenses)
 import Data.Aeson
 import Data.Either (fromRight)
 import Data.List (find)
@@ -105,6 +108,8 @@ data Subtree = Subtree
     stForest :: MForest
   }
   deriving (Show)
+
+suffixLenses ''Subtree
 
 data IdNotFoundError = IdNotFoundError deriving (Show)
 
