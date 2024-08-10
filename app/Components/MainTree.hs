@@ -29,7 +29,7 @@ data MainTree = MainTree
   }
   deriving (Show)
 
-makeLensesFor [("mtList", "mtListL")] ''MainTree
+makeLensesFor [("mtList", "mtListL"), ("mtSubtree", "mtSubtreeL")] ''MainTree
 
 make :: EID -> Filter -> Model -> MainTree
 make root filter_ model = MainTree root filter_ subtree list
@@ -52,27 +52,25 @@ instance BrickComponent MainTree where
       withSelAttr True = withDefAttr selectedItemRowAttr
       withSelAttr False = id
 
-  handleEvent ctx ev = case ev of
+  handleEvent ctx@(AppContext {acModelServer, acAppChan}) ev = case ev of
     (VtyEvent (EvKey (KChar 'n') [])) -> do
-      let AppContext {acAppChan} = ctx
       state <- get
       let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) After
-      let cb = \name (AppContext {acModelServer}) -> do
+      let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
             let attr = Attr {name = name}
             uuid <- nextRandom
-            modifyModelOnServer acModelServer (insertNewNormalWithNewId uuid attr tgtLoc)
+            modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
             return $ EIDNormal uuid
       liftIO $ writeBChan acAppChan $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
     (VtyEvent (EvKey (KChar 's') [])) -> do
       state <- get
       case mtCur state of
         Just cur -> do
-          let AppContext {acAppChan} = ctx
           let tgtLoc = LastChild cur
-          let cb = \name (AppContext {acModelServer}) -> do
+          let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
                 let attr = Attr {name = name}
                 uuid <- nextRandom
-                modifyModelOnServer acModelServer (insertNewNormalWithNewId uuid attr tgtLoc)
+                modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
                 return $ EIDNormal uuid
           liftIO $ writeBChan acAppChan $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
         Nothing -> return ()
@@ -81,6 +79,22 @@ instance BrickComponent MainTree where
       -- We do not distinguish between *who* returned or *why* rn. That's a bit of a hole but not needed right now.
       -- NB we really trust in synchronicity here b/c we don't reload the model. That's fine now but could be an issue later.
       mtListL %= scrollListToEID eid
+    (VtyEvent (EvKey KEnter [])) -> do
+      s <- get
+      case mtCur s of
+        Just cur -> do
+          model <- liftIO $ getModel acModelServer
+          MainTree {mtFilter} <- get
+          put $ make cur mtFilter model
+        Nothing -> return ()
+    (VtyEvent (EvKey KEsc [])) -> do
+      s <- get
+      case s ^. mtSubtreeL . breadcrumbsL of
+        [] -> return ()
+        parent : _ -> do
+          model <- liftIO $ getModel acModelServer
+          MainTree {mtFilter} <- get
+          put $ make parent mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
     (VtyEvent (EvKey (KChar 'N') [])) -> do
       liftIO (glogL INFO "creating new node")
       uuid <- liftIO nextRandom
@@ -101,7 +115,6 @@ instance BrickComponent MainTree where
         Just cur -> (liftIO $ myModifyModelState ctx state (insertNewNormalWithNewId uuid attr (LastChild cur))) >>= put
         Nothing -> return ()
     (VtyEvent (EvKey (KChar 'T') [])) -> do
-      let AppContext {acAppChan} = ctx
       liftIO $ writeBChan acAppChan $ PushOverlay (const $ SomeBrickComponent TestOverlay)
     (VtyEvent e) -> do
       zoom mtListL $ L.handleListEventVi (const $ return ()) e
@@ -116,6 +129,7 @@ myModifyModelState AppContext {acModelServer} s@(MainTree {mtRoot, mtFilter, mtL
   model <- getModel acModelServer
   let subtree = runFilter mtFilter mtRoot model
   -- TODO what happens when an element is deleted and this is not possible?
+  -- TODO actually we should move to the selected *eid*, not position.
   let resetPosition = L.listSelected mtList & maybe id L.listMoveTo
   let asList' = resetPosition $ forestToBrickList (stForest subtree)
   return s {mtSubtree = subtree, mtList = asList'}
