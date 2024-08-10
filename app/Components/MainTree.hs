@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Components.MainTree (MainTree (..), make) where
@@ -6,6 +7,8 @@ import AppAttr
 import Attr
 import Brick
 import Brick.BChan (writeBChan)
+import Brick.Keybindings (bind)
+import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Component
 import Components.NewNodeOverlay (newNodeOverlay)
@@ -14,10 +17,12 @@ import Control.Monad.IO.Class (liftIO)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
+import Keymap
 import Lens.Micro.Platform
 import Log
 import Model
 import ModelServer
+import Todo
 
 type MyList = L.List AppResourceName (Int, EID, Attr)
 
@@ -25,15 +30,79 @@ data MainTree = MainTree
   { mtRoot :: EID,
     mtFilter :: Filter,
     mtSubtree :: Subtree,
-    mtList :: MyList
-    -- mlKeymap :: Keymap
+    mtList :: MyList,
+    mtKeymap :: KeymapZipper (AppContext -> EventM AppResourceName MainTree ())
   }
   deriving (Show)
 
-makeLensesFor [("mtList", "mtListL"), ("mtSubtree", "mtSubtreeL")] ''MainTree
+suffixLenses ''MainTree
+
+rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
+rootKeymap =
+  kmMake
+    [ ( kmLeaf (bind 'n') "new as next sibling" $ \ctx -> do
+          state <- get
+          let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) After
+          let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
+                let attr = Attr {name = name}
+                uuid <- nextRandom
+                modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
+                return $ EIDNormal uuid
+          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
+      ),
+      ( kmLeaf (bind 's') "new as first child" $ \ctx -> do
+          state <- get
+          case mtCur state of
+            Just cur -> do
+              let tgtLoc = LastChild cur
+              let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
+                    let attr = Attr {name = name}
+                    uuid <- nextRandom
+                    modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
+                    return $ EIDNormal uuid
+              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
+            Nothing -> return ()
+      ),
+      ( kmLeaf (bind 'T') "open test overlay" $ \ctx -> do
+          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent TestOverlay)
+      ),
+      ( kmSub (bind 'd') "delete" deleteKeymap
+      ),
+      ( kmLeaf (binding KEnter []) "hoist" $ \ctx -> do
+          s <- get
+          case mtCur s of
+            Just cur -> do
+              model <- liftIO $ getModel (acModelServer ctx)
+              MainTree {mtFilter} <- get
+              put $ make cur mtFilter model
+            Nothing -> return ()
+      ),
+      ( kmLeaf (binding KEsc []) "de-hoist" $ \ctx -> do
+          s <- get
+          case s ^. mtSubtreeL . breadcrumbsL of
+            [] -> return ()
+            parent : _ -> do
+              model <- liftIO $ getModel (acModelServer ctx)
+              MainTree {mtFilter} <- get
+              put $ make parent mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
+      )
+    ]
+
+-- TODO bubble up the keymap name so it's displayed in the help overlay. Prob easiest to just duplicate the name.
+deleteKeymap :: Keymap (AppContext -> EventM n MainTree ())
+deleteKeymap =
+  kmMake
+    -- TOOD some undo would be nice, lol.
+    [ ( kmLeaf (bind 'd') "subtree" $ \ctx -> do
+          state <- get
+          case mtCur state of
+            Just cur -> liftIO (myModifyModelState ctx state $ deleteSubtree cur) >>= put
+            Nothing -> return ()
+      )
+    ]
 
 make :: EID -> Filter -> Model -> MainTree
-make root filter_ model = MainTree root filter_ subtree list
+make root filter_ model = MainTree root filter_ subtree list (keymapToZipper rootKeymap)
   where
     subtree = runFilter filter_ root model
     list = forestToBrickList $ stForest subtree
@@ -53,82 +122,32 @@ instance BrickComponent MainTree where
       withSelAttr True = withDefAttr selectedItemRowAttr
       withSelAttr False = id
 
-  handleEvent ctx@(AppContext {acModelServer, acAppChan}) ev = case ev of
-    (VtyEvent (EvKey (KChar 'n') [])) -> do
-      state <- get
-      let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) After
-      let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
-            let attr = Attr {name = name}
-            uuid <- nextRandom
-            modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
-            return $ EIDNormal uuid
-      liftIO $ writeBChan acAppChan $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
-    (VtyEvent (EvKey (KChar 's') [])) -> do
-      state <- get
-      case mtCur state of
-        Just cur -> do
-          let tgtLoc = LastChild cur
-          let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
-                let attr = Attr {name = name}
-                uuid <- nextRandom
-                modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
-                return $ EIDNormal uuid
-          liftIO $ writeBChan acAppChan $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
-        Nothing -> return ()
-    (AppEvent (ModelUpdated _)) -> pullNewModel ctx
-    (AppEvent (PopOverlay (OREID eid))) -> do
-      -- We do not distinguish between *who* returned or *why* rn. That's a bit of a hole but not needed right now.
-      -- NB we really trust in synchronicity here b/c we don't reload the model. That's fine now but could be an issue later.
-      mtListL %= scrollListToEID eid
-    (VtyEvent (EvKey KEnter [])) -> do
-      s <- get
-      case mtCur s of
-        Just cur -> do
-          model <- liftIO $ getModel acModelServer
-          MainTree {mtFilter} <- get
-          put $ make cur mtFilter model
-        Nothing -> return ()
-    (VtyEvent (EvKey KEsc [])) -> do
-      s <- get
-      case s ^. mtSubtreeL . breadcrumbsL of
-        [] -> return ()
-        parent : _ -> do
-          model <- liftIO $ getModel acModelServer
-          MainTree {mtFilter} <- get
-          put $ make parent mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
-    -- TODO this is really not very nice. Prob should disappear.
-    (VtyEvent (EvKey (KChar 'd') [])) -> do
-      state <- get
-      case mtCur state of
-        Just cur -> liftIO (myModifyModelState ctx state $ deleteSubtree cur) >>= put
-        Nothing -> return ()
-    (VtyEvent (EvKey (KChar 'N') [])) -> do
-      liftIO (glogL INFO "creating new node")
-      uuid <- liftIO nextRandom
-      liftIO $ glogL INFO ("new UUID: " ++ show uuid)
-      state <- get
-      let attr = Attr {name = "foobar"}
-      let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) After
-      liftIO $ glogL INFO ("State PRE " ++ show state)
-      state' <- liftIO $ myModifyModelState ctx state (insertNewNormalWithNewId uuid attr tgtLoc)
-      liftIO $ glogL INFO ("State POST " ++ show state')
-      put state'
-    (VtyEvent (EvKey (KChar 'S') [])) -> do
-      liftIO (glogL INFO "creating new subnode")
-      uuid <- liftIO nextRandom
-      state <- get
-      let attr = Attr {name = "foobar"}
-      case mtCur state of
-        Just cur -> (liftIO $ myModifyModelState ctx state (insertNewNormalWithNewId uuid attr (LastChild cur))) >>= put
-        Nothing -> return ()
-    (VtyEvent (EvKey (KChar 'T') [])) -> do
-      liftIO $ writeBChan acAppChan $ PushOverlay (const $ SomeBrickComponent TestOverlay)
-    (VtyEvent e) -> do
-      zoom mtListL $ L.handleListEventVi (const $ return ()) e
-    _ -> return ()
+  handleEvent ctx ev = do
+    isTopLevel <- use (mtKeymapL . to kmzIsToplevel)
+    case ev of
+      (AppEvent (ModelUpdated _)) -> pullNewModel ctx
+      (AppEvent (PopOverlay (OREID eid))) -> do
+        -- We do not distinguish between *who* returned or *why* rn. That's a bit of a hole but not needed right now.
+        -- NB we really trust in synchronicity here b/c we don't reload the model. That's fine now but could be an issue later.
+        mtListL %= scrollListToEID eid
+      -- Code for keymap. NB this is a bit nasty, having some abstraction here would be good if we need it again.
+      -- We also gotta be a bit careful not to overlap these in principle.
+      (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzReset
+      (VtyEvent (EvKey KBS [])) | not isTopLevel -> mtKeymapL %= kmzUp
+      (VtyEvent e@(EvKey key mods)) -> do
+        keymap <- use mtKeymapL
+        -- TODO case esc handler for when we're in a submap: then only reset the keymap
+        -- TODO also case backspace for this: then go up.
+        case stepKeymap keymap key mods of
+          NotFound -> handleFallback e
+          LeafResult act -> act ctx >> mtKeymapL %= kmzReset
+          SubmapResult sm -> mtKeymapL .= sm
+      (VtyEvent e) -> handleFallback e
+      _ -> return ()
+    where
+      handleFallback e = zoom mtListL $ L.handleListEventVi (const $ return ()) e
 
-  -- TODO WIP use a keymap.
-  componentKeyDesc _ = (True, [])
+  componentKeyDesc = kmzDesc . mtKeymap
 
 mtCur :: MainTree -> Maybe EID
 mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _)) -> i)
