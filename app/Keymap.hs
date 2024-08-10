@@ -64,7 +64,7 @@ kmDesc :: Keymap a -> [(Text, Text)]
 kmDesc (Keymap theMap) = Map.toList theMap & fmap (\(k, item) -> (ppBinding k, describeItem item)) & sortBy (comparing fst)
   where
     describeItem (d, LeafItem _) = d
-    describeItem (d, SubmapItem _) = d <> "…"
+    describeItem (d, SubmapItem _) = d <> "..."
 
 -- | (is toplevel, [(key label, action description)])
 kmzDesc :: KeymapZipper a -> (Bool, [(Text, Text)])

@@ -17,7 +17,7 @@ data TestOverlay = TestOverlay
 keymap :: KeymapZipper (AppContext -> EventM n TestOverlay ())
 keymap =
   kmzMake
-    [ kmLeaf (bind 'T') "close" $ \(AppContext {acAppChan}) -> do
+    [ kmLeaf (bind 'T') "Close" $ \(AppContext {acAppChan}) -> do
         liftIO $ writeBChan acAppChan (PopOverlay ORNone)
     ]
 

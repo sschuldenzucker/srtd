@@ -51,7 +51,7 @@ main = do
           { asContext = AppContext modelServer appChan,
             asTabs = [SomeBrickComponent $ MainTree.make Inbox f_identity model],
             asOverlays = [],
-            asHelpAlways = False
+            asHelpAlways = True -- Good default rn.
           }
 
   -- let buildVty = Graphics.Vty.CrossPlatform.mkVty Graphics.Vty.Config.defaultConfig
@@ -84,7 +84,7 @@ myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverl
     renderKeyHelp pairs =
       let configTable = surroundingBorder False . rowBorders False . columnBorders False
           inner = configTable $ table [[padRight (Pad 1) (txt keydesc), txt actdesc] | (keydesc, actdesc) <- pairs]
-       in alignBottomRightLayer . borderWithLabel (str "Help") $ renderTable inner
+       in alignBottomRightLayer . borderWithLabel (padLeftRight 1 $ str "Help") $ renderTable inner
     keyHelpUI =
       let (isToplevel, keydescs) = componentKeyDesc $ state ^. activeComponentL
        in if not isToplevel || (asHelpAlways state) then renderKeyHelp keydescs else emptyWidget

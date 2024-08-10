@@ -40,7 +40,7 @@ suffixLenses ''MainTree
 rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
 rootKeymap =
   kmMake
-    [ ( kmLeaf (bind 'n') "new as next sibling" $ \ctx -> do
+    [ ( kmLeaf (bind 'n') "New as next sibling" $ \ctx -> do
           state <- get
           let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) After
           let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
@@ -50,7 +50,7 @@ rootKeymap =
                 return $ EIDNormal uuid
           liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
       ),
-      ( kmLeaf (bind 's') "new as first child" $ \ctx -> do
+      ( kmLeaf (bind 's') "New as first child" $ \ctx -> do
           state <- get
           case mtCur state of
             Just cur -> do
@@ -63,12 +63,12 @@ rootKeymap =
               liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
             Nothing -> return ()
       ),
-      ( kmLeaf (bind 'T') "open test overlay" $ \ctx -> do
+      ( kmLeaf (bind 'T') "Open test overlay" $ \ctx -> do
           liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent TestOverlay)
       ),
-      ( kmSub (bind 'd') "delete" deleteKeymap
+      ( kmSub (bind 'd') "Delete" deleteKeymap
       ),
-      ( kmLeaf (binding KEnter []) "hoist" $ \ctx -> do
+      ( kmLeaf (binding KEnter []) "Hoist" $ \ctx -> do
           s <- get
           case mtCur s of
             Just cur -> do
@@ -77,7 +77,7 @@ rootKeymap =
               put $ make cur mtFilter model
             Nothing -> return ()
       ),
-      ( kmLeaf (binding KEsc []) "de-hoist" $ \ctx -> do
+      ( kmLeaf (binding KEsc []) "De-hoist" $ \ctx -> do
           s <- get
           case s ^. mtSubtreeL . breadcrumbsL of
             [] -> return ()
@@ -93,7 +93,7 @@ deleteKeymap :: Keymap (AppContext -> EventM n MainTree ())
 deleteKeymap =
   kmMake
     -- TOOD some undo would be nice, lol.
-    [ ( kmLeaf (bind 'd') "subtree" $ \ctx -> do
+    [ ( kmLeaf (bind 'd') "Subtree" $ \ctx -> do
           state <- get
           case mtCur state of
             Just cur -> liftIO (myModifyModelState ctx state $ deleteSubtree cur) >>= put
