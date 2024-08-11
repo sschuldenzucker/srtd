@@ -9,6 +9,7 @@ import Brick.BChan (writeBChan)
 import Brick.Widgets.Edit
 import Component
 import Control.Monad.State (liftIO)
+import Data.List (intercalate)
 import Graphics.Vty (Event (..), Key (..))
 import Lens.Micro.Platform
 
@@ -32,14 +33,15 @@ newNodeOverlay cb name = NewNodeOverlay (editor name (Just 1) "") cb
 
 instance BrickComponent NewNodeOverlay where
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
-  renderComponent self = renderEditor (str . unlines) True (self ^. nnEditor)
+  renderComponent self = renderEditor (str . intercalate "\n") True (self ^. nnEditor)
 
   handleEvent ctx ev = case ev of
     (VtyEvent (EvKey KEsc [])) ->
       liftIO $ writeBChan acAppChan (PopOverlay $ ORNone)
     (VtyEvent (EvKey KEnter [])) -> do
       NewNodeOverlay {_nnEditor, _nnCallback} <- get
-      eid <- liftIO $ _nnCallback (unlines $ getEditContents _nnEditor) ctx
+      -- `intercalate "\n"`, *not* `unlines` b/c that adds a trailing newline.
+      eid <- liftIO $ _nnCallback (intercalate "\n" $ getEditContents _nnEditor) ctx
       liftIO $ writeBChan acAppChan (PopOverlay $ OREID eid)
     _ -> zoom nnEditor $ handleEditorEvent ev
     where
