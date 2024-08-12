@@ -145,7 +145,7 @@ renderRow sel (lvl, _, Attr {name, status}) =
       -- TODO I'm a bit unhappy with fixed column widths here.
       -- Sometimes I know but sometimes I just want the "rest" of the space.
       -- (and sometimes our terminal window is smaller)
-      alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus status, renderName lvl name]
+      alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
 
 renderName :: Int -> [Char] -> Widget n
 renderName lvl name = str (concat (replicate (lvl + 1) "  ") ++ name)

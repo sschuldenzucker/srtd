@@ -11,11 +11,13 @@ import Brick
 -- - fix that fact.
 -- - Also the colors are kinda bad generally.
 -- - Improve rendering for the rows in MainTree, see there.
-renderStatus :: Status -> Widget n
-renderStatus a = case a of
-  Next -> withAttr (attrName "status_next") (str "N")
-  Waiting -> withAttr (attrName "status_waiting") (str "W")
-  Project -> withAttr (attrName "status_project") (str "P")
+renderStatus :: Bool -> Status -> Widget n
+renderStatus sel a = case a of
+  Next -> withAttr (root <> attrName "next") (str "N")
+  Waiting -> withAttr (root <> attrName "waiting") (str "W")
+  Project -> withAttr (root <> attrName "project") (str "P")
+  where
+    root = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
 
-renderMaybeStatus :: Maybe Status -> Widget n
-renderMaybeStatus = maybe (str " ") renderStatus
+renderMaybeStatus :: Bool -> Maybe Status -> Widget n
+renderMaybeStatus sel = maybe (str " ") (renderStatus sel)
