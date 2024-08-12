@@ -13,6 +13,7 @@ import Data.List (find)
 import Data.Tree
 import Data.UUID (UUID)
 import GHC.Generics
+import Lens.Micro.Platform
 import ModelJSON qualified
 
 -- import Data.UUID.V4 (nextRandom)
@@ -27,6 +28,8 @@ data Model = Model
   { forest :: MForest
   }
   deriving (Show, Generic)
+
+suffixLenses ''Model
 
 -- We do *not* use the generic JSON instance b/c the ToJSON instance of Tree (provided by aeson)
 -- makes for kinda messy JSON. It encodes the whole thing as a list (not an object). While we're
@@ -55,8 +58,8 @@ instance FromJSON Model where
 emptyModel :: Model
 emptyModel =
   Model
-    [ leaf (Inbox, Attr "INBOX"),
-      leaf (Vault, Attr "VAULT")
+    [ leaf (Inbox, attrMinimal "INBOX"),
+      leaf (Vault, attrMinimal "VAULT")
     ]
 
 -- SOMEDAY put these into a separate module
@@ -107,6 +110,11 @@ deleteSubtree eid (Model forest) = Model (filterForest (\(eid', _) -> eid' /= ei
 -- | Only leaves the initial segments of the forest where the predicate all applies.
 filterForest :: (a -> Bool) -> Forest a -> Forest a
 filterForest p forest = [Node x (filterForest p children) | Node x children <- forest, p x]
+
+modifyAttrByEID :: EID -> (Attr -> Attr) -> Model -> Model
+modifyAttrByEID tgt f = forestL %~ map (fmap updateContent)
+  where
+    updateContent (eid, attr) = (eid, if eid == tgt then f attr else attr)
 
 data Subtree = Subtree
   { breadcrumbs :: [EID],

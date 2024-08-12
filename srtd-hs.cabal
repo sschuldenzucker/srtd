@@ -98,6 +98,7 @@ executable srtd-hs
         Components.MainTree,
         Components.TestOverlay,
         Components.NewNodeOverlay,
+        Components.Attr,
         Keymap,
         Alignment,
 

@@ -10,7 +10,9 @@ import Brick.BChan (writeBChan)
 import Brick.Keybindings (bind)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
+import Brick.Widgets.Table (ColumnAlignment (..), alignColumns)
 import Component
+import Components.Attr (renderMaybeStatus)
 import Components.NewNodeOverlay (newNodeOverlay)
 import Components.TestOverlay (TestOverlay (..))
 import Control.Monad.IO.Class (liftIO)
@@ -44,7 +46,7 @@ rootKeymap =
           state <- get
           let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) After
           let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
-                let attr = Attr {name = name}
+                let attr = attrMinimal name
                 uuid <- nextRandom
                 modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
                 return $ EIDNormal uuid
@@ -56,7 +58,7 @@ rootKeymap =
             Just cur -> do
               let tgtLoc = LastChild cur
               let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
-                    let attr = Attr {name = name}
+                    let attr = attrMinimal name
                     uuid <- nextRandom
                     modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
                     return $ EIDNormal uuid
@@ -85,7 +87,8 @@ rootKeymap =
               model <- liftIO $ getModel (acModelServer ctx)
               MainTree {mtFilter} <- get
               put $ make parent mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
-      )
+      ),
+      (kmSub (bind 'S') "Status" setStatusKeymap)
     ]
 
 -- TODO bubble up the keymap name so it's displayed in the help overlay. Prob easiest to just duplicate the name.
@@ -101,6 +104,22 @@ deleteKeymap =
       )
     ]
 
+setStatusKeymap :: Keymap (AppContext -> EventM n MainTree ())
+setStatusKeymap =
+  kmMake
+    [ kmLeaf (bind ' ') "None" (setStatus Nothing),
+      kmLeaf (bind 'n') "Next" (setStatus $ Just Next),
+      kmLeaf (bind 'w') "Waiting" (setStatus $ Just Waiting),
+      kmLeaf (bind 'p') "Project" (setStatus $ Just Project)
+    ]
+
+setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()
+setStatus status' ctx = do
+  state <- get
+  case mtCur state of
+    Just cur -> liftIO (myModifyModelState ctx state $ modifyAttrByEID cur (statusL .~ status')) >>= put
+    Nothing -> return ()
+
 make :: EID -> Filter -> Model -> MainTree
 make root filter_ model = MainTree root filter_ subtree list (keymapToZipper rootKeymap)
   where
@@ -112,15 +131,30 @@ forestToBrickList forest = L.list MainList (Vec.fromList contents) 1
   where
     contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels forest
 
+withSelAttr :: Bool -> Widget n -> Widget n
+withSelAttr True = withDefAttr selectedItemRowAttr
+withSelAttr False = id
+
+renderRow :: Bool -> (Int, a, Attr) -> Widget n
+renderRow sel (lvl, _, Attr {name, status}) =
+  withSelAttr sel $
+    hBox $
+      -- TODO we prob want to align the status with the indent, too. Requires restructuring but ok.
+      -- NB alignColumns is not very smart, we can easily roll our own.
+      -- NB Also no need to output " " for no status.
+      -- TODO I'm a bit unhappy with fixed column widths here.
+      -- Sometimes I know but sometimes I just want the "rest" of the space.
+      -- (and sometimes our terminal window is smaller)
+      alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus status, renderName lvl name]
+
+renderName :: Int -> [Char] -> Widget n
+renderName lvl name = str (concat (replicate (lvl + 1) "  ") ++ name)
+
 instance BrickComponent MainTree where
   renderComponent MainTree {mtList, mtSubtree = Subtree {root, rootAttr}} = box
     where
       box = renderRow False rootRow <=> L.renderList renderRow True mtList
       rootRow = (-1, root, rootAttr)
-      renderRow :: Bool -> (Int, EID, Attr) -> Widget AppResourceName
-      renderRow sel (lvl, _, Attr {name}) = withSelAttr sel $ str (concat (replicate (lvl + 1) "  ") ++ name)
-      withSelAttr True = withDefAttr selectedItemRowAttr
-      withSelAttr False = id
 
   handleEvent ctx ev = do
     isTopLevel <- use (mtKeymapL . to kmzIsToplevel)

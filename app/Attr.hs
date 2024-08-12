@@ -1,9 +1,12 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -- | Attributes. There's no deep reason this is separate other than to avoid cycles in the module graph.
 module Attr where
 
+-- SOMEDAY it's not very nice we depend on Brick here. Copy the definition (I'm sure it's easy)
+import Brick (suffixLenses)
 import Data.Aeson
 import Data.Aeson.Types (typeMismatch)
 import Data.Text qualified as Text
@@ -13,10 +16,27 @@ import GHC.Generics
 
 data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
 
+-- TODO this is essentially a dummy. Not really the statuses I want.
+data Status = Next | Waiting | Project deriving (Show, Generic)
+
+suffixLenses ''Status
+
 data Attr = Attr
-  { name :: String
+  { name :: String,
+    -- TODO should Status have a special 'None' element instead? Or just a default 'Item" or whatever?
+    status :: Maybe Status
   }
   deriving (Show, Generic)
+
+suffixLenses ''Attr
+
+attrMinimal :: String -> Attr
+attrMinimal s = Attr s Nothing
+
+instance ToJSON Status where
+  toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON Status
 
 instance ToJSON Attr where
   toEncoding = genericToEncoding defaultOptions
