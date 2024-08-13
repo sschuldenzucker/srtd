@@ -16,6 +16,7 @@ import Components.Attr (renderMaybeStatus)
 import Components.NewNodeOverlay (newNodeOverlay)
 import Components.TestOverlay (TestOverlay (..))
 import Control.Monad.IO.Class (liftIO)
+import Data.List (intercalate)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -86,7 +87,7 @@ rootKeymap =
             parent : _ -> do
               model <- liftIO $ getModel (acModelServer ctx)
               MainTree {mtFilter} <- get
-              put $ make parent mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
+              put $ make (fst parent) mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
       ),
       (kmSub (bind 't') "Status" setStatusKeymap),
       (kmLeaf (bind 'q') "Quit" (const halt))
@@ -149,11 +150,18 @@ renderRow sel (lvl, _, Attr {name, status}) =
     statusW = renderMaybeStatus sel status
     nameW = str name
 
+renderRoot :: Attr -> [(a, Attr)] -> Widget n
+renderRoot rootAttr breadcrumbs =
+  hBox $
+    [statusW, str " ", str pathStr]
+  where
+    statusW = renderMaybeStatus False (status rootAttr)
+    pathStr = intercalate " < " $ name rootAttr : [name attr | (_, attr) <- breadcrumbs]
+
 instance BrickComponent MainTree where
-  renderComponent MainTree {mtList, mtSubtree = Subtree {root, rootAttr}} = box
+  renderComponent MainTree {mtList, mtSubtree = Subtree {rootAttr, breadcrumbs}} = box
     where
-      box = renderRow False rootRow <=> L.renderList renderRow True mtList
-      rootRow = (-1, root, rootAttr)
+      box = renderRoot rootAttr breadcrumbs <=> L.renderList renderRow True mtList
 
   handleEvent ctx ev = do
     isTopLevel <- use (mtKeymapL . to kmzIsToplevel)

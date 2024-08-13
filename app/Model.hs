@@ -117,7 +117,7 @@ modifyAttrByEID tgt f = forestL %~ map (fmap updateContent)
     updateContent (eid, attr) = (eid, if eid == tgt then f attr else attr)
 
 data Subtree = Subtree
-  { breadcrumbs :: [EID],
+  { breadcrumbs :: [(EID, Attr)],
     root :: EID,
     rootAttr :: Attr,
     stForest :: MForest
@@ -145,11 +145,11 @@ forestFlattenWithLevels = map extr . forestTrees
   where
     extr (crumbs, (Node x _)) = (length crumbs, x)
 
-forestFindTree :: (Eq id) => id -> Forest (id, a) -> Maybe ([id], Tree (id, a))
+forestFindTree :: (Eq id) => id -> Forest (id, a) -> Maybe ([(id, a)], Tree (id, a))
 forestFindTree tgt forest = find (\(_, Node (i, _) _) -> i == tgt) $ treesWithIdBreadcrumbs
   where
     -- Mogrify b/c forestTrees also returns the attrs, which we don't care about here.
-    treesWithIdBreadcrumbs = map (\(bs, t) -> (map fst bs, t)) $ forestTrees forest
+    treesWithIdBreadcrumbs = forestTrees forest
 
 forestGetSubtreeBelow :: EID -> Forest (EID, Attr) -> Either IdNotFoundError Subtree
 forestGetSubtreeBelow tgt forest = case forestFindTree tgt forest of
