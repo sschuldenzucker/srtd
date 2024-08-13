@@ -92,9 +92,7 @@ myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverl
 myHandleEvent :: BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
 myHandleEvent ev =
   dbgprint >> case ev of
-    -- TODO fix: we can't type q in a task (lol). I prob want a toplevel check on overlays (or loop through the chan)
-    -- (or just make this Ctrl+q for the global version at least)
-    (VtyEvent (EvKey (KChar 'q') [])) -> do
+    (VtyEvent (EvKey (KChar 'q') [MCtrl])) -> do
       liftIO (glogL INFO "quitting...")
       halt
     -- Toggle: Always show overlay. (o/w only at the top level)

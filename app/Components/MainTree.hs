@@ -88,7 +88,8 @@ rootKeymap =
               MainTree {mtFilter} <- get
               put $ make parent mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
       ),
-      (kmSub (bind 'S') "Status" setStatusKeymap)
+      (kmSub (bind 't') "Status" setStatusKeymap),
+      (kmLeaf (bind 'q') "Quit" (const halt))
     ]
 
 -- TODO bubble up the keymap name so it's displayed in the help overlay. Prob easiest to just duplicate the name.
