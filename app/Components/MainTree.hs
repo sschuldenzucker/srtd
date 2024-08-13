@@ -139,16 +139,14 @@ renderRow :: Bool -> (Int, a, Attr) -> Widget n
 renderRow sel (lvl, _, Attr {name, status}) =
   withSelAttr sel $
     hBox $
-      -- TODO we prob want to align the status with the indent, too. Requires restructuring but ok.
-      -- NB alignColumns is not very smart, we can easily roll our own.
-      -- NB Also no need to output " " for no status.
-      -- TODO I'm a bit unhappy with fixed column widths here.
-      -- Sometimes I know but sometimes I just want the "rest" of the space.
-      -- (and sometimes our terminal window is smaller)
-      alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
-
-renderName :: Int -> [Char] -> Widget n
-renderName lvl name = str (concat (replicate (lvl + 1) "  ") ++ name)
+      -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
+      -- alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
+      -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
+      [indentW, statusW, str " ", nameW]
+  where
+    indentW = str (concat (replicate (lvl + 1) "  "))
+    statusW = renderMaybeStatus sel status
+    nameW = str name
 
 instance BrickComponent MainTree where
   renderComponent MainTree {mtList, mtSubtree = Subtree {root, rootAttr}} = box

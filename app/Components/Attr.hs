@@ -18,4 +18,4 @@ renderStatus sel a = case a of
     root = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
 
 renderMaybeStatus :: Bool -> Maybe Status -> Widget n
-renderMaybeStatus sel = maybe (str " ") (renderStatus sel)
+renderMaybeStatus sel = maybe (str "-") (renderStatus sel)
