@@ -49,7 +49,7 @@ main = do
   let appState =
         AppState
           { asContext = AppContext modelServer appChan,
-            asTabs = [SomeBrickComponent $ MainTree.make Inbox f_identity model],
+            asTabs = [SomeBrickComponent $ MainTree.make Vault f_identity model],
             asOverlays = [],
             asHelpAlways = True -- Good default rn.
           }
