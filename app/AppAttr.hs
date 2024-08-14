@@ -21,6 +21,9 @@ asChildrenOf root pairs = [(root <> name, attr) | (name, attr) <- pairs]
 srgbMono :: (Integral i) => i -> Color
 srgbMono c = srgbColor c c c
 
+-- SOMEDAY these colors suuuuck. Also, we prob want the cursor less bright.
+-- Maybe just take from a color scheme, e.g., catpuccin.
+
 darkGray :: Color
 darkGray = srgbMono 0x77
 
@@ -38,6 +41,10 @@ darkGreen = srgbColor 0x00 0xbb 0x00
 
 darkCyan = srgbColor 0x00 0x8c 0x9e
 
+orange = srgbColor 0xff 0xb7 0x4d
+
+darkOrange = srgbColor 0xfb 0xaf 0x3b
+
 defaultTheme :: Theme
 defaultTheme =
   newTheme
@@ -48,12 +55,14 @@ defaultTheme =
         [ (attrName "next", fg green),
           (attrName "waiting", fg gray),
           (attrName "project", fg blue),
-          (attrName "later", fg cyan)
+          (attrName "later", fg cyan),
+          (attrName "wip", fg orange)
         ]
       ++ asChildrenOf
         (selectedItemRowAttr <> attrName "status")
         [ (attrName "next", fg darkGreen),
           (attrName "waiting", fg darkGray),
           (attrName "project", fg darkBlue),
-          (attrName "later", fg darkCyan)
+          (attrName "later", fg darkCyan),
+          (attrName "wip", fg darkOrange)
         ]
