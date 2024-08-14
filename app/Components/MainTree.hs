@@ -54,7 +54,7 @@ rootKeymap =
                 return $ EIDNormal uuid
           liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
       ),
-      ( kmLeaf (bind 's') "New as first child" $ \ctx -> do
+      ( kmLeaf (bind 's') "New as last child" $ \ctx -> do
           -- SOMEDAY make an abstraction for things that operate on the current element. Is very common.
           state <- get
           case mtCur state of
