@@ -14,6 +14,7 @@ renderStatus sel a = case a of
   Next -> withAttr (root <> attrName "next") (str "N")
   Waiting -> withAttr (root <> attrName "waiting") (str "W")
   Project -> withAttr (root <> attrName "project") (str "P")
+  Later -> withAttr (root <> attrName "later") (str "L")
   where
     root = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
 

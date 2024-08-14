@@ -36,6 +36,8 @@ darkBlue = srgbColor 0x00 0x00 0xcc
 
 darkGreen = srgbColor 0x00 0xbb 0x00
 
+darkCyan = srgbColor 0x00 0x8c 0x9e
+
 defaultTheme :: Theme
 defaultTheme =
   newTheme
@@ -45,11 +47,13 @@ defaultTheme =
         (attrName "status")
         [ (attrName "next", fg green),
           (attrName "waiting", fg gray),
-          (attrName "project", fg blue)
+          (attrName "project", fg blue),
+          (attrName "later", fg cyan)
         ]
       ++ asChildrenOf
         (selectedItemRowAttr <> attrName "status")
         [ (attrName "next", fg darkGreen),
           (attrName "waiting", fg darkGray),
-          (attrName "project", fg darkBlue)
+          (attrName "project", fg darkBlue),
+          (attrName "later", fg darkCyan)
         ]
