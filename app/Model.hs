@@ -7,6 +7,7 @@ module Model where
 import Attr
 -- Really just a helper here. Should prob not import this for separation
 import Brick (suffixLenses)
+import Control.Applicative (asum)
 import Data.Aeson
 import Data.Either (fromRight)
 import Data.List (find)
@@ -171,6 +172,18 @@ listToMaybeId _ = Nothing
 
 forestGetParentId :: (Eq id) => id -> Forest (id, a) -> Maybe id
 forestGetParentId tgt = listToMaybeId . forestGetParentsWhere (\(i, _) -> i == tgt)
+
+forestGetNextSiblingId :: (Eq id) => id -> Forest (id, a) -> Maybe id
+forestGetNextSiblingId tgt forest = case splitFind (treeHasID tgt) forest of
+  Just (_, _, (Node (ret, _) _) : _) -> Just ret
+  Just _ -> Nothing
+  Nothing -> asum [forestGetNextSiblingId tgt cs | (Node _ cs) <- forest]
+
+forestGetPrevSiblingId :: (Eq id) => id -> Forest (id, a) -> Maybe id
+forestGetPrevSiblingId tgt forest = case splitFind (treeHasID tgt) forest of
+  Just (prevs@(_ : _), _, _) -> let (Node (ret, _) _) = last prevs in Just ret
+  Just _ -> Nothing
+  Nothing -> asum [forestGetPrevSiblingId tgt cs | (Node _ cs) <- forest]
 
 -- SOMEDAY unclear if this is the right structure.
 newtype Filter = Filter {runFilter :: EID -> Model -> Subtree}

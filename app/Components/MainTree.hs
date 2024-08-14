@@ -104,6 +104,8 @@ rootKeymap =
               put $ make (fst parent) mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
       ),
       (kmLeaf (bind 'h') "Go to parent" (const $ modify mtGoToParent)),
+      (kmLeaf (bind 'J') "Go to next sibling" (const $ modify mtGoToNextSibling)),
+      (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify mtGoToPrevSibling)),
       (kmSub (bind 't') "Status" setStatusKeymap),
       (kmLeaf (bind 'q') "Quit" (const halt))
     ]
@@ -235,6 +237,8 @@ pullNewModel (AppContext {acModelServer}) = do
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \(_, eid', _) -> eid' == eid
 
+-- TODO the following ask for an abstraction. Anyone else?
+
 mtGoToParent :: MainTree -> MainTree
 mtGoToParent mt = fromMaybe mt mres
   where
@@ -242,4 +246,22 @@ mtGoToParent mt = fromMaybe mt mres
       -- Maybe monad
       cur <- mtCur mt
       par <- mt ^. mtSubtreeL . stForestL . to (forestGetParentId cur)
+      return $ mt & mtListL %~ scrollListToEID par
+
+mtGoToNextSibling :: MainTree -> MainTree
+mtGoToNextSibling mt = fromMaybe mt mres
+  where
+    mres = do
+      -- Maybe monad
+      cur <- mtCur mt
+      par <- mt ^. mtSubtreeL . stForestL . to (forestGetNextSiblingId cur)
+      return $ mt & mtListL %~ scrollListToEID par
+
+mtGoToPrevSibling :: MainTree -> MainTree
+mtGoToPrevSibling mt = fromMaybe mt mres
+  where
+    mres = do
+      -- Maybe monad
+      cur <- mtCur mt
+      par <- mt ^. mtSubtreeL . stForestL . to (forestGetPrevSiblingId cur)
       return $ mt & mtListL %~ scrollListToEID par
