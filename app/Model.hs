@@ -10,10 +10,12 @@ import Brick (suffixLenses)
 import Data.Aeson
 import Data.Either (fromRight)
 import Data.List (find)
+import Data.Maybe (mapMaybe)
 import Data.Tree
 import Data.UUID (UUID)
 import GHC.Generics
 import Lens.Micro.Platform
+import Log
 import ModelJSON qualified
 
 -- import Data.UUID.V4 (nextRandom)
@@ -155,6 +157,18 @@ forestGetSubtreeBelow :: EID -> Forest (EID, Attr) -> Either IdNotFoundError Sub
 forestGetSubtreeBelow tgt forest = case forestFindTree tgt forest of
   Just (crumbs, (Node (i, attr) cs)) -> Right (Subtree crumbs i attr cs)
   Nothing -> Left IdNotFoundError
+
+-- SOMEDAY kinda inefficient, but everything here is, so w/e. Could also use forestTrees but, again, w/e.
+forestGetParentsWhere :: (a -> Bool) -> Forest a -> [a]
+forestGetParentsWhere p = mapMaybe trans . forestTrees
+  where
+    trans (par : _, (Node x _)) | p x = Just par
+    trans _ = Nothing
+
+forestGetParentId :: (Eq id) => id -> Forest (id, a) -> Maybe id
+forestGetParentId tgt forest = case forestGetParentsWhere (\(i, _) -> i == tgt) forest of
+  [(res, _)] -> Just res
+  _ -> Nothing
 
 -- SOMEDAY unclear if this is the right structure.
 newtype Filter = Filter {runFilter :: EID -> Model -> Subtree}

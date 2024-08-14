@@ -17,6 +17,7 @@ import Components.NewNodeOverlay (newNodeOverlay)
 import Components.TestOverlay (TestOverlay (..))
 import Control.Monad.IO.Class (liftIO)
 import Data.List (intercalate)
+import Data.Maybe (fromMaybe)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -102,6 +103,7 @@ rootKeymap =
               MainTree {mtFilter} <- get
               put $ make (fst parent) mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
       ),
+      (kmLeaf (bind 'h') "Go to parent" (const $ modify mtGoToParent)),
       (kmSub (bind 't') "Status" setStatusKeymap),
       (kmLeaf (bind 'q') "Quit" (const halt))
     ]
@@ -232,3 +234,12 @@ pullNewModel (AppContext {acModelServer}) = do
 
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \(_, eid', _) -> eid' == eid
+
+mtGoToParent :: MainTree -> MainTree
+mtGoToParent mt = fromMaybe mt mres
+  where
+    mres = do
+      -- Maybe monad
+      cur <- mtCur mt
+      par <- mt ^. mtSubtreeL . stForestL . to (forestGetParentId cur)
+      return $ mt & mtListL %~ scrollListToEID par
