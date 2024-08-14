@@ -51,9 +51,10 @@ rootKeymap =
                 uuid <- nextRandom
                 modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
                 return $ EIDNormal uuid
-          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
+          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
       ),
       ( kmLeaf (bind 's') "New as first child" $ \ctx -> do
+          -- SOMEDAY make an abstraction for things that operate on the current element. Is very common.
           state <- get
           case mtCur state of
             Just cur -> do
@@ -63,7 +64,19 @@ rootKeymap =
                     uuid <- nextRandom
                     modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
                     return $ EIDNormal uuid
-              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb)
+              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
+            Nothing -> return ()
+      ),
+      ( kmLeaf (bind 'e') "Edit name" $ \ctx -> do
+          state <- get
+          case mtCurWithAttr state of
+            Just (cur, curAttr) -> do
+              let oldName = name curAttr
+              let cb = \name' (AppContext {acModelServer = acModelServer'}) -> do
+                    modifyModelOnServer acModelServer' (modifyAttrByEID cur (nameL .~ name'))
+                    -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
+                    return cur
+              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName)
             Nothing -> return ()
       ),
       ( kmLeaf (bind 'T') "Open test overlay" $ \ctx -> do
@@ -192,6 +205,9 @@ instance BrickComponent MainTree where
 
 mtCur :: MainTree -> Maybe EID
 mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _)) -> i)
+
+mtCurWithAttr :: MainTree -> Maybe (EID, Attr)
+mtCurWithAttr (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, attr)) -> (i, attr))
 
 myModifyModelState :: AppContext -> MainTree -> (Model -> Model) -> IO MainTree
 myModifyModelState AppContext {acModelServer} s@(MainTree {mtRoot, mtFilter, mtList}) f = do

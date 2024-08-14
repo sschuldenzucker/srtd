@@ -1,6 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
+-- | Component for editing item names for new/existing items.
+--
+-- TODO Rename. It's more of a generic name editing component.
 module Components.NewNodeOverlay where
 
 import Attr (EID)
@@ -18,6 +21,9 @@ import Lens.Micro.Platform
 -- - Or this could just return the String and then the caller has to deal with it
 -- - Or this just does its modification and then the caller has to deal with it.
 
+-- | Callback passed to this. Must return the EID that is passed down to the parent on confirm (Enter).
+--
+-- Alternatively, this could be "pure" and *only* pass down the entered name to the parent, but it's not doing that rn.
 type Callback = String -> AppContext -> IO EID
 
 data NewNodeOverlay = NewNodeOverlay
@@ -28,8 +34,8 @@ data NewNodeOverlay = NewNodeOverlay
 
 makeLenses ''NewNodeOverlay
 
-newNodeOverlay :: Callback -> AppResourceName -> NewNodeOverlay
-newNodeOverlay cb name = NewNodeOverlay (editor name (Just 1) "") cb
+newNodeOverlay :: Callback -> String -> AppResourceName -> NewNodeOverlay
+newNodeOverlay cb initName rname = NewNodeOverlay (editor rname (Just 1) initName) cb
 
 instance BrickComponent NewNodeOverlay where
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
