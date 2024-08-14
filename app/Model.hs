@@ -165,10 +165,12 @@ forestGetParentsWhere p = mapMaybe trans . forestTrees
     trans (par : _, (Node x _)) | p x = Just par
     trans _ = Nothing
 
+listToMaybeId :: [(id, a)] -> Maybe id
+listToMaybeId [(i, _)] = Just i
+listToMaybeId _ = Nothing
+
 forestGetParentId :: (Eq id) => id -> Forest (id, a) -> Maybe id
-forestGetParentId tgt forest = case forestGetParentsWhere (\(i, _) -> i == tgt) forest of
-  [(res, _)] -> Just res
-  _ -> Nothing
+forestGetParentId tgt = listToMaybeId . forestGetParentsWhere (\(i, _) -> i == tgt)
 
 -- SOMEDAY unclear if this is the right structure.
 newtype Filter = Filter {runFilter :: EID -> Model -> Subtree}
