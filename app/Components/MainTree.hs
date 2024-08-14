@@ -131,7 +131,9 @@ setStatusKeymap =
       kmLeaf (bind 'w') "Waiting" (setStatus $ Just Waiting),
       kmLeaf (bind 'p') "Project" (setStatus $ Just Project),
       kmLeaf (bind 'l') "Later" (setStatus $ Just Later),
-      kmLeaf (bind 'i') "WIP" (setStatus $ Just WIP)
+      kmLeaf (bind 'i') "WIP" (setStatus $ Just WIP),
+      kmLeaf (binding KEnter []) "Done" (setStatus $ Just Done),
+      kmLeaf (bind 's') "Someday" (setStatus $ Just Someday)
     ]
 
 setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()

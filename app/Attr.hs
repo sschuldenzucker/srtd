@@ -17,7 +17,7 @@ import GHC.Generics
 data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
 
 -- TODO this is essentially a dummy. Not really the statuses I want.
-data Status = WIP | Next | Later | Waiting | Project deriving (Show, Generic)
+data Status = WIP | Next | Later | Waiting | Someday | Done | Project deriving (Show, Generic)
 
 suffixLenses ''Status
 

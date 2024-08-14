@@ -45,6 +45,10 @@ orange = srgbColor 0xff 0xb7 0x4d
 
 darkOrange = srgbColor 0xfb 0xaf 0x3b
 
+purple = srgbColor 0xd1 0xc4 0xe9
+
+deepPurple = srgbColor 0x67 0x3a 0xb7
+
 defaultTheme :: Theme
 defaultTheme =
   newTheme
@@ -56,7 +60,9 @@ defaultTheme =
           (attrName "waiting", fg gray),
           (attrName "project", fg blue),
           (attrName "later", fg cyan),
-          (attrName "wip", fg orange)
+          (attrName "wip", fg orange),
+          (attrName "done", fg green),
+          (attrName "someday", fg purple)
         ]
       ++ asChildrenOf
         (selectedItemRowAttr <> attrName "status")
@@ -64,5 +70,7 @@ defaultTheme =
           (attrName "waiting", fg darkGray),
           (attrName "project", fg darkBlue),
           (attrName "later", fg darkCyan),
-          (attrName "wip", fg darkOrange)
+          (attrName "wip", fg darkOrange),
+          (attrName "done", fg darkGreen),
+          (attrName "someday", fg deepPurple)
         ]
