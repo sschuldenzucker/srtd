@@ -11,10 +11,10 @@ import Brick
 -- - Improve rendering for the rows in MainTree, see there.
 renderStatus :: Bool -> Status -> Widget n
 renderStatus sel a = case a of
-  Next -> withAttr (root <> attrName "next") (str "N")
-  Waiting -> withAttr (root <> attrName "waiting") (str "W")
-  Project -> withAttr (root <> attrName "project") (str "P")
-  Later -> withAttr (root <> attrName "later") (str "L")
+  Next -> withAttr (root <> attrName "next") (str "*")
+  Waiting -> withAttr (root <> attrName "waiting") (str "<")
+  Project -> withAttr (root <> attrName "project") (str ">")
+  Later -> withAttr (root <> attrName "later") (str "/")
   where
     root = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
 
