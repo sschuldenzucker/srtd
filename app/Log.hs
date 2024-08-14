@@ -2,7 +2,7 @@
 -- Some convenience helpers for logging.
 --
 -- May see some changes going forward (e.g., for concurrency)
-module Log (setupLogger, glogL, uglogL, Priority (..)) where
+module Log (setupLogger, glogL, uglogL, traceUGlogl, Priority (..)) where
 
 import GHC.IO.Unsafe (unsafePerformIO)
 import System.Log.Formatter
@@ -35,3 +35,6 @@ glogL prio msg = do
 -- | Unsafe variant of `glogL`. Often has unexpected effects b/c of lazy evaluation. You've been warned.
 uglogL :: Priority -> String -> a -> a
 uglogL prio msg x = unsafePerformIO (glogL prio msg >> return x)
+
+traceUGlogl :: (Show a) => Priority -> String -> a -> a
+traceUGlogl prio label x = uglogL prio (label ++ " = " ++ show x) x
