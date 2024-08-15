@@ -53,4 +53,4 @@ instance BrickComponent NewNodeOverlay where
     where
       AppContext {acAppChan} = ctx
 
-  componentKeyDesc _ = (True, [("esc", "cancel"), ("enter", "add")])
+  componentKeyDesc _ = (True, [("esc", "cancel"), ("enter", "confirm")])
