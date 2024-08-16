@@ -24,7 +24,8 @@ instance Show AppMsg where
   show (PushOverlay _) = "PushOverlay _"
   show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
 
-data AppResourceName = MainList | Overlay Int deriving (Eq, Ord, Show)
+-- Not super clean but I don't think I'll need a lot here.
+data AppResourceName = MainList | Overlay Int | EditorFor AppResourceName deriving (Eq, Ord, Show)
 
 data AppContext = AppContext
   { acModelServer :: ModelServer,

@@ -35,7 +35,9 @@ data NewNodeOverlay = NewNodeOverlay
 makeLenses ''NewNodeOverlay
 
 newNodeOverlay :: Callback -> String -> AppResourceName -> NewNodeOverlay
-newNodeOverlay cb initName rname = NewNodeOverlay (editor rname (Just 1) initName) cb
+newNodeOverlay cb initName rname = NewNodeOverlay (editor editorRName (Just 1) initName) cb
+  where
+    editorRName = EditorFor rname
 
 instance BrickComponent NewNodeOverlay where
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)

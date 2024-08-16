@@ -15,6 +15,7 @@ import Component
 import Components.MainTree qualified as MainTree
 import Control.Monad (void)
 import Control.Monad.State (liftIO)
+import Data.Maybe (listToMaybe)
 import Data.Traversable (forM)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Lens.Micro.Platform
@@ -144,6 +145,14 @@ popOverlay state@(AppState {asOverlays = _ : os}) = state {asOverlays = os}
 -- SOMEDAY could also just do nothing here. Source of crashes but only due to logic bugs though.
 popOverlay _ = error "No overlays"
 
+-- not sure if this is quite right but maybe it's enough. If we're missing cursors, we should prob revise.
+myChooseCursor :: AppState -> [CursorLocation AppResourceName] -> Maybe (CursorLocation AppResourceName)
+myChooseCursor _ = listToMaybe . reverse . filter isEditLocation . filter cursorLocationVisible
+  where
+    isEditLocation cloc = case cursorLocationName cloc of
+      Just (EditorFor _) -> True
+      _ -> False
+
 app :: App AppState AppMsg AppResourceName
 app =
   App
@@ -151,5 +160,5 @@ app =
       appHandleEvent = myHandleEvent,
       appStartEvent = return (),
       appAttrMap = const myAttrMap,
-      appChooseCursor = neverShowCursor
+      appChooseCursor = myChooseCursor
     }
