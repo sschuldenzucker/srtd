@@ -45,54 +45,10 @@ rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
 rootKeymap =
   kmMake
     -- TODO unify these keys into one. s/S should also behave like n/N when there is no current node.
-    [ ( kmLeaf (bind 'n') "New as next sibling" $ \ctx -> do
-          state <- get
-          let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) After
-          let cb name (AppContext {acModelServer = acModelServer'}) = do
-                let attr = attrMinimal name
-                uuid <- nextRandom
-                modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
-                return $ EIDNormal uuid
-          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
-      ),
-      ( kmLeaf (bind 'N') "New as prev sibling" $ \ctx -> do
-          state <- get
-          let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) Before
-          let cb name (AppContext {acModelServer = acModelServer'}) = do
-                let attr = attrMinimal name
-                uuid <- nextRandom
-                modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
-                return $ EIDNormal uuid
-          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
-      ),
-      ( kmLeaf (bind 'S') "New as first child" $ \ctx -> do
-          -- SOMEDAY make an abstraction for things that operate on the current element. Is very common.
-          state <- get
-          case mtCur state of
-            Just cur -> do
-              let tgtLoc = FirstChild cur
-              let cb name (AppContext {acModelServer = acModelServer'}) = do
-                    let attr = attrMinimal name
-                    uuid <- nextRandom
-                    modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
-                    return $ EIDNormal uuid
-              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
-            Nothing -> return ()
-      ),
-      ( kmLeaf (bind 's') "New as last child" $ \ctx -> do
-          -- SOMEDAY make an abstraction for things that operate on the current element. Is very common.
-          state <- get
-          case mtCur state of
-            Just cur -> do
-              let tgtLoc = LastChild cur
-              let cb name (AppContext {acModelServer = acModelServer'}) = do
-                    let attr = attrMinimal name
-                    uuid <- nextRandom
-                    modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
-                    return $ EIDNormal uuid
-              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
-            Nothing -> return ()
-      ),
+    [ kmLeaf (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur After,
+      kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur Before,
+      kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur FirstChild,
+      kmLeaf (bind 's') "New as last child" $ pushInsertNewItemRelToCur LastChild,
       ( kmLeaf (bind 'e') "Edit name" $ \ctx -> do
           state <- get
           case mtCurWithAttr state of
@@ -160,6 +116,17 @@ setStatusKeymap =
       kmLeaf (binding KEnter []) "Done" (setStatus $ Just Done),
       kmLeaf (bind 's') "Someday" (setStatus $ Just Someday)
     ]
+
+pushInsertNewItemRelToCur :: (EID -> InsertLoc EID) -> AppContext -> EventM n MainTree ()
+pushInsertNewItemRelToCur toLoc ctx = do
+  state <- get
+  let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) toLoc
+  let cb name (AppContext {acModelServer = acModelServer'}) = do
+        let attr = attrMinimal name
+        uuid <- nextRandom
+        modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
+        return $ EIDNormal uuid
+  liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
 
 setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()
 setStatus status' ctx = do
