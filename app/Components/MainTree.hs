@@ -44,6 +44,7 @@ suffixLenses ''MainTree
 rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
 rootKeymap =
   kmMake
+    -- TODO unify these keys into one. s/S should also behave like n/N when there is no current node.
     [ ( kmLeaf (bind 'n') "New as next sibling" $ \ctx -> do
           state <- get
           let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) After
@@ -53,6 +54,30 @@ rootKeymap =
                 modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
                 return $ EIDNormal uuid
           liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
+      ),
+      ( kmLeaf (bind 'N') "New as prev sibling" $ \ctx -> do
+          state <- get
+          let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) Before
+          let cb name (AppContext {acModelServer = acModelServer'}) = do
+                let attr = attrMinimal name
+                uuid <- nextRandom
+                modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
+                return $ EIDNormal uuid
+          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
+      ),
+      ( kmLeaf (bind 'S') "New as first child" $ \ctx -> do
+          -- SOMEDAY make an abstraction for things that operate on the current element. Is very common.
+          state <- get
+          case mtCur state of
+            Just cur -> do
+              let tgtLoc = FirstChild cur
+              let cb name (AppContext {acModelServer = acModelServer'}) = do
+                    let attr = attrMinimal name
+                    uuid <- nextRandom
+                    modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
+                    return $ EIDNormal uuid
+              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
+            Nothing -> return ()
       ),
       ( kmLeaf (bind 's') "New as last child" $ \ctx -> do
           -- SOMEDAY make an abstraction for things that operate on the current element. Is very common.
