@@ -13,7 +13,6 @@ import Brick.BChan (writeBChan)
 import Brick.Keybindings (bind)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
-import Brick.Widgets.Table (ColumnAlignment (..), alignColumns)
 import Component
 import Components.Attr (renderMaybeStatus)
 import Components.NewNodeOverlay (newNodeOverlay)
@@ -23,13 +22,11 @@ import Data.List (intercalate)
 import Data.Maybe (fromMaybe)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
-import Graphics.Vty (Event (..), Key (..), Modifier (..))
+import Graphics.Vty (Event (..), Key (..))
 import Keymap
 import Lens.Micro.Platform
-import Log
 import Model
 import ModelServer
-import Todo
 
 type MyList = L.List AppResourceName (Int, EID, Attr)
 
@@ -50,7 +47,7 @@ rootKeymap =
     [ ( kmLeaf (bind 'n') "New as next sibling" $ \ctx -> do
           state <- get
           let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) After
-          let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
+          let cb name (AppContext {acModelServer = acModelServer'}) = do
                 let attr = attrMinimal name
                 uuid <- nextRandom
                 modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
@@ -63,7 +60,7 @@ rootKeymap =
           case mtCur state of
             Just cur -> do
               let tgtLoc = LastChild cur
-              let cb = \name (AppContext {acModelServer = acModelServer'}) -> do
+              let cb name (AppContext {acModelServer = acModelServer'}) = do
                     let attr = attrMinimal name
                     uuid <- nextRandom
                     modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
@@ -76,7 +73,7 @@ rootKeymap =
           case mtCurWithAttr state of
             Just (cur, curAttr) -> do
               let oldName = name curAttr
-              let cb = \name' (AppContext {acModelServer = acModelServer'}) -> do
+              let cb name' (AppContext {acModelServer = acModelServer'}) = do
                     modifyModelOnServer acModelServer' (modifyAttrByEID cur (nameL .~ name'))
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
                     return cur
@@ -176,7 +173,7 @@ renderRow sel (lvl, _, Attr {name, status}) =
 
 renderRoot :: Attr -> [(a, Attr)] -> Widget n
 renderRoot rootAttr breadcrumbs =
-  hBox $
+  hBox
     [statusW, str " ", str pathStr]
   where
     statusW = renderMaybeStatus False (status rootAttr)
@@ -208,7 +205,7 @@ instance BrickComponent MainTree where
           LeafResult act -> act ctx >> mtKeymapL %= kmzReset
           SubmapResult sm -> mtKeymapL .= sm
       (VtyEvent e) -> handleFallback e
-      _ -> return ()
+      _miscEvents -> return ()
     where
       handleFallback e = zoom mtListL $ L.handleListEventVi (const $ return ()) e
 
