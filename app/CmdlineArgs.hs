@@ -4,33 +4,31 @@
 -- | Module for cmdline args. Separate module to prevent namespace pollution mostly.
 module CmdlineArgs where
 
-import AppAttr
-import Data.List (intercalate)
 import Options.Applicative
 
 data Args = Args
-  { theme :: Maybe AppTheme
+  { theme_name :: Maybe String,
+    -- SOMEDAY This does nothing right now.
+    theme_file :: Maybe String
   }
   deriving (Show)
 
-allThemes :: [(String, AppTheme)]
-allThemes = [("dark", CatppuccinDark), ("light", CatppuccinLight)]
-
-parseTheme :: ReadM AppTheme
-parseTheme = eitherReader $ \theme -> case lookup theme allThemes of
-  Just res -> Right res
-  Nothing -> Left $ "Unknown theme: " ++ theme
-
 parser :: Parser Args
 parser = do
-  theme <-
+  theme_name <-
     optional $
       option
-        parseTheme
+        str
         ( long "theme"
             <> metavar "THEME"
-            <> help ("Select theme: " ++ intercalate ", " (map fst allThemes))
+            <> help "Select theme (see files in `themes/`)"
         )
+  theme_file <-
+    optional . option str $
+      ( long "theme-file"
+          <> metavar "FILE"
+          <> help "Use theme file."
+      )
   pure Args {..}
 
 opts :: ParserInfo Args

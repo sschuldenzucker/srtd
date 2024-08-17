@@ -4,19 +4,24 @@
 module Main (main) where
 
 import Alignment
-import AppAttr
+import AppTheme qualified
 import Attr
 import Brick
 import Brick.BChan (newBChan, writeBChan)
+import Brick.Themes (Theme, themeToAttrMap)
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
 import CmdlineArgs qualified as CArgs
 import Component
 import Components.MainTree qualified as MainTree
-import Control.Monad (void)
+import Control.Arrow (second)
+import Control.Monad (forM_, void)
 import Control.Monad.State (liftIO)
+import Data.CircularList qualified as CList
 import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Text qualified as T
+import Data.Text.IO qualified as T
 import Data.Traversable (forM)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Lens.Micro.Platform
@@ -24,7 +29,10 @@ import Log
 import Model
 import ModelSaver (startModelSaver)
 import ModelServer
-import Todo
+import System.Directory (listDirectory)
+import System.Exit (exitFailure)
+import System.FilePath
+import Toml qualified
 
 data AppState = AppState
   { asContext :: AppContext,
@@ -33,15 +41,48 @@ data AppState = AppState
     asTabs :: [SomeBrickComponent],
     asOverlays :: [SomeBrickComponent],
     asHelpAlways :: Bool,
-    asTheme :: AppTheme
+    asAttrMapRing :: CList.CList (String, AttrMap)
   }
 
 suffixLenses ''AppState
 
+readThemeFileOrExit :: FilePath -> IO Theme
+readThemeFileOrExit p = do
+  content <- T.readFile p
+  let res :: Toml.Result String AppTheme.ThemeFile = Toml.decode content
+  case res of
+    Toml.Failure errors -> logParseErrors ERROR errors >> exitFailure
+    Toml.Success warnings themefile -> do
+      logParseErrors WARNING warnings
+      case AppTheme.themeFileToTheme themefile of
+        Left err -> logParseErrors ERROR [T.unpack err] >> exitFailure
+        Right res' -> return res'
+  where
+    logParseErrors lvl errors = forM_ errors $ \e ->
+      glogL lvl $ "While reading " ++ p ++ ": parse error: " ++ e
+
+loadAllThemes :: IO [(String, Theme)]
+loadAllThemes = do
+  filenames <- filter ((== ".toml") . takeExtension) <$> listDirectory themeDir
+  forM filenames $ \filename -> do
+    theme <- readThemeFileOrExit $ themeDir </> filename
+    return (takeBaseName filename, theme)
+  where
+    themeDir = "themes"
+
+ringSelectNamedTheme :: String -> CList.CList (String, AttrMap) -> CList.CList (String, AttrMap)
+ringSelectNamedTheme s ring = fromMaybe ring $ CList.findRotateTo (\(s', _) -> s' == s) ring
+
 main :: IO ()
 main = do
-  CArgs.Args {CArgs.theme = mtheme} <- CArgs.execAppParser
   setupLogger
+  CArgs.Args {CArgs.theme_name = mtheme_name} <- CArgs.execAppParser
+
+  allAttrMaps <- map (second themeToAttrMap) <$> loadAllThemes
+  let attrMapRing = maybe id ringSelectNamedTheme mtheme_name . CList.fromList $ allAttrMaps
+
+  print attrMapRing
+
   glogL INFO "App starting"
   modelServer <- startModelServer
   -- SOMEDAY I should probably do something with the returned thread ID.
@@ -56,7 +97,7 @@ main = do
             asTabs = [SomeBrickComponent $ MainTree.make Vault f_identity model],
             asOverlays = [],
             asHelpAlways = True, -- Good default rn.
-            asTheme = fromMaybe CatppuccinDark mtheme
+            asAttrMapRing = attrMapRing
           }
 
   -- let buildVty = Graphics.Vty.CrossPlatform.mkVty Graphics.Vty.Config.defaultConfig
@@ -105,7 +146,7 @@ myHandleEvent ev =
     (VtyEvent (EvKey (KChar '_') [MCtrl])) -> do
       asHelpAlwaysL %= not
     (VtyEvent (EvKey (KFun 11) [])) -> do
-      asThemeL %= cycleAppTheme
+      asAttrMapRingL %= CList.rotR
     (AppEvent (PopOverlay _)) -> do
       modify popOverlay
       -- This is some unclean design right here. Ideally the caller-callee relationship should specify return values. :/
@@ -159,12 +200,18 @@ myChooseCursor _ = listToMaybe . reverse . filter isEditLocation . filter cursor
       Just (EditorFor _) -> True
       _ -> False
 
+myChooseAttrMap :: AppState -> AttrMap
+myChooseAttrMap state = case CList.focus $ asAttrMapRing state of
+  Just (_, res) -> res
+  -- Only relevant when there are no themes. This shouldn't really happen.
+  Nothing -> error "No themes?!?"
+
 app :: App AppState AppMsg AppResourceName
 app =
   App
     { appDraw = myAppDraw,
       appHandleEvent = myHandleEvent,
       appStartEvent = return (),
-      appAttrMap = getAttrMapForAppTheme . asTheme,
+      appAttrMap = myChooseAttrMap,
       appChooseCursor = myChooseCursor
     }
