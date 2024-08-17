@@ -12,6 +12,15 @@ selectedItemRowAttr = attrName "selectedItemRow"
 statusAttr :: AttrName
 statusAttr = attrName "status"
 
+data AppTheme = CatppuccinDark | CatppuccinLight deriving (Show, Enum)
+
+cycleAppTheme :: AppTheme -> AppTheme
+cycleAppTheme CatppuccinDark = CatppuccinLight
+cycleAppTheme CatppuccinLight = CatppuccinDark
+
+-- TODO
+getAttrMapForAppTheme _ = myAttrMap
+
 myAttrMap :: AttrMap
 myAttrMap = themeToAttrMap $ defaultTheme
 

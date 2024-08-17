@@ -11,11 +11,12 @@ import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
+import CmdlineArgs qualified as CArgs
 import Component
 import Components.MainTree qualified as MainTree
 import Control.Monad (void)
 import Control.Monad.State (liftIO)
-import Data.Maybe (listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Traversable (forM)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Lens.Micro.Platform
@@ -31,13 +32,15 @@ data AppState = AppState
     -- TODO we may wanna keep these as MainTree so we can clone. Or 'new tab' should be a shortcut of MainTree, not sure.
     asTabs :: [SomeBrickComponent],
     asOverlays :: [SomeBrickComponent],
-    asHelpAlways :: Bool
+    asHelpAlways :: Bool,
+    asTheme :: AppTheme
   }
 
 suffixLenses ''AppState
 
 main :: IO ()
 main = do
+  CArgs.Args {CArgs.theme = mtheme} <- CArgs.execAppParser
   setupLogger
   glogL INFO "App starting"
   modelServer <- startModelServer
@@ -52,7 +55,8 @@ main = do
           { asContext = AppContext modelServer appChan,
             asTabs = [SomeBrickComponent $ MainTree.make Vault f_identity model],
             asOverlays = [],
-            asHelpAlways = True -- Good default rn.
+            asHelpAlways = True, -- Good default rn.
+            asTheme = fromMaybe CatppuccinDark mtheme
           }
 
   -- let buildVty = Graphics.Vty.CrossPlatform.mkVty Graphics.Vty.Config.defaultConfig
@@ -100,6 +104,8 @@ myHandleEvent ev =
     -- TODO I have no idea why Ctrl+/ is registered as Ctrl+_ but here we are.
     (VtyEvent (EvKey (KChar '_') [MCtrl])) -> do
       asHelpAlwaysL %= not
+    (VtyEvent (EvKey (KFun 11) [])) -> do
+      asThemeL %= cycleAppTheme
     (AppEvent (PopOverlay _)) -> do
       modify popOverlay
       -- This is some unclean design right here. Ideally the caller-callee relationship should specify return values. :/
@@ -159,6 +165,6 @@ app =
     { appDraw = myAppDraw,
       appHandleEvent = myHandleEvent,
       appStartEvent = return (),
-      appAttrMap = const myAttrMap,
+      appAttrMap = getAttrMapForAppTheme . asTheme,
       appChooseCursor = myChooseCursor
     }

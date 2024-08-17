@@ -82,7 +82,8 @@ executable srtd-hs
         aeson ^>= 2.2.3,
         text,
         aeson-pretty,
-        bytestring
+        bytestring,
+        optparse-applicative,
 
     other-modules:
         Log,
@@ -101,6 +102,7 @@ executable srtd-hs
         Components.Attr,
         Keymap,
         Alignment,
+        CmdlineArgs,
 
     -- Directories containing source files.
     hs-source-dirs:   app
