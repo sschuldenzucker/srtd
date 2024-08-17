@@ -177,7 +177,7 @@ renderRow sel (lvl, _, Attr {name, status}) =
       -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
       [indentW, statusW, str " ", nameW]
   where
-    indentW = str (concat (replicate (lvl + 1) "  "))
+    indentW = str (concat (replicate (lvl + 1) "    "))
     statusW = renderMaybeStatus sel status
     nameW = str name
 
