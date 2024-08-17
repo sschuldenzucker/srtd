@@ -73,13 +73,16 @@ loadAllThemes = do
 ringSelectNamedTheme :: String -> CList.CList (String, AttrMap) -> CList.CList (String, AttrMap)
 ringSelectNamedTheme s ring = fromMaybe ring $ CList.findRotateTo (\(s', _) -> s' == s) ring
 
+defaultThemeName :: String
+defaultThemeName = "catppuccin_dark"
+
 main :: IO ()
 main = do
   setupLogger
   CArgs.Args {CArgs.theme_name = mtheme_name} <- CArgs.execAppParser
 
   allAttrMaps <- map (second themeToAttrMap) <$> loadAllThemes
-  let attrMapRing = maybe id ringSelectNamedTheme mtheme_name . CList.fromList $ allAttrMaps
+  let attrMapRing = ringSelectNamedTheme (fromMaybe defaultThemeName mtheme_name) . CList.fromList $ allAttrMaps
 
   print attrMapRing
 
