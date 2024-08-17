@@ -1,0 +1,69 @@
+[palette]
+# COPIED from helix's catppuccin_latte theme
+
+# catppuccin palette colors
+rosewater = "#dc8a78"
+flamingo = "#dd7878"
+pink = "#ea76cb"
+mauve = "#8839ef"
+red = "#d20f39"
+maroon = "#e64553"
+peach = "#fe640b"
+yellow = "#df8e1d"
+green = "#40a02b"
+teal = "#179299"
+sky = "#04a5e5"
+sapphire = "#209fb5"
+blue = "#1e66f5"
+lavender = "#7287fd"
+
+text = "#4c4f69"
+subtext1 = "#5c5f77"
+subtext0 = "#6c6f85"
+overlay2 = "#7c7f93"
+overlay1 = "#8c8fa1"
+overlay0 = "#9ca0b0"
+surface2 = "#acb0be"
+surface1 = "#bcc0cc"
+surface0 = "#ccd0da"
+
+base = "#eff1f5"
+mantle = "#e6e9ef"
+crust = "#dce0e8"
+
+# derived colors by blending existing palette colors
+cursorline = "#e9ebf1"
+secondary_cursor = "#e2a99e"
+secondary_cursor_normal = "#98a7fb"
+secondary_cursor_insert = "#75b868"
+
+
+# Below is the same as catppuccin_dark (but we don't support inheritance, so listing here again)
+
+
+[defaultAttr]
+bg = "base"
+fg = "text"
+
+[theme]
+# SOMEDAY maybe a bit too subtle.
+"selected" = {bg = "surface1"}
+
+"status.next" = {fg = "green"}
+"status.waiting" = {fg = "red"}
+"status.project" = {fg = "blue"}
+"status.later" = {fg = "teal"}
+"status.wip" = {fg = "peach"}
+"status.done" = {fg = "overlay1"}
+"status.someday" = {fg = "mauve"}
+
+# SOMEDAY a bit annoying that we don't have the right kind of inheritance, so we have to duplicate this.
+# (it's the same as without selected)
+"selected.status.next" = {fg = "green"}
+"selected.status.waiting" = {fg = "red"}
+"selected.status.project" = {fg = "blue"}
+"selected.status.later" = {fg = "teal"}
+"selected.status.wip" = {fg = "peach"}
+"selected.status.done" = {fg = "overlay1"}
+"selected.status.someday" = {fg = "mauve"}
+
