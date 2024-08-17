@@ -145,7 +145,7 @@ myHandleEvent ev =
     -- TODO I have no idea why Ctrl+/ is registered as Ctrl+_ but here we are.
     (VtyEvent (EvKey (KChar '_') [MCtrl])) -> do
       asHelpAlwaysL %= not
-    (VtyEvent (EvKey (KFun 11) [])) -> do
+    (VtyEvent (EvKey (KFun 10) [])) -> do
       asAttrMapRingL %= CList.rotR
     (AppEvent (PopOverlay _)) -> do
       modify popOverlay
