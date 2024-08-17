@@ -22,9 +22,10 @@ import Data.List (intercalate)
 import Data.Maybe (fromMaybe)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
-import Graphics.Vty (Event (..), Key (..))
+import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Keymap
 import Lens.Micro.Platform
+import Log
 import Model
 import ModelServer
 
@@ -49,6 +50,7 @@ rootKeymap =
       kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur Before,
       kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur FirstChild,
       kmLeaf (bind 's') "New as last child" $ pushInsertNewItemRelToCur LastChild,
+      -- TODO some abstraction to operate on the current node. Comes up a lot.
       ( kmLeaf (bind 'e') "Edit name" $ \ctx -> do
           state <- get
           case mtCurWithAttr state of
@@ -63,6 +65,22 @@ rootKeymap =
       ),
       ( kmLeaf (bind 'T') "Open test overlay" $ \ctx -> do
           liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent TestOverlay)
+      ),
+      ( kmLeaf (binding (KChar 'j') [MMeta]) "Move down same level" $ \ctx -> do
+          state <- get
+          case mtCur state of
+            Just cur -> do
+              liftIO (myModifyModelState ctx state $ moveSubtree cur NextSibling) >>= put
+              mtListL %= scrollListToEID cur
+            Nothing -> return ()
+      ),
+      ( kmLeaf (binding (KChar 'k') [MMeta]) "Move up same level" $ \ctx -> do
+          state <- get
+          case mtCur state of
+            Just cur -> do
+              liftIO (myModifyModelState ctx state $ moveSubtree cur PrevSibling) >>= put
+              mtListL %= scrollListToEID cur
+            Nothing -> return ()
       ),
       ( kmSub (bind 'd') "Delete" deleteKeymap
       ),

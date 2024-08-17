@@ -15,6 +15,7 @@ import Data.Maybe (mapMaybe)
 import Data.Tree
 import Data.UUID (UUID)
 import GHC.Generics
+import GHC.List (uncons)
 import Lens.Micro.Platform
 import Log
 import ModelJSON qualified
@@ -106,6 +107,35 @@ treeInsertAtId :: (Eq id) => InsertLoc id -> (id, a) -> Tree (id, a) -> Tree (id
 treeInsertAtId (FirstChild tgt) idattr (Node (i, attr) children) | i == tgt = Node (i, attr) (Node idattr [] : children)
 treeInsertAtId (LastChild tgt) idattr (Node (i, attr) children) | i == tgt = Node (i, attr) (children ++ [Node idattr []])
 treeInsertAtId loc idattr (Node (i, attr) children) = Node (i, attr) (forestInsertAtId loc idattr children)
+
+onTreeChildren :: ([Tree a] -> [Tree a]) -> Tree a -> Tree a
+onTreeChildren f (Node x children) = Node x (f children)
+
+onForestChildren :: ([Tree a] -> [Tree a]) -> [Tree a] -> [Tree a]
+onForestChildren f = map (onTreeChildren f)
+
+data MoveLoc
+  = PrevSibling
+  | NextSibling
+
+moveSubtree :: EID -> MoveLoc -> Model -> Model
+moveSubtree tgt loc (Model forest) = Model (forestMoveSubtreeId tgt loc forest)
+
+forestMoveSubtreeId :: (Eq id) => id -> MoveLoc -> Forest (id, a) -> Forest (id, a)
+forestMoveSubtreeId tgt loc@NextSibling forest = case splitFind (treeHasID tgt) forest of
+  -- Just (prevs@(_ : _), n, nexts) -> let (prevs', p) = splitLast prevs in prevs' ++ [p, n] ++ nexts
+  Just (prevs, n, nx : nexts') -> prevs ++ [nx, n] ++ nexts'
+  Just _ -> forest
+  Nothing -> onForestChildren (forestMoveSubtreeId tgt loc) forest
+forestMoveSubtreeId tgt loc@PrevSibling forest = case splitFind (treeHasID tgt) forest of
+  Just (prevs@(_ : _), n, nexts) -> let (prevs', p) = splitLast prevs in prevs' ++ [n, p] ++ nexts
+  Just _ -> forest
+  Nothing -> onForestChildren (forestMoveSubtreeId tgt loc) forest
+
+splitLast :: [a] -> ([a], a)
+splitLast xs = case uncons (reverse xs) of
+  Just (lst, revinit) -> (reverse revinit, lst)
+  Nothing -> error "splitLast: empty list"
 
 deleteSubtree :: EID -> Model -> Model
 deleteSubtree eid (Model forest) = Model (filterForest (\(eid', _) -> eid' /= eid) forest)
