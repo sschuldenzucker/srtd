@@ -145,7 +145,7 @@ moveSubtreeModeKeymap =
         ),
         ( kmLeaf (bind 'H') "After parent" $ withCur $ \cur ->
             modifyModel (moveSubtree cur AfterParent)
-        )
+        ),
         ( kmLeaf (bind 'l') "Last child of next" $ withCur $ \cur ->
             modifyModel (moveSubtree cur todo)
         ),
@@ -154,7 +154,7 @@ moveSubtreeModeKeymap =
         ),
         ( kmLeaf (bind '>') "Last child of previous" $ withCur $ \cur ->
             modifyModel (moveSubtree cur todo)
-        ),
+        )
         -- TODO first child of previous; hierarchy-breaking '<' (dedent)
       ]
 
