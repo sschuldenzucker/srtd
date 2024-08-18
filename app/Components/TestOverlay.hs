@@ -16,17 +16,19 @@ data TestOverlay = TestOverlay
 
 keymap :: KeymapZipper (AppContext -> EventM n TestOverlay ())
 keymap =
-  kmzMake
-    [ kmLeaf (bind 'T') "Close" $ \(AppContext {acAppChan}) -> do
-        liftIO $ writeBChan acAppChan (PopOverlay ORNone)
-    ]
+  keymapToZipper $
+    kmMake
+      "Test Overlay"
+      [ kmLeaf (bind 'T') "Close" $ \(AppContext {acAppChan}) -> do
+          liftIO $ writeBChan acAppChan (PopOverlay ORNone)
+      ]
 
 instance BrickComponent TestOverlay where
   renderComponent TestOverlay = str "Test Component. Press T to close."
 
-  handleEvent ctx (VtyEvent (EvKey key mods)) = case stepKeymap keymap key mods of
+  handleEvent ctx (VtyEvent (EvKey key mods)) = case kmzLookup keymap key mods of
     NotFound -> return ()
-    LeafResult act -> act ctx
+    LeafResult act _ -> act ctx
     SubmapResult _ -> error "wtf"
   handleEvent _ _ = return ()
 

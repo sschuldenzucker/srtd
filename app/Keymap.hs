@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Keymap (Keymap, KeymapZipper, keymapToZipper, kmMake, kmzMake, kmLeaf, kmSub, kmzUp, kmzDown, kmzReset, kmzIsToplevel, kmzDesc, stepKeymap, KeymapResult (..)) where
+module Keymap where
 
 import Brick.Keybindings (Binding)
 import Brick.Keybindings.KeyConfig (binding)
@@ -13,9 +13,30 @@ import Data.Ord (comparing)
 import Data.Text (Text)
 import Graphics.Vty (Key, Modifier)
 
-data Keymap a = Keymap (Map Binding (Text, KeymapItem a))
+data Keymap a = Keymap
+  { kmName :: Text,
+    -- | If True, we don't go back to the toplevel when a leaf action in the submap was triggered.
+    -- Only relevant for submaps.
+    kmSticky :: Bool,
+    kmMap :: (Map Binding (KeymapItem a)),
+    -- | Additional descriptions for hidden items.
+    kmAddlDesc :: [(Text, Text)]
+  }
 
-data KeymapItem a = LeafItem a | SubmapItem (Keymap a)
+data KeymapItem a = KeymapItem
+  { kmiItem :: KeymapItemItem a,
+    -- | If True, this won't show up by default in `kmDesc`. Use `kmaAddlDesc` to describe these
+    -- manually. Useful for pairs/groups of keys (e.g., hjkl or cursor keys.)
+    kmiHidden :: Bool
+  }
+
+data KeymapItemItem a
+  = LeafItem
+      -- | Name. For submap items, the name is the name of the keymap.
+      Text
+      -- | Action
+      a
+  | SubmapItem (Keymap a)
 
 data KeymapZipper a = KeymapZipper
   { parents :: [Keymap a],
@@ -30,18 +51,23 @@ instance Show (KeymapZipper a) where
 keymapToZipper :: Keymap a -> KeymapZipper a
 keymapToZipper = KeymapZipper []
 
--- | Convenience helper for building keymaps. Use with `mkLeaf` and `mkSub`.
-kmzMake :: [(Binding, Text, KeymapItem a)] -> KeymapZipper a
-kmzMake = keymapToZipper . kmMake
+kmMake :: Text -> [(Binding, KeymapItem a)] -> Keymap a
+kmMake name kvs = Keymap name False (Map.fromList kvs) []
 
-kmMake :: [(Binding, Text, KeymapItem a)] -> Keymap a
-kmMake = Keymap . Map.fromList . map (\(b, l, i) -> (b, (l, i)))
+sticky :: Keymap a -> Keymap a
+sticky km = km {kmSticky = True}
 
-kmLeaf :: Binding -> Text -> a -> (Binding, Text, KeymapItem a)
-kmLeaf b l i = (b, l, LeafItem i)
+kmWithAddlDesc :: [(Text, Text)] -> Keymap a -> Keymap a
+kmWithAddlDesc addlDesc km@Keymap {kmAddlDesc} = km {kmAddlDesc = kmAddlDesc ++ addlDesc}
 
-kmSub :: Binding -> Text -> Keymap a -> (Binding, Text, KeymapItem a)
-kmSub b l i = (b, l, SubmapItem i)
+kmLeaf :: Binding -> Text -> a -> (Binding, KeymapItem a)
+kmLeaf b l i = (b, KeymapItem (LeafItem l i) False)
+
+kmSub :: Binding -> Keymap a -> (Binding, KeymapItem a)
+kmSub b i = (b, KeymapItem (SubmapItem i) False)
+
+hide :: (Binding, KeymapItem a) -> (Binding, KeymapItem a)
+hide (b, itm) = (b, itm {kmiHidden = True})
 
 -- I guess we could do something fancy with type class recursion but let's not.
 
@@ -52,30 +78,42 @@ kmzUp kz = kz
 kmzDown :: Keymap a -> KeymapZipper a -> KeymapZipper a
 kmzDown km (KeymapZipper ps cur) = KeymapZipper (cur : ps) km
 
-kmzReset :: KeymapZipper a -> KeymapZipper a
-kmzReset kz@(KeymapZipper [] _) = kz
-kmzReset (KeymapZipper ps _) = KeymapZipper [] (last ps)
+-- | Reset to root keymap
+kmzResetRoot :: KeymapZipper a -> KeymapZipper a
+kmzResetRoot kz@(KeymapZipper [] _) = kz
+kmzResetRoot (KeymapZipper ps _) = KeymapZipper [] (last ps)
+
+-- | Reset to next sticky keymap above, or to root.
+kmzResetSticky :: KeymapZipper a -> KeymapZipper a
+kmzResetSticky kz@(KeymapZipper [] _) = kz
+kmzResetSticky kz@(KeymapZipper (Keymap {kmSticky} : _) _)
+  | kmSticky = kmzUp kz
+  | otherwise = kmzResetSticky $ kmzUp kz
 
 kmzIsToplevel :: KeymapZipper a -> Bool
 kmzIsToplevel (KeymapZipper ps _) = null ps
 
 -- | [(key desc, action desc)]
 kmDesc :: Keymap a -> [(Text, Text)]
-kmDesc (Keymap theMap) = Map.toList theMap & fmap (\(k, item) -> (ppBinding k, describeItem item)) & sortBy (comparing fst)
+kmDesc (Keymap {kmMap, kmAddlDesc}) =
+  Map.toList kmMap
+    & filter (not . kmiHidden . snd)
+    & fmap (\(k, item) -> (ppBinding k, describeItem item))
+    & (++ kmAddlDesc)
+    & sortBy (comparing fst)
   where
-    describeItem (d, LeafItem _) = d
-    describeItem (d, SubmapItem _) = d <> "..."
+    describeItem (KeymapItem {kmiItem = LeafItem name _}) = name
+    describeItem (KeymapItem {kmiItem = SubmapItem (Keymap {kmName})}) = kmName <> "..."
 
 -- | (is toplevel, [(key label, action description)])
 kmzDesc :: KeymapZipper a -> (Bool, [(Text, Text)])
 kmzDesc (KeymapZipper ps cur) = (null ps, kmDesc cur)
 
-data KeymapResult a = NotFound | SubmapResult (KeymapZipper a) | LeafResult a
+data KeymapResult a = NotFound | SubmapResult (KeymapZipper a) | LeafResult a (KeymapZipper a)
 
--- SOMEDAY Maybe we should use the keymap infrastructure. But it's a bit overcomplicated for us here.
--- TODO check normalization: uppercase / lowercase.
-stepKeymap :: KeymapZipper a -> Key -> [Modifier] -> KeymapResult a
-stepKeymap kz@(KeymapZipper {cur = Keymap theMap}) key mods = case Map.lookup (binding key mods) theMap of
+-- SOMEDAY Maybe we should use Brick's keymap infrastructure, at least for some of our types. But it's a bit overcomplicated for us here.
+kmzLookup :: KeymapZipper a -> Key -> [Modifier] -> KeymapResult a
+kmzLookup kz@(KeymapZipper {cur = Keymap {kmMap, kmSticky}}) key mods = case Map.lookup (binding key mods) kmMap of
   Nothing -> NotFound
-  Just (_, LeafItem x) -> LeafResult x
-  Just (_, SubmapItem sm) -> SubmapResult (kmzDown sm kz)
+  Just KeymapItem {kmiItem = LeafItem _ x} -> LeafResult x (if kmSticky then kmzResetSticky kz else kmzResetRoot kz)
+  Just KeymapItem {kmiItem = SubmapItem sm} -> SubmapResult (kmzDown sm kz)

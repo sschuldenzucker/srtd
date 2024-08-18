@@ -45,6 +45,7 @@ suffixLenses ''MainTree
 rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
 rootKeymap =
   kmMake
+    "Tree"
     -- TODO unify these keys into one. s/S should also behave like n/N when there is no current node.
     [ kmLeaf (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur After,
       kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur Before,
@@ -72,7 +73,7 @@ rootKeymap =
       ( kmLeaf (binding (KChar 'k') [MMeta]) "Move up same level" $ withCur $ \cur ->
           modifyModel (moveSubtree cur PrevSibling)
       ),
-      ( kmSub (bind 'd') "Delete" deleteKeymap
+      ( kmSub (bind 'd') deleteKeymap
       ),
       ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
           model <- liftIO $ getModel (acModelServer ctx)
@@ -91,7 +92,7 @@ rootKeymap =
       (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur forestGetParentId))),
       (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur forestGetNextSiblingId))),
       (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur forestGetPrevSiblingId))),
-      (kmSub (bind 't') "Status" setStatusKeymap),
+      (kmSub (bind 't') setStatusKeymap),
       (kmLeaf (bind 'q') "Quit" (const halt))
     ]
 
@@ -99,6 +100,7 @@ rootKeymap =
 deleteKeymap :: Keymap (AppContext -> EventM n MainTree ())
 deleteKeymap =
   kmMake
+    "Delete"
     -- TOOD some undo would be nice, lol.
     [ ( kmLeaf (bind 'd') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur)
       )
@@ -107,6 +109,7 @@ deleteKeymap =
 setStatusKeymap :: Keymap (AppContext -> EventM n MainTree ())
 setStatusKeymap =
   kmMake
+    "Set Status"
     [ kmLeaf (bind ' ') "None" (setStatus Nothing),
       kmLeaf (bind 'n') "Next" (setStatus $ Just Next),
       kmLeaf (bind 'w') "Waiting" (setStatus $ Just Waiting),
@@ -183,15 +186,15 @@ instance BrickComponent MainTree where
         mtListL %= scrollListToEID eid
       -- Code for keymap. NB this is a bit nasty, having some abstraction here would be good if we need it again.
       -- We also gotta be a bit careful not to overlap these in principle.
-      (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzReset
+      (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzResetRoot
       (VtyEvent (EvKey KBS [])) | not isTopLevel -> mtKeymapL %= kmzUp
       (VtyEvent e@(EvKey key mods)) -> do
         keymap <- use mtKeymapL
         -- TODO case esc handler for when we're in a submap: then only reset the keymap
         -- TODO also case backspace for this: then go up.
-        case stepKeymap keymap key mods of
+        case kmzLookup keymap key mods of
           NotFound -> handleFallback e
-          LeafResult act -> act ctx >> mtKeymapL %= kmzReset
+          LeafResult act nxt -> act ctx >> mtKeymapL .= nxt
           SubmapResult sm -> mtKeymapL .= sm
       (VtyEvent e) -> handleFallback e
       _miscEvents -> return ()
