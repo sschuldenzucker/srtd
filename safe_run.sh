@@ -19,7 +19,7 @@ MAX_BACKUPS=50  # Maximum number of backups to keep
 # mkdir -p "$BACKUP_DIR"
 
 # Create a timestamped backup
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+TIMESTAMP=$(date -Iseconds)
 BACKUP_FILE="$BACKUP_DIR/srtd_$TIMESTAMP.json"
 
 # Copy the file
