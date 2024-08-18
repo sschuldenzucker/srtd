@@ -65,14 +65,16 @@ rootKeymap =
       ( kmLeaf (bind 'T') "Open test overlay" $ \ctx -> do
           liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent TestOverlay)
       ),
-      ( kmLeaf (binding (KChar 'j') [MMeta]) "Move down same level" $ withCur $ \cur ->
+      ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $ withCur $ \cur ->
           modifyModel (moveSubtree cur NextSibling)
       ),
-      ( kmLeaf (binding (KChar 'k') [MMeta]) "Move up same level" $ withCur $ \cur ->
+      ( kmLeaf (binding (KChar 'k') [MMeta]) "Move subtree up same level" $ withCur $ \cur ->
           modifyModel (moveSubtree cur PrevSibling)
       ),
-      ( kmSub (bind 'd') deleteKeymap
-      ),
+      -- TODO hierarchy-up and one hierarchy-down (taken from move-subtree keymap.)
+      (kmSub (bind 'm') moveSingleModeKeymap),
+      (kmSub (bind 'M') moveSubtreeModeKeymap),
+      (kmSub (bind 'd') deleteKeymap),
       ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
           model <- liftIO $ getModel (acModelServer ctx)
           MainTree {mtFilter} <- get
@@ -100,8 +102,8 @@ deleteKeymap =
   kmMake
     "Delete"
     -- TOOD some undo would be nice, lol.
-    [ ( kmLeaf (bind 'd') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur)
-      )
+    [ (kmLeaf (bind 'd') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur)),
+      (kmLeaf (bind 's') "Single" $ withCur $ \cur -> modifyModel (deleteSingle cur))
     ]
 
 setStatusKeymap :: Keymap (AppContext -> EventM n MainTree ())
@@ -117,6 +119,71 @@ setStatusKeymap =
       kmLeaf (binding KEnter []) "Done" (setStatus $ Just Done),
       kmLeaf (bind 's') "Someday" (setStatus $ Just Someday)
     ]
+
+moveSubtreeModeKeymap :: Keymap (AppContext -> EventM n MainTree ())
+moveSubtreeModeKeymap =
+  sticky $
+    kmMake
+      "Move Subtree Mode"
+      -- SOMEDAY clean up repetition
+      -- TODO WIP I think these moveSubtree (and moveSingle) things can take a cleanup with their destinations.
+      -- Can we reduce the number of different options? E.g., ("next based on preorder relative to self", "next based on siblings relative to parent") - Prob think about indicating the *target* relative to sth.
+      [ ( kmLeaf (bind 'j') "Down" $ withCur $ \cur ->
+            modifyModel (moveSubtree cur NextPreorder)
+        ),
+        ( kmLeaf (bind 'k') "Up" $ withCur $ \cur ->
+            modifyModel (moveSubtree cur PrevPreorder)
+        ),
+        ( kmLeaf (bind 'J') "Down same level" $ withCur $ \cur ->
+            modifyModel (moveSubtree cur NextSibling)
+        ),
+        ( kmLeaf (bind 'K') "Up same level" $ withCur $ \cur ->
+            modifyModel (moveSubtree cur PrevSibling)
+        ),
+        ( kmLeaf (bind 'h') "Before parent" $ withCur $ \cur ->
+            modifyModel (moveSubtree cur BeforeParent)
+        ),
+        ( kmLeaf (bind 'H') "After parent" $ withCur $ \cur ->
+            modifyModel (moveSubtree cur AfterParent)
+        )
+        ( kmLeaf (bind 'l') "Last child of next" $ withCur $ \cur ->
+            modifyModel (moveSubtree cur todo)
+        ),
+        ( kmLeaf (bind 'L') "First child of next" $ withCur $ \cur ->
+            modifyModel (moveSubtree cur todo)
+        ),
+        ( kmLeaf (bind '>') "Last child of previous" $ withCur $ \cur ->
+            modifyModel (moveSubtree cur todo)
+        ),
+        -- TODO first child of previous; hierarchy-breaking '<' (dedent)
+      ]
+
+moveSingleModeKeymap :: Keymap (AppContext -> EventM n MainTree ())
+moveSingleModeKeymap =
+  sticky $
+    kmMake
+      "Move Single Mode"
+      -- SOMEDAY clean up repetition
+      [ ( kmLeaf (bind 'j') "Down" $ withCur $ \cur ->
+            modifyModel (moveSingle cur NextPreorder)
+        ),
+        ( kmLeaf (bind 'k') "Up" $ withCur $ \cur ->
+            modifyModel (moveSingle cur PrevPreorder)
+        ),
+        ( kmLeaf (bind 'J') "Down same level" $ withCur $ \cur ->
+            modifyModel (moveSingle cur NextSibling)
+        ),
+        ( kmLeaf (bind 'K') "Up same level" $ withCur $ \cur ->
+            modifyModel (moveSingle cur PrevSibling)
+        ),
+        ( kmLeaf (bind 'h') "Before parent" $ withCur $ \cur ->
+            modifyModel (moveSingle cur BeforeParent)
+        ),
+        ( kmLeaf (bind 'H') "After parent" $ withCur $ \cur ->
+            modifyModel (moveSingle cur AfterParent)
+        )
+        -- TODO '<' and '>' = hierarchy-breaking operations
+      ]
 
 pushInsertNewItemRelToCur :: (EID -> InsertLoc EID) -> AppContext -> EventM n MainTree ()
 pushInsertNewItemRelToCur toLoc ctx = do
