@@ -84,8 +84,6 @@ main = do
   allAttrMaps <- map (second themeToAttrMap) <$> loadAllThemes
   let attrMapRing = ringSelectNamedTheme (fromMaybe defaultThemeName mtheme_name) . CList.fromList $ allAttrMaps
 
-  print attrMapRing
-
   glogL INFO "App starting"
   modelServer <- startModelServer
   -- SOMEDAY I should probably do something with the returned thread ID.
