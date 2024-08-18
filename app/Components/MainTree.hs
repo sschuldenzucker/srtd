@@ -219,6 +219,8 @@ modifyModel f AppContext {acModelServer} = do
   s@(MainTree {mtRoot, mtFilter}) <- get
   let resetListPosition = maybe id scrollListToEID $ mtCur s
   model' <- liftIO $ do
+    -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
+    -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
     modifyModelOnServer acModelServer f
     getModel acModelServer
   let subtree = runFilter mtFilter mtRoot model'
@@ -227,9 +229,14 @@ modifyModel f AppContext {acModelServer} = do
   return ()
 
 pullNewModel :: AppContext -> EventM n MainTree ()
--- Not the cleanest thing in the world, may need to be re-written when we go more async. (but then
--- so does `modifyModel`)
-pullNewModel = modifyModel id
+pullNewModel AppContext {acModelServer} = do
+  s@(MainTree {mtRoot, mtFilter}) <- get
+  let resetListPosition = maybe id scrollListToEID $ mtCur s
+  model' <- liftIO $ getModel acModelServer
+  let subtree = runFilter mtFilter mtRoot model'
+  let list' = resetListPosition $ forestToBrickList (stForest subtree)
+  put s {mtSubtree = subtree, mtList = list'}
+  return ()
 
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \(_, eid', _) -> eid' == eid
