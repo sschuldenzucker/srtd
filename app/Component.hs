@@ -32,6 +32,9 @@ data AppContext = AppContext
     acAppChan :: BChan AppMsg
   }
 
+-- TODO add type AppHandler s = AppContext -> EventM AppResourceName s ()
+-- or AppHandler n s a or something.
+
 -- | A class of components. All Brick components (hopefully,,,) satisfy this.
 --
 -- TODO rename to AppComponent b/c it's really specific to *this* app by now.

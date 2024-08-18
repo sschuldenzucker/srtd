@@ -66,45 +66,31 @@ rootKeymap =
       ( kmLeaf (bind 'T') "Open test overlay" $ \ctx -> do
           liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent TestOverlay)
       ),
-      ( kmLeaf (binding (KChar 'j') [MMeta]) "Move down same level" $ \ctx -> do
-          state <- get
-          case mtCur state of
-            Just cur -> do
-              liftIO (myModifyModelState ctx state $ moveSubtree cur NextSibling) >>= put
-              mtListL %= scrollListToEID cur
-            Nothing -> return ()
+      ( kmLeaf (binding (KChar 'j') [MMeta]) "Move down same level" $ withCur $ \cur ->
+          modifyModel (moveSubtree cur NextSibling)
       ),
-      ( kmLeaf (binding (KChar 'k') [MMeta]) "Move up same level" $ \ctx -> do
-          state <- get
-          case mtCur state of
-            Just cur -> do
-              liftIO (myModifyModelState ctx state $ moveSubtree cur PrevSibling) >>= put
-              mtListL %= scrollListToEID cur
-            Nothing -> return ()
+      ( kmLeaf (binding (KChar 'k') [MMeta]) "Move up same level" $ withCur $ \cur ->
+          modifyModel (moveSubtree cur PrevSibling)
       ),
       ( kmSub (bind 'd') "Delete" deleteKeymap
       ),
-      ( kmLeaf (binding KEnter []) "Hoist" $ \ctx -> do
-          s <- get
-          case mtCur s of
-            Just cur -> do
-              model <- liftIO $ getModel (acModelServer ctx)
-              MainTree {mtFilter} <- get
-              put $ make cur mtFilter model
-            Nothing -> return ()
+      ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
+          model <- liftIO $ getModel (acModelServer ctx)
+          MainTree {mtFilter} <- get
+          put $ make cur mtFilter model
       ),
       ( kmLeaf (binding KEsc []) "De-hoist" $ \ctx -> do
           s <- get
           case s ^. mtSubtreeL . breadcrumbsL of
             [] -> return ()
-            parent : _ -> do
+            (parent, _) : _ -> do
               model <- liftIO $ getModel (acModelServer ctx)
               MainTree {mtFilter} <- get
-              put $ make (fst parent) mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
+              put $ make parent mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
       ),
-      (kmLeaf (bind 'h') "Go to parent" (const $ modify mtGoToParent)),
-      (kmLeaf (bind 'J') "Go to next sibling" (const $ modify mtGoToNextSibling)),
-      (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify mtGoToPrevSibling)),
+      (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur forestGetParentId))),
+      (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur forestGetNextSiblingId))),
+      (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur forestGetPrevSiblingId))),
       (kmSub (bind 't') "Status" setStatusKeymap),
       (kmLeaf (bind 'q') "Quit" (const halt))
     ]
@@ -114,11 +100,7 @@ deleteKeymap :: Keymap (AppContext -> EventM n MainTree ())
 deleteKeymap =
   kmMake
     -- TOOD some undo would be nice, lol.
-    [ ( kmLeaf (bind 'd') "Subtree" $ \ctx -> do
-          state <- get
-          case mtCur state of
-            Just cur -> liftIO (myModifyModelState ctx state $ deleteSubtree cur) >>= put
-            Nothing -> return ()
+    [ ( kmLeaf (bind 'd') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur)
       )
     ]
 
@@ -147,11 +129,8 @@ pushInsertNewItemRelToCur toLoc ctx = do
   liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
 
 setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()
-setStatus status' ctx = do
-  state <- get
-  case mtCur state of
-    Just cur -> liftIO (myModifyModelState ctx state $ modifyAttrByEID cur (statusL .~ status')) >>= put
-    Nothing -> return ()
+setStatus status' = withCur $ \cur ->
+  modifyModel (modifyAttrByEID cur (statusL .~ status'))
 
 make :: EID -> Filter -> Model -> MainTree
 make root filter_ model = MainTree root filter_ subtree list (keymapToZipper rootKeymap)
@@ -227,55 +206,40 @@ mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _))
 mtCurWithAttr :: MainTree -> Maybe (EID, Attr)
 mtCurWithAttr (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, attr)) -> (i, attr))
 
-myModifyModelState :: AppContext -> MainTree -> (Model -> Model) -> IO MainTree
-myModifyModelState AppContext {acModelServer} s@(MainTree {mtRoot, mtFilter, mtList}) f = do
-  modifyModelOnServer acModelServer f
-  model <- getModel acModelServer
-  let subtree = runFilter mtFilter mtRoot model
-  -- TODO what happens when an element is deleted and this is not possible?
-  -- TODO actually we should move to the selected *eid*, not position.
-  let resetPosition = L.listSelected mtList & maybe id L.listMoveTo
-  let asList' = resetPosition $ forestToBrickList (stForest subtree)
-  return s {mtSubtree = subtree, mtList = asList'}
+withCur :: (EID -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
+withCur go ctx = do
+  s <- get
+  case mtCur s of
+    Just cur -> go cur ctx
+    Nothing -> return ()
+
+modifyModel :: (Model -> Model) -> AppContext -> EventM n MainTree ()
+modifyModel f AppContext {acModelServer} = do
+  s@(MainTree {mtRoot, mtFilter}) <- get
+  let resetListPosition = maybe id scrollListToEID $ mtCur s
+  model' <- liftIO $ do
+    modifyModelOnServer acModelServer f
+    getModel acModelServer
+  let subtree = runFilter mtFilter mtRoot model'
+  let list' = resetListPosition $ forestToBrickList (stForest subtree)
+  put s {mtSubtree = subtree, mtList = list'}
+  return ()
 
 pullNewModel :: AppContext -> EventM n MainTree ()
-pullNewModel (AppContext {acModelServer}) = do
-  model <- liftIO $ getModel acModelServer
-  s@(MainTree {mtRoot, mtFilter, mtList}) <- get
-  let subtree = runFilter mtFilter mtRoot model
-  -- TODO what happens when an element is deleted and this is not possible?
-  let resetPosition = L.listSelected mtList & maybe id L.listMoveTo
-  let asList' = resetPosition $ forestToBrickList (stForest subtree)
-  put s {mtSubtree = subtree, mtList = asList'}
+-- Not the cleanest thing in the world, may need to be re-written when we go more async. (but then
+-- so does `modifyModel`)
+pullNewModel = modifyModel id
 
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \(_, eid', _) -> eid' == eid
 
 -- TODO the following ask for an abstraction. Anyone else?
 
-mtGoToParent :: MainTree -> MainTree
-mtGoToParent mt = fromMaybe mt mres
+mtGoSubtreeFromCur :: (EID -> MForest -> Maybe EID) -> MainTree -> MainTree
+mtGoSubtreeFromCur f mt = fromMaybe mt mres
   where
     mres = do
       -- Maybe monad
       cur <- mtCur mt
-      par <- mt ^. mtSubtreeL . stForestL . to (forestGetParentId cur)
-      return $ mt & mtListL %~ scrollListToEID par
-
-mtGoToNextSibling :: MainTree -> MainTree
-mtGoToNextSibling mt = fromMaybe mt mres
-  where
-    mres = do
-      -- Maybe monad
-      cur <- mtCur mt
-      par <- mt ^. mtSubtreeL . stForestL . to (forestGetNextSiblingId cur)
-      return $ mt & mtListL %~ scrollListToEID par
-
-mtGoToPrevSibling :: MainTree -> MainTree
-mtGoToPrevSibling mt = fromMaybe mt mres
-  where
-    mres = do
-      -- Maybe monad
-      cur <- mtCur mt
-      par <- mt ^. mtSubtreeL . stForestL . to (forestGetPrevSiblingId cur)
+      par <- mt ^. mtSubtreeL . stForestL . to (f cur)
       return $ mt & mtListL %~ scrollListToEID par
