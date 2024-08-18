@@ -51,7 +51,6 @@ rootKeymap =
       kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur Before,
       kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur FirstChild,
       kmLeaf (bind 's') "New as last child" $ pushInsertNewItemRelToCur LastChild,
-      -- TODO some abstraction to operate on the current node. Comes up a lot.
       ( kmLeaf (bind 'e') "Edit name" $ \ctx -> do
           state <- get
           case mtCurWithAttr state of
