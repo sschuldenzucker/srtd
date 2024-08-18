@@ -46,7 +46,6 @@ rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
 rootKeymap =
   kmMake
     "Tree"
-    -- TODO unify these keys into one. s/S should also behave like n/N when there is no current node.
     [ kmLeaf (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur After,
       kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur Before,
       kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur FirstChild,
