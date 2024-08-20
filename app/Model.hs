@@ -244,11 +244,22 @@ type Label = (EID, Attr)
 moveSubtree' :: EID -> MWalker Label -> Model -> Model
 moveSubtree' eid go = forestL %~ (forestMoveSubtreeId' eid go)
 
+moveSubtreeBelow' :: EID -> EID -> MWalker Label -> Model -> Model
+moveSubtreeBelow' root tgt go = forestL %~ (forestMoveSubtreeIdBelow' root tgt go)
+
 -- | Does nothing if the EID is not found.
 forestMoveSubtreeId' :: (Eq id) => id -> MWalker (id, a) -> Forest (id, a) -> Forest (id, a)
 forestMoveSubtreeId' tgt go forest = case zFindIdFirst tgt . Z.fromForest $ forest of
   Nothing -> forest
   Just loc -> zFullForest $ mzMove go loc
+
+-- | Like forestMoveSubtreeId' but only consider the subtree below `root`.
+forestMoveSubtreeIdBelow' :: (Eq id) => id -> id -> MWalker (id, a) -> Forest (id, a) -> Forest (id, a)
+forestMoveSubtreeIdBelow' root tgt go forest =
+  -- SOMEDAY not really a deep reason to use zippers here other than that it's easy.
+  case zFindIdFirst root . Z.fromForest $ forest of
+    Nothing -> forest
+    Just rootLoc -> zFullForest . Z.modifyTree (onTreeChildren $ forestMoveSubtreeId' tgt go) $ rootLoc
 
 -- | The zipper above the toplevel
 mForestZipper :: Model -> TreePos Empty Label

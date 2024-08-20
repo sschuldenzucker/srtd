@@ -128,33 +128,33 @@ moveSubtreeModeKeymap =
       -- SOMEDAY clean up repetition
       -- TODO WIP I think these moveSubtree (and moveSingle) things can take a cleanup with their destinations.
       -- Can we reduce the number of different options? E.g., ("next based on preorder relative to self", "next based on siblings relative to parent") - Prob think about indicating the *target* relative to sth.
-      [ ( kmLeaf (bind 'j') "Down" $ withCur $ \cur ->
-            modifyModel (moveSubtree' cur toBeforeNextPreorder)
+      [ ( kmLeaf (bind 'j') "Down" $ withRoot $ \root -> withCur $ \cur ->
+            modifyModel (moveSubtreeBelow' root cur toBeforeNextPreorder)
         ),
-        ( kmLeaf (bind 'k') "Up" $ withCur $ \cur ->
-            modifyModel (moveSubtree' cur toAfterPrevPreorder)
+        ( kmLeaf (bind 'k') "Up" $ withRoot $ \root -> withCur $ \cur ->
+            modifyModel (moveSubtreeBelow' root cur toAfterPrevPreorder)
         ),
-        ( kmLeaf (bind 'J') "Down same level" $ withCur $ \cur ctx -> do
+        ( kmLeaf (bind 'J') "Down same level" $ withRoot $ \root -> withCur $ \cur ctx -> do
             liftIO $ glogL INFO "Running: Move down same level"
-            modifyModel (moveSubtree' cur toNextSibling) ctx
+            modifyModel (moveSubtreeBelow' root cur toNextSibling) ctx
         ),
-        ( kmLeaf (bind 'K') "Up same level" $ withCur $ \cur ->
-            modifyModel (moveSubtree' cur toPrevSibling)
+        ( kmLeaf (bind 'K') "Up same level" $ withRoot $ \root -> withCur $ \cur ->
+            modifyModel (moveSubtreeBelow' root cur toPrevSibling)
         ),
-        ( kmLeaf (bind 'h') "Before parent" $ withCur $ \cur ->
-            modifyModel (moveSubtree' cur toBeforeParent)
+        ( kmLeaf (bind 'h') "Before parent" $ withRoot $ \root -> withCur $ \cur ->
+            modifyModel (moveSubtreeBelow' root cur toBeforeParent)
         ),
-        ( kmLeaf (bind 'H') "After parent" $ withCur $ \cur ->
-            modifyModel (moveSubtree' cur toAfterParent)
+        ( kmLeaf (bind 'H') "After parent" $ withRoot $ \root -> withCur $ \cur ->
+            modifyModel (moveSubtreeBelow' root cur toAfterParent)
         ),
-        ( kmLeaf (bind 'l') "Last child of next" $ withCur $ \cur ->
-            modifyModel (moveSubtree' cur toLastChildOfNext)
+        ( kmLeaf (bind 'l') "Last child of next" $ withRoot $ \root -> withCur $ \cur ->
+            modifyModel (moveSubtreeBelow' root cur toLastChildOfNext)
         ),
-        ( kmLeaf (bind 'L') "First child of next" $ withCur $ \cur ->
-            modifyModel (moveSubtree' cur toFirstChildOfNext)
+        ( kmLeaf (bind 'L') "First child of next" $ withRoot $ \root -> withCur $ \cur ->
+            modifyModel (moveSubtreeBelow' root cur toFirstChildOfNext)
         ),
-        ( kmLeaf (bind '>') "Last child of previous" $ withCur $ \cur ->
-            modifyModel (moveSubtree' cur toLastChildOfPrev)
+        ( kmLeaf (bind '>') "Last child of previous" $ withRoot $ \root -> withCur $ \cur ->
+            modifyModel (moveSubtreeBelow' root cur toLastChildOfPrev)
         )
         -- TODO first child of previous
         -- SOMEDAY hierarchy-breaking '<' (dedent)
@@ -255,6 +255,12 @@ withCur go ctx = do
   case mtCur s of
     Just cur -> go cur ctx
     Nothing -> return ()
+
+withRoot :: (EID -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
+withRoot go ctx = do
+  s <- get
+  let root = mtRoot s
+  go root ctx
 
 modifyModel :: (Model -> Model) -> AppContext -> EventM n MainTree ()
 modifyModel f AppContext {acModelServer} = do
