@@ -9,31 +9,42 @@ import Component
 import Control.Monad.State (liftIO)
 import Graphics.Vty (Event (..), Key (..))
 import Keymap
+import Log
 
-data TestOverlay = TestOverlay
+data TestOverlay = TestOverlay (KeymapZipper (AppContext -> EventM AppResourceName TestOverlay ()))
 
 -- The following is more of a demonstration. Of course overkill here.
 
-keymap :: KeymapZipper (AppContext -> EventM n TestOverlay ())
+keymap :: Keymap (AppContext -> EventM n TestOverlay ())
 keymap =
-  keymapToZipper $
+  kmMake
+    "Test Overlay"
+    [ kmLeaf (bind 'T') "Close" $ \(AppContext {acAppChan}) -> do
+        liftIO $ writeBChan acAppChan (PopOverlay ORNone),
+      kmSub (bind 'a') stickySubmap
+    ]
+
+stickySubmap :: Keymap (AppContext -> EventM n TestOverlay ())
+stickySubmap =
+  sticky $
     kmMake
-      "Test Overlay"
-      [ kmLeaf (bind 'T') "Close" $ \(AppContext {acAppChan}) -> do
-          liftIO $ writeBChan acAppChan (PopOverlay ORNone)
+      "Sticky Submap"
+      [ kmLeaf (bind 'a') "Noop" (const $ liftIO $ glogL INFO "TestOverlay Noop triggered")
       ]
 
-instance BrickComponent TestOverlay where
-  renderComponent TestOverlay = str "Test Component. Press T to close."
+newTestOverlay :: TestOverlay
+newTestOverlay = TestOverlay (keymapToZipper keymap)
 
-  handleEvent ctx (VtyEvent (EvKey key mods)) = case kmzLookup keymap key mods of
-    NotFound -> return ()
-    LeafResult act _ -> act ctx
-    SubmapResult _ -> error "wtf"
+instance BrickComponent TestOverlay where
+  renderComponent _ = str "Test Component. Press T to close."
+
+  handleEvent _ (VtyEvent (EvKey KEsc [])) = modify (\(TestOverlay kmz) -> TestOverlay (kmzResetRoot kmz))
+  handleEvent ctx (VtyEvent (EvKey key mods)) = do
+    (TestOverlay kmz) <- get
+    case kmzLookup kmz key mods of
+      NotFound -> return ()
+      LeafResult act nxt -> act ctx >> put (TestOverlay nxt)
+      SubmapResult nxt -> put (TestOverlay nxt)
   handleEvent _ _ = return ()
 
-  -- handleEvent (AppContext {acAppChan}) (VtyEvent (EvKey (KChar 'T') [])) = do
-  --   liftIO $ writeBChan acAppChan (PopOverlay ORNone)
-  -- handleEvent _ _ = return ()
-
-  componentKeyDesc _ = kmzDesc keymap
+  componentKeyDesc (TestOverlay kmz) = kmzDesc kmz

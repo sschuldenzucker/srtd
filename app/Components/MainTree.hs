@@ -16,7 +16,7 @@ import Brick.Widgets.List qualified as L
 import Component
 import Components.Attr (renderMaybeStatus)
 import Components.NewNodeOverlay (newNodeOverlay)
-import Components.TestOverlay (TestOverlay (..))
+import Components.TestOverlay (TestOverlay (..), newTestOverlay)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (intercalate)
 import Data.Maybe (fromMaybe)
@@ -63,7 +63,7 @@ rootKeymap =
             Nothing -> return ()
       ),
       ( kmLeaf (bind 'T') "Open test overlay" $ \ctx -> do
-          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent TestOverlay)
+          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent newTestOverlay)
       ),
       ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $ withCur $ \cur ->
           modifyModel (moveSubtree cur NextSibling)
