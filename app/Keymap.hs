@@ -83,11 +83,11 @@ kmzResetRoot :: KeymapZipper a -> KeymapZipper a
 kmzResetRoot kz@(KeymapZipper [] _) = kz
 kmzResetRoot (KeymapZipper ps _) = KeymapZipper [] (last ps)
 
--- | Reset to next sticky keymap above, or to root.
+-- | Reset to next sticky keymap above, or to self, or to root.
 kmzResetSticky :: KeymapZipper a -> KeymapZipper a
 kmzResetSticky kz@(KeymapZipper [] _) = kz
 kmzResetSticky kz@(KeymapZipper (Keymap {kmSticky} : _) _)
-  | kmSticky = kmzUp kz
+  | kmSticky = kz
   | otherwise = kmzResetSticky $ kmzUp kz
 
 kmzIsToplevel :: KeymapZipper a -> Bool
@@ -115,5 +115,5 @@ data KeymapResult a = NotFound | SubmapResult (KeymapZipper a) | LeafResult a (K
 kmzLookup :: KeymapZipper a -> Key -> [Modifier] -> KeymapResult a
 kmzLookup kz@(KeymapZipper {cur = Keymap {kmMap, kmSticky}}) key mods = case Map.lookup (binding key mods) kmMap of
   Nothing -> NotFound
-  Just KeymapItem {kmiItem = LeafItem _ x} -> LeafResult x (if kmSticky then kmzResetSticky kz else kmzResetRoot kz)
+  Just KeymapItem {kmiItem = LeafItem _ x} -> LeafResult x (if kmSticky then kz else kmzResetSticky (kmzUp kz))
   Just KeymapItem {kmiItem = SubmapItem sm} -> SubmapResult (kmzDown sm kz)
