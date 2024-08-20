@@ -245,7 +245,7 @@ moveSubtree' :: EID -> MWalker Label -> Model -> Model
 moveSubtree' eid go = forestL %~ (forestMoveSubtreeId' eid go)
 
 -- | Does nothing if the EID is not found.
-forestMoveSubtreeId' :: (Eq id, Show id, Show a) => id -> MWalker (id, a) -> Forest (id, a) -> Forest (id, a)
+forestMoveSubtreeId' :: (Eq id) => id -> MWalker (id, a) -> Forest (id, a) -> Forest (id, a)
 forestMoveSubtreeId' tgt go forest = case zFindIdFirst tgt . Z.fromForest $ forest of
   Nothing -> forest
   Just loc -> zFullForest $ mzMove go loc
