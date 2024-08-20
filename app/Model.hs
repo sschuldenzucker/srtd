@@ -10,15 +10,18 @@ import Brick (suffixLenses)
 import Control.Applicative (asum)
 import Data.Aeson
 import Data.Either (fromRight)
-import Data.List (find)
-import Data.Maybe (mapMaybe)
+import Data.List (find, unfoldr)
+import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Tree
+import Data.Tree.Zipper (Empty, Full, TreePos)
+import Data.Tree.Zipper qualified as Z
 import Data.UUID (UUID)
 import GHC.Generics
 import GHC.List (uncons)
 import Lens.Micro.Platform
 import Log
 import ModelJSON qualified
+import Todo
 
 -- import Data.UUID.V4 (nextRandom)
 
@@ -225,3 +228,115 @@ instance Show Filter where
 -- SOMEDAY decide on error handling
 f_identity :: Filter
 f_identity = Filter (\i m -> fromRight (error "root EID not found") $ modelGetSubtreeBelow i m)
+
+-- --------------------
+-- Forest modifications
+-- --------------------
+
+-- TODO remove unused functions.
+
+type Label = (EID, Attr)
+
+moveSubtree' :: EID -> MWalker Label -> Model -> Model
+moveSubtree' eid go = forestL %~ (forestMoveSubtreeId' eid go)
+
+-- | Does nothing if the EID is not found.
+forestMoveSubtreeId' :: (Eq id, Show id, Show a) => id -> MWalker (id, a) -> Forest (id, a) -> Forest (id, a)
+forestMoveSubtreeId' tgt go forest = case zFindIdFirst tgt . Z.fromForest $ forest of
+  Nothing -> forest
+  Just loc -> zFullForest $ mzMove go loc
+
+-- | The zipper above the toplevel
+mForestZipper :: Model -> TreePos Empty Label
+mForestZipper = Z.fromForest . forest
+
+-- TODO unused
+zChildList :: TreePos Full a -> [TreePos Full a]
+zChildList = zFollowingTrees . Z.children
+
+zFollowingTrees :: TreePos Empty a -> [TreePos Full a]
+zFollowingTrees epos = case Z.nextTree epos of
+  Nothing -> []
+  Just pos -> pos : unfoldr go pos
+  where
+    go = fmap dup . Z.next
+    dup x = (x, x)
+
+class ZDescendants t where
+  zDescendants :: TreePos t a -> [TreePos Full a]
+
+instance ZDescendants Full where
+  zDescendants pos = pos : zDescendants (Z.children pos)
+
+instance ZDescendants Empty where
+  zDescendants epos = zFollowingTrees epos >>= zDescendants
+
+zFindLabelFirst :: (ZDescendants t) => (b -> Bool) -> TreePos t b -> Maybe (TreePos Full b)
+zFindLabelFirst lp = zFindFirst $ lp . Z.label
+  where
+    zFindFirst :: (ZDescendants t) => (TreePos Full a -> Bool) -> TreePos t a -> Maybe (TreePos Full a)
+    zFindFirst p = listToMaybe . filter p . zDescendants
+
+-- NB This is probably pretty inefficient b/c we construct and iterate through positions, not trees.
+--
+-- (the zipper doesn't "know" we're not using intermediate results and we don't have closer access
+-- to the underlying data b/c it's not exported :/)
+-- SOMEDAY if it ever becomes a bottleneck, copy rosezipper here and add zFindLabelFirst, but more efficiently (or zFindTreeFirst more generally actually) - And then prob also optimized zFullForest etc.
+zFindIdFirst :: (ZDescendants t, Eq id) => id -> TreePos t (id, b) -> Maybe (TreePos Full (id, b))
+zFindIdFirst tgt = zFindLabelFirst $ \(i, _) -> i == tgt
+
+class ZFullForest t where
+  zFullForest :: TreePos t a -> Forest a
+
+instance ZFullForest Full where
+  zFullForest = Z.forest . Z.first . Z.prevSpace . Z.root
+
+instance ZFullForest Empty where
+  zFullForest eloc = case Z.parent eloc of
+    Just loc -> zFullForest loc
+    Nothing -> Z.forest . Z.first $ eloc
+
+-- SOMEDAY clean up the above manual code which should then be unused.
+-- SOMEDAY also implement deletion using this infra.
+-- SOMEDAY single-deletion and move-single.
+-- For single-deletion, maybe I need to fork the zipper (i.e., copy the module). Could also help implementing better find-at ops.
+--
+-- Do we even *need* move-single? Or do we really need just a specific slightly strange operation?
+-- What is the equivalent for a "normal" nested list?
+-- -> Don't implement for now except for *maybe* indent/dedent. Then review later based on usage.
+
+-- | Take the tree out of the current position, walk from the hole left via the given fct, and put it there.
+-- Returns the new position that we've moved to.
+zMove :: (TreePos Empty a -> TreePos Empty a) -> TreePos Full a -> TreePos Full a
+zMove go pos = Z.insert (Z.tree pos) . go . Z.delete $ pos
+
+-- | Like `zMove`, but the walking function may fail and then we do nothing.
+mzMove :: (TreePos Empty a -> Maybe (TreePos Empty a)) -> TreePos Full a -> TreePos Full a
+mzMove go pos = case go . Z.delete $ pos of
+  Nothing -> pos
+  Just epos' -> Z.insert (Z.tree pos) epos'
+
+type MWalker a = TreePos Empty a -> Maybe (TreePos Empty a)
+
+toNextSibling, toPrevSibling, toBeforeParent, toAfterParent, toFirstChildOfNext, toFirstChildOfPrev, toLastChildOfNext, toLastChildOfPrev :: MWalker a
+toNextSibling = Z.next
+toPrevSibling = Z.prev
+toBeforeParent = fmap Z.prevSpace . Z.parent
+toAfterParent = fmap Z.nextSpace . Z.parent
+toFirstChildOfNext = fmap Z.children . Z.nextTree
+toFirstChildOfPrev = fmap Z.children . Z.prevTree
+toLastChildOfNext = fmap (Z.last . Z.children) . Z.nextTree
+toLastChildOfPrev = fmap (Z.last . Z.children) . Z.prevTree
+
+-- Not sure if "preorder" is the right wording here; it doesn't actually recur upwards.
+toBeforeNextPreorder, toAfterPrevPreorder :: MWalker a
+toBeforeNextPreorder eloc = case Z.next eloc of
+  res@(Just _eloc') -> res
+  Nothing -> case Z.parent eloc of
+    Just par -> Just $ Z.nextSpace par
+    Nothing -> Nothing
+toAfterPrevPreorder eloc = case Z.prev eloc of
+  res@(Just _eloc') -> res
+  Nothing -> case Z.parent eloc of
+    Just par -> Just $ Z.prevSpace par
+    Nothing -> Nothing
