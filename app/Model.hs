@@ -2,6 +2,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
+-- | Model stuff.
+--
+-- SOMEDAY this model has grown very large and should be split into sub-aspects.
+-- Most importantly, tree modification operations should be split out.
 module Model where
 
 import Attr
