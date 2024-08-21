@@ -21,6 +21,7 @@ data Status = WIP | Next | Later | Waiting | Someday | Done | Project deriving (
 
 suffixLenses ''Status
 
+-- SOMEDAY should be Text.
 data Attr = Attr
   { name :: String,
     -- TODO should Status have a special 'None' element instead? Or just a default 'Item" or whatever?

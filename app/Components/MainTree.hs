@@ -19,7 +19,7 @@ import Components.NewNodeOverlay (newNodeOverlay)
 import Components.TestOverlay (TestOverlay (..), newTestOverlay)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (intercalate)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -28,6 +28,9 @@ import Lens.Micro.Platform
 import Log
 import Model
 import ModelServer
+import System.Process (callCommand)
+import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
+import Util
 
 type MyList = L.List AppResourceName (Int, EID, Attr)
 
@@ -93,6 +96,7 @@ rootKeymap =
       (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur forestGetNextSiblingId))),
       (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur forestGetPrevSiblingId))),
       (kmSub (bind 't') setStatusKeymap),
+      (kmSub (bind 'o') openExternallyKeymap),
       (kmLeaf (bind 'q') "Quit" (const halt))
     ]
 
@@ -159,6 +163,25 @@ moveSubtreeModeKeymap =
         -- TODO first child of previous
         -- SOMEDAY hierarchy-breaking '<' (dedent)
       ]
+
+openExternallyKeymap :: Keymap (AppContext -> EventM n MainTree ())
+openExternallyKeymap =
+  kmMake
+    "Open externally"
+    [ ( kmLeaf (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
+          whenJust (findFirstURL name) $ \url -> liftIO (openURL url)
+      )
+    ]
+
+-- SOMEDAY these should be moved to another module.
+findFirstURL :: String -> Maybe String
+findFirstURL s = listToMaybe $ getAllTextMatches (s =~ urlPattern :: AllTextMatches [] String)
+  where
+    urlPattern :: String
+    urlPattern = "(\\bhttps?://[a-zA-Z0-9./?=&-_]+)"
+
+openURL :: String -> IO ()
+openURL url = callCommand $ "open " ++ url
 
 pushInsertNewItemRelToCur :: (EID -> InsertLoc EID) -> AppContext -> EventM n MainTree ()
 pushInsertNewItemRelToCur toLoc ctx = do
@@ -254,6 +277,13 @@ withCur go ctx = do
   s <- get
   case mtCur s of
     Just cur -> go cur ctx
+    Nothing -> return ()
+
+withCurWithAttr :: ((EID, Attr) -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
+withCurWithAttr go ctx = do
+  s <- get
+  case mtCurWithAttr s of
+    Just cura -> go cura ctx
     Nothing -> return ()
 
 withRoot :: (EID -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
