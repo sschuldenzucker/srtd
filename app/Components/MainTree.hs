@@ -74,6 +74,12 @@ rootKeymap =
       ( kmLeaf (binding (KChar 'k') [MMeta]) "Move subtree up same level" $ withCur $ \cur ->
           modifyModel (moveSubtree cur PrevSibling)
       ),
+      ( kmLeaf (bind '<') "Move subtree after parent" $ withRoot $ \root -> withCur $ \cur ->
+          modifyModel (moveSubtreeBelow' root cur toAfterParent)
+      ),
+      ( kmLeaf (bind '>') "Move subtree last child of previous" $ withRoot $ \root -> withCur $ \cur ->
+          modifyModel (moveSubtreeBelow' root cur toLastChildOfPrev)
+      ),
       -- TODO hierarchy-up and one hierarchy-down (taken from move-subtree keymap.)
       -- (kmSub (bind 'm') moveSingleModeKeymap),
       (kmSub (bind 'M') moveSubtreeModeKeymap),
