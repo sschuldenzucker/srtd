@@ -148,19 +148,19 @@ moveSubtreeModeKeymap =
         ( kmLeaf (bind 'h') "Before parent" $ withRoot $ \root -> withCur $ \cur ->
             modifyModel (moveSubtreeBelow' root cur toBeforeParent)
         ),
-        ( kmLeaf (bind 'H') "After parent" $ withRoot $ \root -> withCur $ \cur ->
+        ( kmLeaf (bind '<') "After parent" $ withRoot $ \root -> withCur $ \cur ->
             modifyModel (moveSubtreeBelow' root cur toAfterParent)
         ),
-        ( kmLeaf (bind 'l') "Last child of next" $ withRoot $ \root -> withCur $ \cur ->
+        ( kmLeaf (bind 'L') "Last child of next" $ withRoot $ \root -> withCur $ \cur ->
             modifyModel (moveSubtreeBelow' root cur toLastChildOfNext)
         ),
-        ( kmLeaf (bind 'L') "First child of next" $ withRoot $ \root -> withCur $ \cur ->
+        ( kmLeaf (bind 'l') "First child of next" $ withRoot $ \root -> withCur $ \cur ->
             modifyModel (moveSubtreeBelow' root cur toFirstChildOfNext)
         ),
         ( kmLeaf (bind '>') "Last child of previous" $ withRoot $ \root -> withCur $ \cur ->
             modifyModel (moveSubtreeBelow' root cur toLastChildOfPrev)
         )
-        -- TODO first child of previous
+        -- NB 'H' is not used and that's fine IMHO. I'm not sure why but these bindings were the most intuitive.
         -- SOMEDAY hierarchy-breaking '<' (dedent)
       ]
 
