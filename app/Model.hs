@@ -11,7 +11,7 @@ module Model where
 import Attr
 -- Really just a helper here. Should prob not import this for separation
 import Brick (suffixLenses)
-import Control.Applicative (asum)
+import Control.Applicative (asum, (<|>))
 import Data.Aeson
 import Data.Either (fromRight)
 import Data.List (find, unfoldr)
@@ -344,14 +344,25 @@ toLastChildOfNext = fmap (Z.last . Z.children) . Z.nextTree
 toLastChildOfPrev = fmap (Z.last . Z.children) . Z.prevTree
 
 -- Not sure if "preorder" is the right wording here; it doesn't actually recur upwards.
+-- SOMEDAY I'm sure there's a monad or something that does these alternatives.
 toBeforeNextPreorder, toAfterPrevPreorder :: MWalker a
-toBeforeNextPreorder eloc = case Z.next eloc of
-  res@(Just _eloc') -> res
-  Nothing -> case Z.parent eloc of
-    Just par -> Just $ Z.nextSpace par
-    Nothing -> Nothing
-toAfterPrevPreorder eloc = case Z.prev eloc of
-  res@(Just _eloc') -> res
-  Nothing -> case Z.parent eloc of
-    Just par -> Just $ Z.prevSpace par
-    Nothing -> Nothing
+toBeforeNextPreorder eloc =
+  toBeforeFirstChildOfNext eloc
+    <|> Z.next eloc
+    <|> Z.nextSpace <$> Z.parent eloc
+  where
+    -- Like toFirstChildOfNext but fails if there is no first child. This is intuitive for some use cases.
+    toBeforeFirstChildOfNext eloc = do
+      nxt <- Z.nextTree eloc
+      fc <- Z.firstChild nxt
+      return $ Z.prevSpace fc
+toAfterPrevPreorder eloc =
+  toAfterLastChildOfPrev eloc
+    <|> Z.prev eloc
+    <|> Z.prevSpace <$> Z.parent eloc
+  where
+    -- Like toLastChildOfPrev but fails if there is no first child. This is intuitive for some use cases.
+    toAfterLastChildOfPrev eloc = do
+      nxt <- Z.prevTree eloc
+      fc <- Z.lastChild nxt
+      return $ Z.nextSpace fc
