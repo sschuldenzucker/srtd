@@ -294,32 +294,37 @@ withRoot go ctx = do
 
 modifyModel :: (Model -> Model) -> AppContext -> EventM n MainTree ()
 modifyModel f AppContext {acModelServer} = do
-  s@(MainTree {mtRoot, mtFilter}) <- get
-  let resetListPosition = maybe id scrollListToEID $ mtCur s
+  s@(MainTree {mtRoot, mtFilter, mtList}) <- get
   model' <- liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
     modifyModelOnServer acModelServer f
     getModel acModelServer
   let subtree = runFilter mtFilter mtRoot model'
-  let list' = resetListPosition $ forestToBrickList (stForest subtree)
+  let list' = resetListPosition mtList $ forestToBrickList (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
 
 pullNewModel :: AppContext -> EventM n MainTree ()
 pullNewModel AppContext {acModelServer} = do
-  s@(MainTree {mtRoot, mtFilter}) <- get
-  let resetListPosition = maybe id scrollListToEID $ mtCur s
+  s@(MainTree {mtRoot, mtFilter, mtList}) <- get
   model' <- liftIO $ getModel acModelServer
   let subtree = runFilter mtFilter mtRoot model'
-  let list' = resetListPosition $ forestToBrickList (stForest subtree)
+  let list' = resetListPosition mtList $ forestToBrickList (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
 
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \(_, eid', _) -> eid' == eid
 
--- TODO the following ask for an abstraction. Anyone else?
+-- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the current position.
+resetListPosition :: MyList -> MyList -> MyList
+resetListPosition old new = case L.listSelectedElement old of
+  Nothing -> new
+  Just (ix, (_, tgt, _)) -> case Vec.findIndex (\(_, eid, _) -> eid == tgt) (L.listElements new) of
+    -- NB this is fine if `new` doesn't actually have `ix` b/c it's too short: then it goes to the end, as desired.
+    Nothing -> L.listMoveTo ix new
+    Just ix' -> L.listMoveTo ix' new
 
 mtGoSubtreeFromCur :: (EID -> MForest -> Maybe EID) -> MainTree -> MainTree
 mtGoSubtreeFromCur f mt = fromMaybe mt mres
