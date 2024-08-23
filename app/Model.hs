@@ -222,6 +222,10 @@ forestGetPrevSiblingId tgt forest = case splitFind (treeHasID tgt) forest of
   Just _ -> Nothing
   Nothing -> asum [forestGetPrevSiblingId tgt cs | (Node _ cs) <- forest]
 
+-- --------------------
+-- Filter infra
+-- --------------------
+
 -- SOMEDAY unclear if this is the right structure.
 newtype Filter = Filter {runFilter :: EID -> Model -> Subtree}
 
@@ -232,6 +236,20 @@ instance Show Filter where
 -- SOMEDAY decide on error handling
 f_identity :: Filter
 f_identity = Filter (\i m -> fromRight (error "root EID not found") $ modelGetSubtreeBelow i m)
+
+-- | Hide completed tasks, top-down
+--
+-- TODO This is very simplistic: A non-completed task below a completed one is not shown (even though it seems important)
+f_hide_completed :: Filter
+f_hide_completed =
+  let (Filter fi) = f_identity
+      fi' i m = stFilter p $ fi i m
+   in Filter fi'
+  where
+    p (_, Attr {status}) = status /= Just Done
+
+stFilter :: ((EID, Attr) -> Bool) -> Subtree -> Subtree
+stFilter p = stForestL %~ (filterForest p)
 
 -- --------------------
 -- Forest modifications
