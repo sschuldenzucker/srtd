@@ -184,7 +184,7 @@ findFirstURL :: String -> Maybe String
 findFirstURL s = listToMaybe $ getAllTextMatches (s =~ urlPattern :: AllTextMatches [] String)
   where
     urlPattern :: String
-    urlPattern = "(\\bhttps?://[a-zA-Z0-9./?=&-_%]+)"
+    urlPattern = "(\\b[a-z]+://[a-zA-Z0-9./?=&-_%]+)"
 
 openURL :: String -> IO ()
 openURL url = callCommand $ "open " ++ url
