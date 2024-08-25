@@ -30,7 +30,7 @@ import Lens.Micro.Platform
 import Log
 import Model
 import ModelServer
-import System.Process (callCommand)
+import System.Process (callCommand, callProcess)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
 import Todo
 import Util
@@ -203,7 +203,7 @@ findFirstURL s = listToMaybe $ getAllTextMatches (s =~ urlPattern :: AllTextMatc
 
 -- TODO This doens't work with Obisdian URLs. Not sure if it's a detection problem (prob not) or if open gets confused with special chars (prob yes). This command shouldn't go through a shell.
 openURL :: String -> IO ()
-openURL url = callCommand $ "open " ++ url
+openURL url = callProcess "open" [url]
 
 pushInsertNewItemRelToCur :: (EID -> InsertLoc EID) -> AppContext -> EventM n MainTree ()
 pushInsertNewItemRelToCur toLoc ctx = do
