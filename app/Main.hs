@@ -128,10 +128,8 @@ myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverl
       centerLayer
         . Brick.hLimitPercent 80
         . Brick.vLimitPercent 75
-        -- TODO give overlays names so user knows what to do. (should prob be a Component method)
-        -- . borderWithLabel (txt "Overlay")
-        . border
-        . renderComponent
+        . borderWithLabel (padLeftRight 1 . txt $ componentTitle o)
+        $ renderComponent o
     renderKeyHelp pairs =
       let configTable = surroundingBorder False . rowBorders False . columnBorders False
           inner = configTable $ table [[padRight (Pad 1) (txt keydesc), txt actdesc] | (keydesc, actdesc) <- pairs]
