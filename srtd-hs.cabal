@@ -50,12 +50,9 @@ extra-doc-files:    CHANGELOG.md
 common warnings
     ghc-options: -Wall -Werror=missing-methods -Werror=missing-fields -Werror=incomplete-patterns
 
-executable srtd
+library
     -- Import common warning flags.
     import:           warnings
-
-    -- .hs or .lhs file containing the Main module.
-    main-is:          Main.hs
 
     -- -threaded is required for brick, rest optional.
     ghc-options: -threaded -Wall -Wcompat
@@ -119,3 +116,25 @@ executable srtd
 
     -- Base language which the package is written in.
     default-language: GHC2021
+
+executable srtd
+    build-depends:
+        base ^>=4.17.2.1,
+        srtd,
+
+    -- .hs or .lhs file containing the Main module.
+    main-is:          Main.hs
+    hs-source-dirs: app
+    default-language: GHC2021
+
+test-suite srtd-test
+    type: exitcode-stdio-1.0
+    main-is: MainTest.hs
+    hs-source-dirs: test
+    build-depends:
+        base ^>=4.17.2.1,
+        srtd,
+        tasty ^>= 1.5,
+        tasty-hunit ^>= 0.10.2
+    default-language: GHC2021
+
