@@ -91,6 +91,12 @@ rootKeymap =
       ( kmLeaf (bind 'Q') "Close tab" $ \ctx ->
           liftIO $ writeBChan (acAppChan ctx) $ PopTab
       ),
+      ( kmLeaf (bind ']') "Next tab" $ \ctx ->
+          liftIO $ writeBChan (acAppChan ctx) $ NextTab
+      ),
+      ( kmLeaf (bind '[') "Prev tab" $ \ctx ->
+          liftIO $ writeBChan (acAppChan ctx) $ PrevTab
+      ),
       ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $ withCur $ \cur ->
           modifyModel (moveSubtree cur NextSibling)
       ),

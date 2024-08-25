@@ -161,8 +161,6 @@ myHandleEvent ev =
     (VtyEvent (EvKey (KChar 'q') [MCtrl])) -> do
       liftIO (glogL INFO "quitting...")
       halt
-    (VtyEvent (EvKey (KChar ']') [])) -> asTabsL %= lzCircRight
-    (VtyEvent (EvKey (KChar '[') [])) -> asTabsL %= lzCircLeft
     -- Toggle: Always show overlay. (o/w only at the top level)
     -- TODO I have no idea why Ctrl+/ is registered as Ctrl+_ but here we are.
     (VtyEvent (EvKey (KChar '_') [MCtrl])) -> do
@@ -178,6 +176,8 @@ myHandleEvent ev =
       modify $ pushOverlay o
     (AppEvent (PushTab t)) -> modify $ pushTab t
     (AppEvent PopTab) -> modify popTab
+    (AppEvent NextTab) -> asTabsL %= lzCircRight
+    (AppEvent PrevTab) -> asTabsL %= lzCircLeft
     (AppEvent (ModelUpdated _)) -> do
       AppState {asContext} <- get
       forComponentsM $ handleEvent asContext ev

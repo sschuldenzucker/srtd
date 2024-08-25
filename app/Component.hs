@@ -22,6 +22,8 @@ data AppMsg
   | PushTab (AppResourceName -> SomeBrickComponent)
   | -- SOMEDAY PopOverlay and PopTab should be reconciled into a generic "pop active" msg so views can safely "pop themselves".
     PopTab
+  | NextTab
+  | PrevTab
   | ModelUpdated MsgModelUpdated
 
 -- SOMEDAY we could make Show a precondition for BrickComponent or for SomeBrickComponent for better vis
@@ -30,6 +32,8 @@ instance Show AppMsg where
   show (PushOverlay _) = "PushOverlay _"
   show (PushTab _) = "PushTab _"
   show PopTab = "PopTab"
+  show NextTab = "NextTab"
+  show PrevTab = "PrevTab"
   show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
 
 -- Not super clean but I don't think I'll need a lot here. These nest to be unique across different tabs / overlays.
