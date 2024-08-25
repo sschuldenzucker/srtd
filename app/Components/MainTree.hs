@@ -102,7 +102,7 @@ rootKeymap =
           filters <- mtFilters <$> get
           put $ makeWithFilters cur filters model
       ),
-      ( kmLeaf (binding KEsc []) "De-hoist" $ \ctx -> do
+      ( kmLeaf (binding KBS []) "De-hoist" $ \ctx -> do
           s <- get
           case s ^. mtSubtreeL . breadcrumbsL of
             [] -> return ()
