@@ -6,6 +6,7 @@
 
 module Components.MainTree (MainTree (..), make) where
 
+import Alignment (hAlignRightLayer)
 import AppAttr
 import Attr
 import Brick
@@ -31,6 +32,7 @@ import Model
 import ModelServer
 import System.Process (callCommand)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
+import Todo
 import Util
 
 type MyList = L.List AppResourceName (Int, EID, Attr)
@@ -264,10 +266,18 @@ renderRoot rootAttr breadcrumbs =
     statusW = renderMaybeStatus False (status rootAttr)
     pathStr = intercalate " < " $ name rootAttr : [name attr | (_, attr) <- breadcrumbs]
 
+-- Currently we only render the currently selected filter.
+renderFilters :: CList.CList Filter -> Widget n
+renderFilters fs = maybe emptyWidget go (CList.focus fs)
+  where
+    go f = withDefAttr filterLabelAttr $ str (filterName f)
+
 instance BrickComponent MainTree where
-  renderComponent MainTree {mtList, mtSubtree = Subtree {rootAttr, breadcrumbs}} = box
+  renderComponent MainTree {mtList, mtSubtree = Subtree {rootAttr, breadcrumbs}, mtFilters} = box
     where
-      box = renderRoot rootAttr breadcrumbs <=> L.renderList renderRow True mtList
+      -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
+      headrow = renderRoot rootAttr breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
+      box = headrow <=> L.renderList renderRow True mtList
 
   handleEvent ctx ev = do
     isTopLevel <- use (mtKeymapL . to kmzIsToplevel)

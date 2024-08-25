@@ -42,6 +42,10 @@ bg = "base"
 fg = "text"
 
 [theme]
+
+# SOMEDAY some background would be nice
+"filter_label" = {fg = "blue"}
+
 # SOMEDAY maybe a bit too subtle.
 "selected" = {bg = "surface1"}
 

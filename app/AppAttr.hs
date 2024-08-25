@@ -12,3 +12,6 @@ selectedItemRowAttr = attrName "selected"
 
 statusAttr :: AttrName
 statusAttr = attrName "status"
+
+filterLabelAttr :: AttrName
+filterLabelAttr = attrName "filter_label"
