@@ -7,6 +7,9 @@ import Brick.AttrMap (AttrName, attrName)
 
 -- add 'TomlBiMap' and 'Key' here optionally
 
+tabBarAttr :: AttrName
+tabBarAttr = attrName "tab_bar"
+
 selectedItemRowAttr :: AttrName
 selectedItemRowAttr = attrName "selected"
 

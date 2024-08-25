@@ -4,6 +4,7 @@
 module Main (main) where
 
 import Alignment
+import AppAttr
 import AppTheme qualified
 import Attr
 import Brick
@@ -19,11 +20,14 @@ import Control.Arrow (second)
 import Control.Monad (forM_, void)
 import Control.Monad.State (liftIO)
 import Data.CircularList qualified as CList
+import Data.List (intersperse)
 import Data.List.Zipper qualified as LZ
 import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Data.Traversable (forM)
+import GHC.Stack (HasCallStack)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Lens.Micro.Platform
 import Log
@@ -120,11 +124,24 @@ main = do
   glogL INFO "App did quit normally"
 
 myAppDraw :: AppState -> [Widget AppResourceName]
-myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ [renderComponent tab0]
+myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ [mainUI]
   where
     tab0 = LZ.cursor asTabs
-    -- renderOverlay o = hLimitPercent 70 $ renderComponent o
-    renderOverlay =
+    mainUI = renderTabBar (componentTitle <$> asTabs) <=> renderComponent tab0
+    renderTabTitle :: Bool -> Text -> Widget n
+    renderTabTitle sel t = withAttr theAttrName . padLeftRight 1 . hLimit 20 $ txt t
+      where
+        theAttrName = (if sel then tabBarAttr <> attrName "selected" else tabBarAttr) <> attrName "tab_title"
+    renderTabBar titlez =
+      withDefAttr tabBarAttr $
+        let (front, cur, back) = lzSplit3 titlez
+         in hBox $
+              intersperse (txt "|") $
+                map (renderTabTitle False) front
+                  ++ [renderTabTitle True cur]
+                  ++ map (renderTabTitle False) back
+                  ++ [padLeft Max (str " ")]
+    renderOverlay o =
       centerLayer
         . Brick.hLimitPercent 80
         . Brick.vLimitPercent 75
@@ -255,6 +272,11 @@ mapMLZ f z =
 -- SOMEDAY would be easier & faster if I could access the zipper internals -.-
 lzSplit :: LZ.Zipper a -> ([a], [a])
 lzSplit (LZ.Zip rfront back) = (reverse rfront, back)
+
+-- | (part before cursor, element at cursor, part after cursor). Error if at end.
+lzSplit3 :: (HasCallStack) => LZ.Zipper a -> ([a], a, [a])
+lzSplit3 (LZ.Zip rfront (cur : back)) = (reverse rfront, cur, back)
+lzSplit3 _ = error "lzSplit3: Empty list"
 
 lzFromFrontBack :: [a] -> [a] -> LZ.Zipper a
 lzFromFrontBack front back = LZ.Zip (reverse front) back

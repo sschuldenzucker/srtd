@@ -43,6 +43,11 @@ fg = "text"
 
 [theme]
 
+# Helix uses mantle instead of crust but I think it's also got better color accuracy.
+"tab_bar" = {fg = "subtext1", bg = "crust"}
+# "tab_bar.tab_title" = {}  # Unused
+"tab_bar.selected.tab_title" = {fg = "mauve", bg = "base", style = "underline"}
+
 # SOMEDAY some background would be nice
 "filter_label" = {fg = "blue"}
 
