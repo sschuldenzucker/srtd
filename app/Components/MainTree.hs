@@ -18,8 +18,9 @@ import Components.Attr (renderMaybeStatus)
 import Components.NewNodeOverlay (newNodeOverlay)
 import Components.TestOverlay (TestOverlay (..), newTestOverlay)
 import Control.Monad.IO.Class (liftIO)
+import Data.CircularList qualified as CList
 import Data.List (intercalate)
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (fromJust, fromMaybe, listToMaybe)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -36,7 +37,7 @@ type MyList = L.List AppResourceName (Int, EID, Attr)
 
 data MainTree = MainTree
   { mtRoot :: EID,
-    mtFilter :: Filter,
+    mtFilters :: CList.CList Filter,
     mtSubtree :: Subtree,
     mtList :: MyList,
     mtKeymap :: KeymapZipper (AppContext -> EventM AppResourceName MainTree ())
@@ -44,6 +45,17 @@ data MainTree = MainTree
   deriving (Show)
 
 suffixLenses ''MainTree
+
+mtFilter :: MainTree -> Filter
+mtFilter = fromJust . CList.focus . mtFilters
+-- ^ NB we know that filters will be non-empty.
+
+-- The first one is default selected.
+defaultFilters :: [Filter]
+defaultFilters =
+  [ f_hide_completed,
+    f_identity
+  ]
 
 rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
 rootKeymap =
@@ -86,8 +98,8 @@ rootKeymap =
       (kmSub (bind 'd') deleteKeymap),
       ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
           model <- liftIO $ getModel (acModelServer ctx)
-          MainTree {mtFilter} <- get
-          put $ make cur mtFilter model
+          filters <- mtFilters <$> get
+          put $ makeWithFilters cur filters model
       ),
       ( kmLeaf (binding KEsc []) "De-hoist" $ \ctx -> do
           s <- get
@@ -95,14 +107,15 @@ rootKeymap =
             [] -> return ()
             (parent, _) : _ -> do
               model <- liftIO $ getModel (acModelServer ctx)
-              MainTree {mtFilter} <- get
-              put $ make parent mtFilter model & mtListL %~ scrollListToEID (mtRoot s)
+              filters <- mtFilters <$> get
+              put $ makeWithFilters parent filters model & mtListL %~ scrollListToEID (mtRoot s)
       ),
       (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur forestGetParentId))),
       (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur forestGetNextSiblingId))),
       (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur forestGetPrevSiblingId))),
       (kmSub (bind 't') setStatusKeymap),
       (kmSub (bind 'o') openExternallyKeymap),
+      (kmLeaf (bind '.') "Next filter" cycleNextFilter),
       (kmLeaf (bind 'q') "Quit" (const halt))
     ]
 
@@ -205,13 +218,23 @@ setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
   modifyModel (modifyAttrByEID cur (statusL .~ status'))
 
-make :: EID -> Filter -> Model -> MainTree
-make root filter_ model = MainTree root filter_ subtree list (keymapToZipper rootKeymap)
+cycleNextFilter :: AppContext -> EventM n MainTree ()
+cycleNextFilter ctx = do
+  mtFiltersL %= CList.rotR
+  pullNewModel ctx
+
+make :: EID -> Model -> MainTree
+make root model = makeWithFilters root (CList.fromList defaultFilters) model
+
+-- | filters must not be empty.
+makeWithFilters :: EID -> CList.CList Filter -> Model -> MainTree
+makeWithFilters root filters model = MainTree root filters subtree list (keymapToZipper rootKeymap)
   where
-    subtree = runFilter filter_ root model
+    subtree = runFilter (fromJust $ CList.focus filters) root model
     list = forestToBrickList $ stForest subtree
 
 forestToBrickList :: MForest -> MyList
+-- TODO when we have multiple tabs, MainList should be replaced by something that will actually be unique (take as an argument)
 forestToBrickList forest = L.list MainList (Vec.fromList contents) 1
   where
     contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels forest
@@ -301,22 +324,24 @@ withRoot go ctx = do
 
 modifyModel :: (Model -> Model) -> AppContext -> EventM n MainTree ()
 modifyModel f AppContext {acModelServer} = do
-  s@(MainTree {mtRoot, mtFilter, mtList}) <- get
+  s@(MainTree {mtRoot, mtList}) <- get
+  let filter_ = mtFilter s
   model' <- liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
     modifyModelOnServer acModelServer f
     getModel acModelServer
-  let subtree = runFilter mtFilter mtRoot model'
+  let subtree = runFilter filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
 
 pullNewModel :: AppContext -> EventM n MainTree ()
 pullNewModel AppContext {acModelServer} = do
-  s@(MainTree {mtRoot, mtFilter, mtList}) <- get
+  s@(MainTree {mtRoot, mtList}) <- get
+  let filter_ = mtFilter s
   model' <- liftIO $ getModel acModelServer
-  let subtree = runFilter mtFilter mtRoot model'
+  let subtree = runFilter filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
@@ -328,9 +353,9 @@ scrollListToEID eid = L.listFindBy $ \(_, eid', _) -> eid' == eid
 resetListPosition :: MyList -> MyList -> MyList
 resetListPosition old new = case L.listSelectedElement old of
   Nothing -> new
-  Just (ix, (_, tgt, _)) -> case Vec.findIndex (\(_, eid, _) -> eid == tgt) (L.listElements new) of
+  Just (ix_, (_, tgt, _)) -> case Vec.findIndex (\(_, eid, _) -> eid == tgt) (L.listElements new) of
     -- NB this is fine if `new` doesn't actually have `ix` b/c it's too short: then it goes to the end, as desired.
-    Nothing -> L.listMoveTo ix new
+    Nothing -> L.listMoveTo ix_ new
     Just ix' -> L.listMoveTo ix' new
 
 mtGoSubtreeFromCur :: (EID -> MForest -> Maybe EID) -> MainTree -> MainTree
