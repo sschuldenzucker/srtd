@@ -36,6 +36,8 @@ instance Show AppMsg where
 -- SOMEDAY maybe our resource names should just be lists of strings, aka. Brick attr names.
 data AppResourceName = MainListFor AppResourceName | Overlay Int | Tab Int | EditorFor AppResourceName deriving (Eq, Ord, Show)
 
+-- SOMEDAY consider passing this as an implicit parameter. Especially if we include "normal" app config in here.
+-- (not sure if this would *actually* be cleaner: We then have to carry the type annotation around.)
 data AppContext = AppContext
   { acModelServer :: ModelServer,
     acAppChan :: BChan AppMsg
@@ -60,6 +62,9 @@ class BrickComponent s where
   -- (is toplevel, descriptions)
   componentKeyDesc :: s -> (Bool, [(Text, Text)])
 
+  -- | Title of the component. Used in tabs and (should be used in) overlay titles.
+  componentTitle :: s -> Text
+
 data SomeBrickComponent = forall s. (BrickComponent s) => SomeBrickComponent s
 
 instance BrickComponent SomeBrickComponent where
@@ -75,3 +80,5 @@ instance BrickComponent SomeBrickComponent where
     zoom theLens $ handleEvent ctx ev
 
   componentKeyDesc (SomeBrickComponent s) = componentKeyDesc s
+
+  componentTitle (SomeBrickComponent s) = componentTitle s

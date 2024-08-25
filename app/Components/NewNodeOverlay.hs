@@ -13,6 +13,7 @@ import Brick.Widgets.Edit
 import Component
 import Control.Monad.State (liftIO)
 import Data.List (intercalate)
+import Data.Text (Text)
 import Graphics.Vty (Event (..), Key (..))
 import Lens.Micro.Platform
 
@@ -29,13 +30,14 @@ type Callback = String -> AppContext -> IO EID
 data NewNodeOverlay = NewNodeOverlay
   { _nnEditor :: Editor String AppResourceName,
     -- TODO looks way too general tbh.
-    _nnCallback :: Callback
+    _nnCallback :: Callback,
+    _nnTitle :: Text
   }
 
 makeLenses ''NewNodeOverlay
 
-newNodeOverlay :: Callback -> String -> AppResourceName -> NewNodeOverlay
-newNodeOverlay cb initName rname = NewNodeOverlay (editor editorRName (Just 1) initName) cb
+newNodeOverlay :: Callback -> String -> Text -> AppResourceName -> NewNodeOverlay
+newNodeOverlay cb initName title rname = NewNodeOverlay (editor editorRName (Just 1) initName) cb title
   where
     editorRName = EditorFor rname
 
@@ -56,3 +58,5 @@ instance BrickComponent NewNodeOverlay where
       AppContext {acAppChan} = ctx
 
   componentKeyDesc _ = (True, [("esc", "cancel"), ("enter", "confirm")])
+
+  componentTitle = _nnTitle

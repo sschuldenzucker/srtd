@@ -21,6 +21,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.CircularList qualified as CList
 import Data.List (intercalate)
 import Data.Maybe (fromJust, fromMaybe, listToMaybe)
+import Data.Text qualified as T
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -77,7 +78,7 @@ rootKeymap =
                     modifyModelOnServer acModelServer' (modifyAttrByEID cur (nameL .~ name'))
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
                     return cur
-              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName)
+              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName "Edit Item")
             Nothing -> return ()
       ),
       ( kmLeaf (ctrl 't') "Open test overlay" $ \ctx -> do
@@ -224,7 +225,7 @@ pushInsertNewItemRelToCur toLoc ctx = do
         uuid <- nextRandom
         modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
         return $ EIDNormal uuid
-  liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
+  liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "" "New Item")
 
 setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
@@ -321,6 +322,10 @@ instance BrickComponent MainTree where
       handleFallback e = zoom mtListL $ L.handleListEventVi (const $ return ()) e
 
   componentKeyDesc = kmzDesc . mtKeymap
+
+  componentTitle MainTree {mtSubtree} = T.pack $ pathStr
+    where
+      pathStr = intercalate " < " $ name (rootAttr mtSubtree) : [name attr | (_, attr) <- (breadcrumbs mtSubtree)]
 
 mtCur :: MainTree -> Maybe EID
 mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _)) -> i)
