@@ -19,6 +19,7 @@ import Control.Arrow (second)
 import Control.Monad (forM_, void)
 import Control.Monad.State (liftIO)
 import Data.CircularList qualified as CList
+import Data.List.Zipper qualified as LZ
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
@@ -32,13 +33,15 @@ import ModelServer
 import System.Directory (listDirectory)
 import System.Exit (exitFailure)
 import System.FilePath
+import Todo
 import Toml qualified
 
 data AppState = AppState
   { asContext :: AppContext,
-    -- TODO implement features to show & manage tabs. Rn  there's only one tab, lol.
-    -- TODO we may wanna keep these as MainTree so we can clone. Or 'new tab' should be a shortcut of MainTree, not sure.
-    asTabs :: [SomeBrickComponent],
+    -- SOMEDAY we may wanna keep these as MainTree so we can clone. Or 'new tab' should be a shortcut of MainTree, not sure.
+
+    -- | We make sure that `asTabs` is never after the end and in particular that it's nonempty.
+    asTabs :: LZ.Zipper SomeBrickComponent,
     asOverlays :: [SomeBrickComponent],
     asHelpAlways :: Bool,
     asAttrMapRing :: CList.CList (String, AttrMap)
@@ -95,7 +98,7 @@ main = do
   let appState =
         AppState
           { asContext = AppContext modelServer appChan,
-            asTabs = [SomeBrickComponent $ MainTree.make Vault model],
+            asTabs = LZ.fromList [SomeBrickComponent $ MainTree.make Vault model],
             asOverlays = [],
             asHelpAlways = True, -- Good default rn.
             asAttrMapRing = attrMapRing
@@ -116,9 +119,7 @@ main = do
 myAppDraw :: AppState -> [Widget AppResourceName]
 myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ [renderComponent tab0]
   where
-    tab0 = case asTabs of
-      [t] -> t
-      _ -> error "Wrong number of tabs."
+    tab0 = LZ.cursor asTabs
     -- renderOverlay o = hLimitPercent 70 $ renderComponent o
     renderOverlay =
       centerLayer
@@ -168,7 +169,7 @@ forComponentsM :: EventM AppResourceName SomeBrickComponent () -> EventM AppReso
 forComponentsM act = do
   state@(AppState {asOverlays, asTabs}) <- get
   asOverlays' <- forM asOverlays $ \t -> nestEventM' t act
-  asTabs' <- forM asTabs $ \t -> nestEventM' t act
+  asTabs' <- forMLZ asTabs $ \t -> nestEventM' t act
   put $ state {asOverlays = asOverlays', asTabs = asTabs'}
   return ()
 
@@ -177,11 +178,9 @@ activeComponentL :: Lens' AppState SomeBrickComponent
 activeComponentL = lens getter setter
   where
     getter AppState {asOverlays = o : _} = o
-    getter AppState {asTabs = t : _} = t
-    getter _ = error "No tabs"
+    getter AppState {asTabs} = LZ.cursor asTabs
     setter state@(AppState {asOverlays = _ : os}) t' = state {asOverlays = t' : os}
-    setter state@(AppState {asTabs = _ : ts}) t' = state {asTabs = t' : ts}
-    setter _ _ = error "No tabs"
+    setter state@(AppState {asTabs}) t' = state {asTabs = LZ.replace t' asTabs}
 
 pushOverlay :: (AppResourceName -> SomeBrickComponent) -> AppState -> AppState
 pushOverlay mk state@(AppState {asOverlays}) = state {asOverlays = mk ovlResourceName : asOverlays}
@@ -216,3 +215,33 @@ app =
       appAttrMap = myChooseAttrMap,
       appChooseCursor = myChooseCursor
     }
+
+-- --------------------------
+-- Utils
+-- --------------------------
+
+-- | Map a monad function over a zipper. Effects propagate from the first to the last element.
+--
+-- Not implementing any instances b/c (a) it's a PITA and (b) it's not super clear in which order
+-- you want effects actually.
+mapMLZ :: (Monad m) => (a -> m b) -> LZ.Zipper a -> m (LZ.Zipper b)
+mapMLZ f z =
+  let (back, front) = lzSplit z
+      (mback, mfront) = (mapM f back, mapM f front)
+   in lzFromFrontBack <$> mback <*> mfront
+
+-- | (part before the cursor, part including and after the cursor)
+--
+-- SOMEDAY would be easier & faster if I could access the zipper internals -.-
+lzSplit :: LZ.Zipper a -> ([a], [a])
+lzSplit z = (front, back)
+  where
+    front = reverse $ LZ.foldrz push [] (LZ.left z)
+    back = LZ.foldrz push [] z
+    push zz acc = (LZ.cursor zz) : acc
+
+lzFromFrontBack :: [a] -> [a] -> LZ.Zipper a
+lzFromFrontBack front back = todo
+
+forMLZ :: (Monad m) => LZ.Zipper a -> (a -> m b) -> m (LZ.Zipper b)
+forMLZ = flip mapMLZ
