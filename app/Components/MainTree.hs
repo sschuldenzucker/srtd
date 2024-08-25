@@ -402,6 +402,6 @@ mtGoSubtreeFromCur f mt = fromMaybe mt mres
 setResourceName :: AppResourceName -> MainTree -> MainTree
 setResourceName rname state =
   state
-    { mtList = forestToBrickList (MainListFor rname) (stForest . mtSubtree $ state),
+    { mtList = resetListPosition (mtList state) $ forestToBrickList (MainListFor rname) (stForest . mtSubtree $ state),
       mtResourceName = rname
     }
