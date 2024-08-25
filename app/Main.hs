@@ -234,14 +234,10 @@ mapMLZ f z =
 --
 -- SOMEDAY would be easier & faster if I could access the zipper internals -.-
 lzSplit :: LZ.Zipper a -> ([a], [a])
-lzSplit z = (front, back)
-  where
-    front = reverse $ LZ.foldrz push [] (LZ.left z)
-    back = LZ.foldrz push [] z
-    push zz acc = (LZ.cursor zz) : acc
+lzSplit (LZ.Zip rfront back) = (reverse rfront, back)
 
 lzFromFrontBack :: [a] -> [a] -> LZ.Zipper a
-lzFromFrontBack front back = todo
+lzFromFrontBack front back = LZ.Zip (reverse front) back
 
 forMLZ :: (Monad m) => LZ.Zipper a -> (a -> m b) -> m (LZ.Zipper b)
 forMLZ = flip mapMLZ
