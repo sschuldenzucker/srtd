@@ -143,6 +143,8 @@ myHandleEvent ev =
     (VtyEvent (EvKey (KChar 'q') [MCtrl])) -> do
       liftIO (glogL INFO "quitting...")
       halt
+    (VtyEvent (EvKey (KChar ']') [])) -> asTabsL %= lzCircRight
+    (VtyEvent (EvKey (KChar '[') [])) -> asTabsL %= lzCircLeft
     -- Toggle: Always show overlay. (o/w only at the top level)
     -- TODO I have no idea why Ctrl+/ is registered as Ctrl+_ but here we are.
     (VtyEvent (EvKey (KChar '_') [MCtrl])) -> do
@@ -156,6 +158,7 @@ myHandleEvent ev =
       zoom activeComponentL $ handleEvent asContext ev
     (AppEvent (PushOverlay o)) -> do
       modify $ pushOverlay o
+    (AppEvent (PushTab t)) -> modify $ pushTab t
     (AppEvent (ModelUpdated _)) -> do
       AppState {asContext} <- get
       forComponentsM $ handleEvent asContext ev
@@ -241,3 +244,9 @@ lzFromFrontBack front back = LZ.Zip (reverse front) back
 
 forMLZ :: (Monad m) => LZ.Zipper a -> (a -> m b) -> m (LZ.Zipper b)
 forMLZ = flip mapMLZ
+
+lzCircRight, lzCircLeft :: LZ.Zipper a -> LZ.Zipper a
+lzCircRight z =
+  let nxt = LZ.right z
+   in if LZ.endp nxt then LZ.start z else nxt
+lzCircLeft z = if LZ.beginp z then LZ.left (LZ.end z) else LZ.left z

@@ -16,12 +16,17 @@ import ModelServer (ModelServer, MsgModelUpdated)
 -- I.e.: what they're calling; what they're expecting as a return value.
 data OverlayReturnValue = ORNone | OREID EID deriving (Show)
 
-data AppMsg = PopOverlay OverlayReturnValue | PushOverlay (AppResourceName -> SomeBrickComponent) | ModelUpdated MsgModelUpdated
+data AppMsg
+  = PopOverlay OverlayReturnValue
+  | PushOverlay (AppResourceName -> SomeBrickComponent)
+  | PushTab (AppResourceName -> SomeBrickComponent)
+  | ModelUpdated MsgModelUpdated
 
 -- SOMEDAY we could make Show a precondition for BrickComponent or for SomeBrickComponent for better vis
 instance Show AppMsg where
   show (PopOverlay ret) = "PopOverlay(" ++ show ret ++ ")"
   show (PushOverlay _) = "PushOverlay _"
+  show (PushTab _) = "PushTab _"
   show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
 
 -- Not super clean but I don't think I'll need a lot here.
