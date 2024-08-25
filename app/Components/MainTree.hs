@@ -6,7 +6,6 @@
 
 module Components.MainTree (MainTree (..), make) where
 
-import Alignment (hAlignRightLayer)
 import AppAttr
 import Attr
 import Brick
@@ -17,7 +16,7 @@ import Brick.Widgets.List qualified as L
 import Component
 import Components.Attr (renderMaybeStatus)
 import Components.NewNodeOverlay (newNodeOverlay)
-import Components.TestOverlay (TestOverlay (..), newTestOverlay)
+import Components.TestOverlay (newTestOverlay)
 import Control.Monad.IO.Class (liftIO)
 import Data.CircularList qualified as CList
 import Data.List (intercalate)
@@ -30,7 +29,7 @@ import Lens.Micro.Platform
 import Log
 import Model
 import ModelServer
-import System.Process (callCommand, callProcess)
+import System.Process (callProcess)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
 import Todo
 import Util
