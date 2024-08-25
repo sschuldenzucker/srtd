@@ -230,7 +230,7 @@ make root model = makeWithFilters root (CList.fromList defaultFilters) model
 makeWithFilters :: EID -> CList.CList Filter -> Model -> MainTree
 makeWithFilters root filters model = MainTree root filters subtree list (keymapToZipper rootKeymap)
   where
-    subtree = runFilter (fromJust $ CList.focus filters) root model
+    subtree = filterRun (fromJust $ CList.focus filters) root model
     list = forestToBrickList $ stForest subtree
 
 forestToBrickList :: MForest -> MyList
@@ -331,7 +331,7 @@ modifyModel f AppContext {acModelServer} = do
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
     modifyModelOnServer acModelServer f
     getModel acModelServer
-  let subtree = runFilter filter_ mtRoot model'
+  let subtree = filterRun filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
@@ -341,7 +341,7 @@ pullNewModel AppContext {acModelServer} = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ getModel acModelServer
-  let subtree = runFilter filter_ mtRoot model'
+  let subtree = filterRun filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()

@@ -227,24 +227,29 @@ forestGetPrevSiblingId tgt forest = case splitFind (treeHasID tgt) forest of
 -- --------------------
 
 -- SOMEDAY unclear if this is the right structure.
-newtype Filter = Filter {runFilter :: EID -> Model -> Subtree}
+data Filter = Filter
+  { filterName :: String,
+    filterRun :: EID -> Model -> Subtree
+  }
 
 -- SOMEDAY maybe these should have a name actually. Also for display.
 instance Show Filter where
-  show _ = "<Filter>"
+  show f = "<Filter " ++ filterName f ++ ">"
 
 -- SOMEDAY decide on error handling
 f_identity :: Filter
-f_identity = Filter (\i m -> fromRight (error "root EID not found") $ modelGetSubtreeBelow i m)
+f_identity = Filter "all" f
+  where
+    f i m = fromRight (error "root EID not found") $ modelGetSubtreeBelow i m
 
 -- | Hide completed tasks, top-down
 --
 -- TODO This is very simplistic: A non-completed task below a completed one is not shown (even though it seems important)
 f_hide_completed :: Filter
 f_hide_completed =
-  let (Filter fi) = f_identity
+  let (Filter _ fi) = f_identity
       fi' i m = stFilter p $ fi i m
-   in Filter fi'
+   in Filter "not done" fi'
   where
     p (_, Attr {status}) = status /= Just Done
 
