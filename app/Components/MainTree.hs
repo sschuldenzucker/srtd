@@ -292,8 +292,6 @@ instance BrickComponent MainTree where
       (VtyEvent (EvKey KBS [])) | not isTopLevel -> mtKeymapL %= kmzUp
       (VtyEvent e@(EvKey key mods)) -> do
         keymap <- use mtKeymapL
-        -- TODO case esc handler for when we're in a submap: then only reset the keymap
-        -- TODO also case backspace for this: then go up.
         case kmzLookup keymap key mods of
           NotFound -> handleFallback e
           LeafResult act nxt -> act ctx >> mtKeymapL .= nxt
