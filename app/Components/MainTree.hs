@@ -30,6 +30,7 @@ import Lens.Micro.Platform
 import Log
 import Model
 import ModelServer
+import System.Hclip (setClipboard)
 import System.Process (callProcess)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
 import Todo
@@ -208,6 +209,9 @@ openExternallyKeymap =
     "Open externally"
     [ ( kmLeaf (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
           whenJust (findFirstURL name) $ \url -> liftIO (openURL url)
+      ),
+      ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
+          liftIO $ setClipboard name
       )
     ]
 
