@@ -20,6 +20,8 @@ data AppMsg
   = PopOverlay OverlayReturnValue
   | PushOverlay (AppResourceName -> SomeBrickComponent)
   | PushTab (AppResourceName -> SomeBrickComponent)
+  | -- SOMEDAY PopOverlay and PopTab should be reconciled into a generic "pop active" msg so views can safely "pop themselves".
+    PopTab
   | ModelUpdated MsgModelUpdated
 
 -- SOMEDAY we could make Show a precondition for BrickComponent or for SomeBrickComponent for better vis
@@ -27,10 +29,12 @@ instance Show AppMsg where
   show (PopOverlay ret) = "PopOverlay(" ++ show ret ++ ")"
   show (PushOverlay _) = "PushOverlay _"
   show (PushTab _) = "PushTab _"
+  show PopTab = "PopTab"
   show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
 
--- Not super clean but I don't think I'll need a lot here.
-data AppResourceName = MainList | Overlay Int | EditorFor AppResourceName deriving (Eq, Ord, Show)
+-- Not super clean but I don't think I'll need a lot here. These nest to be unique across different tabs / overlays.
+-- SOMEDAY maybe our resource names should just be lists of strings, aka. Brick attr names.
+data AppResourceName = MainListFor AppResourceName | Overlay Int | Tab Int | EditorFor AppResourceName deriving (Eq, Ord, Show)
 
 data AppContext = AppContext
   { acModelServer :: ModelServer,

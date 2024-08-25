@@ -10,7 +10,7 @@ import AppAttr
 import Attr
 import Brick
 import Brick.BChan (writeBChan)
-import Brick.Keybindings (bind)
+import Brick.Keybindings (bind, ctrl)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Component
@@ -41,6 +41,8 @@ data MainTree = MainTree
     mtFilters :: CList.CList Filter,
     mtSubtree :: Subtree,
     mtList :: MyList,
+    -- | Top-level resource name for this component. We can assign anything nested below (or "above") it.
+    mtResourceName :: AppResourceName,
     mtKeymap :: KeymapZipper (AppContext -> EventM AppResourceName MainTree ())
   }
   deriving (Show)
@@ -78,8 +80,15 @@ rootKeymap =
               liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName)
             Nothing -> return ()
       ),
-      ( kmLeaf (bind 'T') "Open test overlay" $ \ctx -> do
+      ( kmLeaf (ctrl 't') "Open test overlay" $ \ctx -> do
           liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent newTestOverlay)
+      ),
+      ( kmLeaf (bind 'T') "New tab" $ \ctx -> do
+          state <- get
+          liftIO $ writeBChan (acAppChan ctx) $ PushTab (\rname -> SomeBrickComponent $ setResourceName rname state)
+      ),
+      ( kmLeaf (bind 'Q') "Close tab" $ \ctx ->
+          liftIO $ writeBChan (acAppChan ctx) $ PopTab
       ),
       ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $ withCur $ \cur ->
           modifyModel (moveSubtree cur NextSibling)
@@ -98,18 +107,20 @@ rootKeymap =
       (kmSub (bind 'M') moveSubtreeModeKeymap),
       (kmSub (bind 'd') deleteKeymap),
       ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
+          rname <- mtResourceName <$> get
           model <- liftIO $ getModel (acModelServer ctx)
           filters <- mtFilters <$> get
-          put $ makeWithFilters cur filters model
+          put $ makeWithFilters cur filters model rname
       ),
       ( kmLeaf (binding KBS []) "De-hoist" $ \ctx -> do
           s <- get
           case s ^. mtSubtreeL . breadcrumbsL of
             [] -> return ()
             (parent, _) : _ -> do
+              rname <- mtResourceName <$> get
               model <- liftIO $ getModel (acModelServer ctx)
               filters <- mtFilters <$> get
-              put $ makeWithFilters parent filters model & mtListL %~ scrollListToEID (mtRoot s)
+              put $ makeWithFilters parent filters model rname & mtListL %~ scrollListToEID (mtRoot s)
       ),
       (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur forestGetParentId))),
       (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur forestGetNextSiblingId))),
@@ -224,19 +235,27 @@ cycleNextFilter ctx = do
   mtFiltersL %= CList.rotR
   pullNewModel ctx
 
-make :: EID -> Model -> MainTree
-make root model = makeWithFilters root (CList.fromList defaultFilters) model
+make :: EID -> Model -> AppResourceName -> MainTree
+make root = makeWithFilters root (CList.fromList defaultFilters)
 
 -- | filters must not be empty.
-makeWithFilters :: EID -> CList.CList Filter -> Model -> MainTree
-makeWithFilters root filters model = MainTree root filters subtree list (keymapToZipper rootKeymap)
+makeWithFilters :: EID -> CList.CList Filter -> Model -> AppResourceName -> MainTree
+makeWithFilters root filters model rname =
+  MainTree
+    { mtRoot = root,
+      mtFilters = filters,
+      mtSubtree = subtree,
+      mtList = list,
+      mtResourceName = rname,
+      mtKeymap = keymapToZipper rootKeymap
+    }
   where
     subtree = filterRun (fromJust $ CList.focus filters) root model
-    list = forestToBrickList $ stForest subtree
+    list = forestToBrickList (MainListFor rname) $ stForest subtree
 
-forestToBrickList :: MForest -> MyList
+forestToBrickList :: AppResourceName -> MForest -> MyList
 -- TODO when we have multiple tabs, MainList should be replaced by something that will actually be unique (take as an argument)
-forestToBrickList forest = L.list MainList (Vec.fromList contents) 1
+forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
   where
     contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels forest
 
@@ -339,7 +358,7 @@ modifyModel f AppContext {acModelServer} = do
     modifyModelOnServer acModelServer f
     getModel acModelServer
   let subtree = filterRun filter_ mtRoot model'
-  let list' = resetListPosition mtList $ forestToBrickList (stForest subtree)
+  let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
 
@@ -349,7 +368,7 @@ pullNewModel AppContext {acModelServer} = do
   let filter_ = mtFilter s
   model' <- liftIO $ getModel acModelServer
   let subtree = filterRun filter_ mtRoot model'
-  let list' = resetListPosition mtList $ forestToBrickList (stForest subtree)
+  let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
 
@@ -373,3 +392,11 @@ mtGoSubtreeFromCur f mt = fromMaybe mt mres
       cur <- mtCur mt
       par <- mt ^. mtSubtreeL . stForestL . to (f cur)
       return $ mt & mtListL %~ scrollListToEID par
+
+-- | Toplevel app resource name, including all contained resources. This is a "cloning" routine.
+setResourceName :: AppResourceName -> MainTree -> MainTree
+setResourceName rname state =
+  state
+    { mtList = forestToBrickList (MainListFor rname) (stForest . mtSubtree $ state),
+      mtResourceName = rname
+    }

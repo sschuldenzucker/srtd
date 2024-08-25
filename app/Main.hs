@@ -42,6 +42,8 @@ data AppState = AppState
 
     -- | We make sure that `asTabs` is never after the end and in particular that it's nonempty.
     asTabs :: LZ.Zipper SomeBrickComponent,
+    -- | "Unique ID" for the next tab being opened, for resource names.
+    asNextTabID :: Int,
     asOverlays :: [SomeBrickComponent],
     asHelpAlways :: Bool,
     asAttrMapRing :: CList.CList (String, AttrMap)
@@ -98,7 +100,8 @@ main = do
   let appState =
         AppState
           { asContext = AppContext modelServer appChan,
-            asTabs = LZ.fromList [SomeBrickComponent $ MainTree.make Vault model],
+            asTabs = LZ.fromList [SomeBrickComponent $ MainTree.make Vault model (Tab 0)],
+            asNextTabID = 1,
             asOverlays = [],
             asHelpAlways = True, -- Good default rn.
             asAttrMapRing = attrMapRing
@@ -159,6 +162,7 @@ myHandleEvent ev =
     (AppEvent (PushOverlay o)) -> do
       modify $ pushOverlay o
     (AppEvent (PushTab t)) -> modify $ pushTab t
+    (AppEvent PopTab) -> modify popTab
     (AppEvent (ModelUpdated _)) -> do
       AppState {asContext} <- get
       forComponentsM $ handleEvent asContext ev
@@ -194,6 +198,21 @@ popOverlay :: AppState -> AppState
 popOverlay state@(AppState {asOverlays = _ : os}) = state {asOverlays = os}
 -- SOMEDAY could also just do nothing here. Source of crashes but only due to logic bugs though.
 popOverlay _ = error "No overlays"
+
+pushTab :: (AppResourceName -> SomeBrickComponent) -> AppState -> AppState
+pushTab mk state@(AppState {asTabs, asNextTabID}) = state {asTabs = asTabs', asNextTabID = asNextTabID + 1}
+  where
+    asTabs' = LZ.insert (mk $ Tab asNextTabID) . LZ.right $ asTabs
+
+-- | Remove active tab and go to next or else previous.
+popTab :: AppState -> AppState
+popTab state@AppState {asTabs} =
+  let asTabs' = LZ.delete asTabs
+      asTabs''
+        | LZ.emptyp asTabs' = asTabs -- can't pop the last tab.
+        | LZ.endp asTabs' = LZ.left asTabs'
+        | otherwise = asTabs'
+   in state {asTabs = asTabs''}
 
 -- not sure if this is quite right but maybe it's enough. If we're missing cursors, we should prob revise.
 myChooseCursor :: AppState -> [CursorLocation AppResourceName] -> Maybe (CursorLocation AppResourceName)
