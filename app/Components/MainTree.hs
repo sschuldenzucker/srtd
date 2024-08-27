@@ -66,7 +66,7 @@ defaultFilters =
 rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
 rootKeymap =
   kmMake
-    "Tree"
+    "Tree View"
     [ kmLeaf (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur After,
       kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur Before,
       kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur FirstChild,
