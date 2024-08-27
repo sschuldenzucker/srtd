@@ -16,14 +16,33 @@ import GHC.Generics
 
 data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
 
--- TODO this is essentially a dummy. Not really the statuses I want.
-data Status = WIP | Next | Later | Waiting | Someday | Done | Project deriving (Eq, Show, Generic)
+data Status
+  = -- | Ready to be worked on
+    Next
+  | -- | Not ready, but will likely become Next later.
+    Later
+  | -- | Waiting for someone else. (or *maybe* on an event to happen, not sure)
+    Waiting
+  | -- | Optional and, if it happens, later. Not committed to.
+    Someday
+  | -- | Done. (NB there's no 'archived' tag right now)
+    Done
+  | -- | Active project. Checked for next actions / being stuck.
+    Project
+  | -- | Open point. Something we can't / don't want to do anything about rn but likely needs to be
+    -- resolved to complete the project, and also no clear *other* person is responsible for doing this.
+    -- Otherwise treated similar to Waiting.
+    Open
+  | -- | Work in progress. Like Next, but also I am actively worked on it right now.
+    WIP
+  deriving (Eq, Show, Generic)
 
 suffixLenses ''Status
 
 -- SOMEDAY should be Text.
 data Attr = Attr
   { name :: String,
+    -- | If Nothing, this item is treated as a transparent "folder" by most analyses.
     -- TODO should Status have a special 'None' element instead? Or just a default 'Item" or whatever?
     status :: Maybe Status
   }

@@ -160,7 +160,8 @@ setStatusKeymap =
       kmLeaf (bind 'l') "Later" (setStatus $ Just Later),
       kmLeaf (bind 'i') "WIP" (setStatus $ Just WIP),
       kmLeaf (binding KEnter []) "Done" (setStatus $ Just Done),
-      kmLeaf (bind 's') "Someday" (setStatus $ Just Someday)
+      kmLeaf (bind 's') "Someday" (setStatus $ Just Someday),
+      kmLeaf (bind 'o') "Someday" (setStatus $ Just Open)
     ]
 
 moveSubtreeModeKeymap :: Keymap (AppContext -> EventM n MainTree ())

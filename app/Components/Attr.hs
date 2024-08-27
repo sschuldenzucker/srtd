@@ -18,6 +18,7 @@ renderStatus sel a = case a of
   WIP -> withAttr (root <> attrName "wip") (str "*")
   Someday -> withAttr (root <> attrName "someday") (str "~")
   Done -> withAttr (root <> attrName "done") (str "+")
+  Open -> withAttr (root <> attrName "open") (str "o")
   where
     root = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
 
