@@ -8,7 +8,7 @@ module Components.MainTree (MainTree (..), make) where
 
 import AppAttr
 import Attr
-import Brick
+import Brick hiding (on)
 import Brick.BChan (writeBChan)
 import Brick.Keybindings (bind, ctrl)
 import Brick.Keybindings.KeyConfig (binding)
@@ -19,6 +19,7 @@ import Components.NewNodeOverlay (newNodeOverlay)
 import Components.TestOverlay (newTestOverlay)
 import Control.Monad.IO.Class (liftIO)
 import Data.CircularList qualified as CList
+import Data.Function (on)
 import Data.List (intercalate)
 import Data.Maybe (fromJust, fromMaybe, listToMaybe)
 import Data.Text qualified as T
@@ -125,6 +126,8 @@ rootKeymap =
               filters <- mtFilters <$> get
               put $ makeWithFilters parent filters model rname & mtListL %~ scrollListToEID (mtRoot s)
       ),
+      (kmSub (bind ',') sortCurKeymap),
+      (kmSub (bind ';') sortRootKeymap),
       (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur forestGetParentId))),
       (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur forestGetNextSiblingId))),
       (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur forestGetPrevSiblingId))),
@@ -202,6 +205,30 @@ openExternallyKeymap =
           liftIO $ setClipboard name
       )
     ]
+
+-- SOMEDAY The following two only differ by what is used, `withRoot` or `withCur`. Could easily be unified.
+
+sortRootKeymap :: Keymap (AppContext -> EventM n MainTree ())
+sortRootKeymap =
+  kmMake
+    "Sort root by"
+    $ (kmSub (bind 'D') $ kmMake "Deep" (mkItems sortDeepBelow))
+      : mkItems sortShallowBelow
+  where
+    mkItems sorter =
+      [kmLeaf (bind 't') "Status" $ sortRootBy sorter (compareMStatusActionability `on` (view statusL))]
+    sortRootBy sorter ord = withRoot $ \root -> modifyModel (sorter ord root)
+
+sortCurKeymap :: Keymap (AppContext -> EventM n MainTree ())
+sortCurKeymap =
+  kmMake
+    "Sort root by"
+    $ (kmSub (bind 'D') $ kmMake "Deep" (mkItems sortDeepBelow))
+      : mkItems sortShallowBelow
+  where
+    mkItems sorter =
+      [kmLeaf (bind 't') "Status" $ sortCurBy sorter (compareMStatusActionability `on` (view statusL))]
+    sortCurBy sorter ord = withCur $ \cur -> modifyModel (sorter ord cur)
 
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String

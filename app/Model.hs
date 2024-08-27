@@ -14,7 +14,9 @@ import Brick (suffixLenses)
 import Control.Applicative (asum, (<|>))
 import Data.Aeson
 import Data.Either (fromRight)
-import Data.List (find, unfoldr)
+import Data.IntMap (IntMap)
+import Data.IntMap qualified as IntMap
+import Data.List (find, sortBy, unfoldr)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Tree
 import Data.Tree.Zipper (Empty, Full, TreePos)
@@ -465,3 +467,26 @@ forestMoveSubtreeIdRelToAnchor tgt anchor go forest = fromMaybe forest $ do
   return forest''
   where
     forestLoc = Z.fromForest forest
+
+-- ------------------
+-- Sorting (physical)
+-- ------------------
+
+onForestBelowId :: (Eq id) => id -> (Forest (id, a) -> Forest (id, a)) -> Forest (id, a) -> Forest (id, a)
+-- This is probably a bit inefficient but it was there so w/e
+-- SOMEDAY it's actually an error if root is not found.
+onForestBelowId root f forest = case zFindIdFirst root . Z.fromForest $ forest of
+  Nothing -> forest
+  Just rootLoc -> Z.forest . zForestRoot . Z.modifyTree (onTreeChildren f) $ rootLoc
+
+sortShallowBelow :: (Attr -> Attr -> Ordering) -> EID -> Model -> Model
+sortShallowBelow ord root = forestL %~ onForestBelowId root (sortBy ord')
+  where
+    ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2
+
+sortDeepBelow :: (Attr -> Attr -> Ordering) -> EID -> Model -> Model
+sortDeepBelow ord root = forestL %~ onForestBelowId root deepSortByOrd
+  where
+    -- prob kinda inefficient but I got <= 10 levels or something.
+    deepSortByOrd = onForestChildren deepSortByOrd . sortBy ord'
+    ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2
