@@ -107,7 +107,7 @@ main = do
             asTabs = LZ.fromList [SomeBrickComponent $ MainTree.make Vault model (Tab 0)],
             asNextTabID = 1,
             asOverlays = [],
-            asHelpAlways = True, -- Good default rn.
+            asHelpAlways = False,
             asAttrMapRing = attrMapRing
           }
 
