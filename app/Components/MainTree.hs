@@ -222,7 +222,7 @@ sortRootKeymap =
 sortCurKeymap :: Keymap (AppContext -> EventM n MainTree ())
 sortCurKeymap =
   kmMake
-    "Sort root by"
+    "Sort selected by"
     $ (kmSub (bind 'D') $ kmMake "Deep" (mkItems sortDeepBelow))
       : mkItems sortShallowBelow
   where
