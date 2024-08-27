@@ -29,6 +29,7 @@ import Data.Text.IO qualified as T
 import Data.Traversable (forM)
 import GHC.Stack (HasCallStack)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
+import Keymap (KeyDesc (..))
 import Lens.Micro.Platform
 import Log
 import Model
@@ -147,13 +148,15 @@ myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverl
         . Brick.vLimitPercent 75
         . borderWithLabel (padLeftRight 1 . txt $ componentTitle o)
         $ renderComponent o
-    renderKeyHelp pairs =
+    renderKeyHelp keymapName pairs =
       let configTable = surroundingBorder False . rowBorders False . columnBorders False
           inner = configTable $ table [[padRight (Pad 1) (txt keydesc), txt actdesc] | (keydesc, actdesc) <- pairs]
-       in alignBottomRightLayer . borderWithLabel (padLeftRight 1 $ str "Help") $ renderTable inner
+       in -- SOMEDAY minor bug: When `keymapName` is wider than the content (the key table), it's cut off.
+          -- This happens in particular with smaller sub-mode keymaps.
+          alignBottomRightLayer . borderWithLabel (padLeftRight 1 $ txt keymapName) $ renderTable inner
     keyHelpUI =
-      let (isToplevel, keydescs) = componentKeyDesc $ state ^. activeComponentL
-       in if not isToplevel || (asHelpAlways state) then renderKeyHelp keydescs else emptyWidget
+      let KeyDesc keymapName isToplevel keydescs = componentKeyDesc $ state ^. activeComponentL
+       in if not isToplevel || (asHelpAlways state) then renderKeyHelp keymapName keydescs else emptyWidget
 
 myHandleEvent :: BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
 myHandleEvent ev =

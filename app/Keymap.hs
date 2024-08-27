@@ -105,9 +105,19 @@ kmDesc (Keymap {kmMap, kmAddlDesc}) =
     describeItem (KeymapItem {kmiItem = LeafItem name _}) = name
     describeItem (KeymapItem {kmiItem = SubmapItem (Keymap {kmName})}) = kmName <> "..."
 
--- | (is toplevel, [(key label, action description)])
-kmzDesc :: KeymapZipper a -> (Bool, [(Text, Text)])
-kmzDesc (KeymapZipper ps cur) = (null ps, kmDesc cur)
+data KeyDesc = KeyDesc
+  { kdName :: Text,
+    kdIsToplevel :: Bool,
+    kdPairs :: [(Text, Text)]
+  }
+
+kmzDesc :: KeymapZipper a -> KeyDesc
+kmzDesc (KeymapZipper ps cur) =
+  KeyDesc
+    { kdName = kmName cur,
+      kdIsToplevel = null ps,
+      kdPairs = kmDesc cur
+    }
 
 data KeymapResult a = NotFound | SubmapResult (KeymapZipper a) | LeafResult a (KeymapZipper a)
 

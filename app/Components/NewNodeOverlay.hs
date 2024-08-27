@@ -15,6 +15,7 @@ import Control.Monad.State (liftIO)
 import Data.List (intercalate)
 import Data.Text (Text)
 import Graphics.Vty (Event (..), Key (..))
+import Keymap (KeyDesc (..))
 import Lens.Micro.Platform
 
 -- SOMEDAY instead of this half-assed continuation passing style, maybe we can find something that's:
@@ -57,6 +58,6 @@ instance BrickComponent NewNodeOverlay where
     where
       AppContext {acAppChan} = ctx
 
-  componentKeyDesc _ = (True, [("esc", "cancel"), ("enter", "confirm")])
+  componentKeyDesc self = KeyDesc (_nnTitle self) True [("esc", "cancel"), ("enter", "confirm")]
 
   componentTitle = _nnTitle

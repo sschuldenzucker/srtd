@@ -9,6 +9,7 @@ import Attr (EID)
 import Brick
 import Brick.BChan (BChan)
 import Data.Text (Text)
+import Keymap (KeyDesc)
 import Lens.Micro.Platform (lens)
 import ModelServer (ModelServer, MsgModelUpdated)
 
@@ -62,9 +63,7 @@ class BrickComponent s where
   handleEvent :: AppContext -> BrickEvent AppResourceName AppMsg -> EventM AppResourceName s ()
 
   -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
-  --
-  -- (is toplevel, descriptions)
-  componentKeyDesc :: s -> (Bool, [(Text, Text)])
+  componentKeyDesc :: s -> KeyDesc
 
   -- | Title of the component. Used in tabs and (should be used in) overlay titles.
   componentTitle :: s -> Text
