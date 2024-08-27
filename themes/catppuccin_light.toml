@@ -65,7 +65,7 @@ fg = "text"
 "status.wip" = {fg = "yellow"}
 "status.done" = {fg = "overlay1"}
 "status.someday" = {fg = "mauve"}
-"status.open" = {fg = "rosewater"}
+"status.open" = {fg = "yellow"}
 
 # SOMEDAY a bit annoying that we don't have the right kind of inheritance, so we have to duplicate this.
 # (it's the same as without selected)
@@ -76,5 +76,5 @@ fg = "text"
 "selected.status.wip" = {fg = "yellow"}
 "selected.status.done" = {fg = "overlay1"}
 "selected.status.someday" = {fg = "mauve"}
-"selected.status.open" = {fg = "rosewater"}
+"selected.status.open" = {fg = "yellow"}
 
