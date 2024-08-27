@@ -264,20 +264,20 @@ stFilter p = stForestL %~ (filterForest p)
 
 type Label = (EID, Attr)
 
-moveSubtree' :: EID -> MWalker Label -> Model -> Model
+moveSubtree' :: EID -> MoveWalker Label -> Model -> Model
 moveSubtree' eid go = forestL %~ (forestMoveSubtreeId' eid go)
 
-moveSubtreeBelow' :: EID -> EID -> MWalker Label -> Model -> Model
+moveSubtreeBelow' :: EID -> EID -> MoveWalker Label -> Model -> Model
 moveSubtreeBelow' root tgt go = forestL %~ (forestMoveSubtreeIdBelow' root tgt go)
 
 -- | Does nothing if the EID is not found.
-forestMoveSubtreeId' :: (Eq id) => id -> MWalker (id, a) -> Forest (id, a) -> Forest (id, a)
+forestMoveSubtreeId' :: (Eq id) => id -> MoveWalker (id, a) -> Forest (id, a) -> Forest (id, a)
 forestMoveSubtreeId' tgt go forest = case zFindIdFirst tgt . Z.fromForest $ forest of
   Nothing -> forest
   Just loc -> zFullForest $ mzMove go loc
 
 -- | Like forestMoveSubtreeId' but only consider the subtree below `root`.
-forestMoveSubtreeIdBelow' :: (Eq id) => id -> id -> MWalker (id, a) -> Forest (id, a) -> Forest (id, a)
+forestMoveSubtreeIdBelow' :: (Eq id) => id -> id -> MoveWalker (id, a) -> Forest (id, a) -> Forest (id, a)
 forestMoveSubtreeIdBelow' root tgt go forest =
   -- SOMEDAY not really a deep reason to use zippers here other than that it's easy.
   case zFindIdFirst root . Z.fromForest $ forest of
@@ -354,9 +354,10 @@ mzMove go pos = case go . Z.delete $ pos of
   Nothing -> pos
   Just epos' -> Z.insert (Z.tree pos) epos'
 
-type MWalker a = TreePos Empty a -> Maybe (TreePos Empty a)
+-- | Walks from an empty position (of a just-removed node) to a new empty position (where the node is to be moved), and may fail at that.
+type MoveWalker a = TreePos Empty a -> Maybe (TreePos Empty a)
 
-toNextSibling, toPrevSibling, toBeforeParent, toAfterParent, toFirstChildOfNext, toFirstChildOfPrev, toLastChildOfNext, toLastChildOfPrev :: MWalker a
+toNextSibling, toPrevSibling, toBeforeParent, toAfterParent, toFirstChildOfNext, toFirstChildOfPrev, toLastChildOfNext, toLastChildOfPrev :: MoveWalker a
 toNextSibling = Z.next
 toPrevSibling = Z.prev
 toBeforeParent = fmap Z.prevSpace . Z.parent
@@ -368,7 +369,7 @@ toLastChildOfPrev = fmap (Z.last . Z.children) . Z.prevTree
 
 -- Not sure if "preorder" is the right wording here; it doesn't actually recur upwards.
 -- SOMEDAY I'm sure there's a monad or something that does these alternatives.
-toBeforeNextPreorder, toAfterPrevPreorder :: MWalker a
+toBeforeNextPreorder, toAfterPrevPreorder :: MoveWalker a
 toBeforeNextPreorder eloc =
   toBeforeFirstChildOfNext eloc
     <|> Z.next eloc
