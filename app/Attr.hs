@@ -16,26 +16,37 @@ import GHC.Generics
 
 data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
 
+-- | The default Ord instance (i.e., the order of constructors) is by actionability.
 data Status
-  = -- | Ready to be worked on
+  = -- | Work in progress. Like Next, but also I am actively working on it right now.
+    WIP
+  | -- | Ready to be worked on
     Next
-  | -- | Not ready, but will likely become Next later.
-    Later
-  | -- | Waiting for someone else. (or *maybe* on an event to happen, not sure)
-    Waiting
-  | -- | Optional and, if it happens, later. Not committed to.
-    Someday
-  | -- | Done. (NB there's no 'archived' tag right now)
-    Done
   | -- | Active project. Checked for next actions / being stuck.
     Project
+  | -- | Not ready, but will likely become Next later.
+    Waiting
   | -- | Open point. Something we can't / don't want to do anything about rn but likely needs to be
     -- resolved to complete the project, and also no clear *other* person is responsible for doing this.
     -- Otherwise treated similar to Waiting.
     Open
-  | -- | Work in progress. Like Next, but also I am actively working on it right now.
-    WIP
-  deriving (Eq, Show, Generic)
+  | -- | Optional and, if it happens, later. Not committed to.
+    Later
+  | -- | Waiting for someone else. (or *maybe* on an event to happen, not sure)
+    Someday
+  | -- | Done. (NB there's no 'archived' tag right now)
+    Done
+  deriving (Eq, Ord, Show, Generic)
+
+compareStatusActionability :: Status -> Status -> Ordering
+compareStatusActionability = compare
+
+-- | Ordering for (Maybe Status) by actionability
+--
+-- NB Nothing gets the lowest (most actionable) status. This is appropriate because these are
+-- usually containers for notes etc. that should be at the top.
+compareMStatusActionability :: Maybe Status -> Maybe Status -> Ordering
+compareMStatusActionability = compare
 
 suffixLenses ''Status
 
