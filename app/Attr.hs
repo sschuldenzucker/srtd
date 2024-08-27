@@ -33,7 +33,7 @@ data Status
     -- resolved to complete the project, and also no clear *other* person is responsible for doing this.
     -- Otherwise treated similar to Waiting.
     Open
-  | -- | Work in progress. Like Next, but also I am actively worked on it right now.
+  | -- | Work in progress. Like Next, but also I am actively working on it right now.
     WIP
   deriving (Eq, Show, Generic)
 
