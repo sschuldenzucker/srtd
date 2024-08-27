@@ -98,19 +98,14 @@ rootKeymap =
       ( kmLeaf (bind '[') "Prev tab" $ \ctx ->
           liftIO $ writeBChan (acAppChan ctx) $ PrevTab
       ),
-      ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $ withCur $ \cur ->
-          modifyModel (moveSubtree cur NextSibling)
+      ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $ moveCurRelative goNextSibling insAfter
       ),
-      ( kmLeaf (binding (KChar 'k') [MMeta]) "Move subtree up same level" $ withCur $ \cur ->
-          modifyModel (moveSubtree cur PrevSibling)
+      ( kmLeaf (binding (KChar 'k') [MMeta]) "Move subtree up same level" $ moveCurRelative goPrevSibling insBefore
       ),
-      ( kmLeaf (bind '<') "Move subtree after parent" $ withRoot $ \root -> withCur $ \cur ->
-          modifyModel (moveSubtreeBelow' root cur toAfterParent)
+      ( kmLeaf (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter
       ),
-      ( kmLeaf (bind '>') "Move subtree last child of previous" $ withRoot $ \root -> withCur $ \cur ->
-          modifyModel (moveSubtreeBelow' root cur toLastChildOfPrev)
+      ( kmLeaf (bind '>') "Move subtree last child of previous" $ moveCurRelative goPrevSibling insLastChild
       ),
-      -- TODO hierarchy-up and one hierarchy-down (taken from move-subtree keymap.)
       -- (kmSub (bind 'm') moveSingleModeKeymap),
       (kmSub (bind 'M') moveSubtreeModeKeymap),
       (kmSub (bind 'd') deleteKeymap),
@@ -178,27 +173,19 @@ moveSubtreeModeKeymap =
         ( kmLeaf (bind 'k') "Up" $ withRoot $ \root -> withCur $ \cur ->
             modifyModel (moveSubtreeBelow' root cur toAfterPrevPreorder)
         ),
-        ( kmLeaf (bind 'J') "Down same level" $ withRoot $ \root -> withCur $ \cur ctx -> do
-            liftIO $ glogL INFO "Running: Move down same level"
-            modifyModel (moveSubtreeBelow' root cur toNextSibling) ctx
+        ( kmLeaf (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter
         ),
-        ( kmLeaf (bind 'K') "Up same level" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toPrevSibling)
+        ( kmLeaf (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore
         ),
-        ( kmLeaf (bind 'h') "Before parent" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toBeforeParent)
+        ( kmLeaf (bind 'h') "Before parent" $ moveCurRelative goParent insBefore
         ),
-        ( kmLeaf (bind '<') "After parent" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toAfterParent)
+        ( kmLeaf (bind '<') "After parent" $ moveCurRelative goParent insAfter
         ),
-        ( kmLeaf (bind 'L') "Last child of next" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toLastChildOfNext)
+        ( kmLeaf (bind 'L') "Last child of next" $ moveCurRelative goNextSibling insLastChild
         ),
-        ( kmLeaf (bind 'l') "First child of next" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toFirstChildOfNext)
+        ( kmLeaf (bind 'l') "First child of next" $ moveCurRelative goNextSibling insFirstChild
         ),
-        ( kmLeaf (bind '>') "Last child of previous" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toLastChildOfPrev)
+        ( kmLeaf (bind '>') "Last child of previous" $ moveCurRelative goPrevSibling insLastChild
         )
         -- NB 'H' is not used and that's fine IMHO. I'm not sure why but these bindings were the most intuitive.
         -- SOMEDAY hierarchy-breaking '<' (dedent)
@@ -363,6 +350,22 @@ withRoot go ctx = do
   s <- get
   let root = mtRoot s
   go root ctx
+
+-- | Helper for relative move operations.
+--
+-- NB we do *not* need special precautions to prevent us from moving things out of the root b/c in
+-- that case, the respective anchor is just not found in the haystack. (this is a bit of a function
+-- of our insert walkers being not too crazy. When they do become more complex, we may need to bring
+-- this back.)
+--
+-- SOMEDAY ^^
+--
+-- SOMEDAY this can be generalized by replacing the first Label by whatever label type we ultimately use
+-- here. The forest just has to be labeled (EID, a) for some a. See `moveSubtreeRelFromForest`.
+moveCurRelative :: GoWalker Label -> InsertWalker Label -> AppContext -> EventM n MainTree ()
+moveCurRelative go ins = withCur $ \cur ctx -> do
+  forest <- use $ mtSubtreeL . stForestL
+  modifyModel (moveSubtreeRelFromForest cur go ins forest) ctx
 
 modifyModel :: (Model -> Model) -> AppContext -> EventM n MainTree ()
 modifyModel f AppContext {acModelServer} = do

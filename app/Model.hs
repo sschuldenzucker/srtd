@@ -15,7 +15,7 @@ import Control.Applicative (asum, (<|>))
 import Data.Aeson
 import Data.Either (fromRight)
 import Data.List (find, unfoldr)
-import Data.Maybe (listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Tree
 import Data.Tree.Zipper (Empty, Full, TreePos)
 import Data.Tree.Zipper qualified as Z
@@ -323,6 +323,7 @@ zFindLabelFirst lp = zFindFirst $ lp . Z.label
 zFindIdFirst :: (ZDescendants t, Eq id) => id -> TreePos t (id, b) -> Maybe (TreePos Full (id, b))
 zFindIdFirst tgt = zFindLabelFirst $ \(i, _) -> i == tgt
 
+-- SOMEDAY may be obsolete, or can be simplified (actually vaporized) using ZForestRoot.
 class ZFullForest t where
   zFullForest :: TreePos t a -> Forest a
 
@@ -333,6 +334,18 @@ instance ZFullForest Empty where
   zFullForest eloc = case Z.parent eloc of
     Just loc -> zFullForest loc
     Nothing -> Z.forest . Z.first $ eloc
+
+class ZForestRoot t where
+  -- | The "root" of the forest, i.e., the space before the first child at the toplevel.
+  zForestRoot :: TreePos t a -> TreePos Empty a
+
+instance ZForestRoot Full where
+  zForestRoot = Z.first . Z.prevSpace . Z.root
+
+instance ZForestRoot Empty where
+  zForestRoot eloc = case Z.parent eloc of
+    Just loc -> zForestRoot loc
+    Nothing -> Z.first eloc
 
 -- SOMEDAY clean up the above manual code which should then be unused.
 -- SOMEDAY also implement deletion using this infra.
@@ -390,3 +403,65 @@ toAfterPrevPreorder eloc =
       nxt <- Z.prevTree eloc
       fc <- Z.lastChild nxt
       return $ Z.nextSpace fc
+
+-- | Walks from a node position to another node position and may fail at that.
+type GoWalker a = TreePos Full a -> Maybe (TreePos Full a)
+
+-- The following are a trivial abstraction and could be eliminated, but we keep them for now to
+-- abstract the tree implementation away.
+goNextSibling, goPrevSibling, goParent :: GoWalker a
+goNextSibling = Z.next
+goPrevSibling = Z.prev
+goParent = Z.parent
+
+-- | Walks from a node position to an empty position where a new tree should be inserted.
+--
+-- TODO is it required that this can fail, or can we simplify?
+type InsertWalker a = TreePos Full a -> Maybe (TreePos Empty a)
+
+-- The following are a trivial abstraction and could be eliminated, but we keep them for now to
+-- abstract the tree implementation away.
+insBefore, insAfter, insFirstChild, insLastChild :: InsertWalker a
+insBefore = Just . Z.prevSpace
+insAfter = Just . Z.nextSpace
+insFirstChild = Just . Z.children
+insLastChild = Just . Z.last . Z.children
+
+-- | See `forestMoveSubtreeRelFromForest`
+moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker Label -> Forest (EID, a) -> Model -> Model
+moveSubtreeRelFromForest tgt go ins haystack = forestL %~ (forestMoveSubtreeRelFromForest tgt go ins haystack)
+
+-- | When called like `forestMoveSubtreeRelFromForest tgt go ins haystack forest`, this doesn the following:
+--
+-- 1. Apply `go` to the position of `tgt` in `haystack` to find an `anchor` node, identified by its ID.
+-- 2. Consider that ID in `forest` and apply `ins` to find a position to which `tgt` should be moved.
+-- 3. Move `tgt` there in `forest` and return the result.
+--
+-- This silently fails if one of the IDs cannot be found OR if one of the walkers fails.
+--
+-- SOMEDAY the former is actually an error. The latter is not.
+forestMoveSubtreeRelFromForest :: (Eq id) => id -> GoWalker (id, a) -> InsertWalker (id, b) -> Forest (id, a) -> Forest (id, b) -> Forest (id, b)
+forestMoveSubtreeRelFromForest tgt go ins haystack forest = fromMaybe forest $ do
+  tgtLoc <- zFindIdFirst tgt haystackLoc
+  anchorLoc <- go tgtLoc
+  let (anchorId, _) = Z.label anchorLoc
+  return $ forestMoveSubtreeIdRelToAnchor tgt anchorId ins forest
+  where
+    haystackLoc = Z.fromForest haystack
+
+-- | Given a `tgt` and an `anchor` and a walker to go from the anchor to an insert position, move `tgt` there.
+--
+-- `anchor` cannot be `tgt` or one of its descendants. This will silently fail.
+--
+-- SOMEDAY Instead of silent failure, it's actually an *error* if any of the nodes are not found (except maybe in `go`)
+forestMoveSubtreeIdRelToAnchor :: (Eq id) => id -> id -> InsertWalker (id, a) -> Forest (id, a) -> Forest (id, a)
+forestMoveSubtreeIdRelToAnchor tgt anchor go forest = fromMaybe forest $ do
+  tgtLoc <- zFindIdFirst tgt forestLoc
+  let tgtTree = Z.tree tgtLoc
+  let forestLoc' = zForestRoot . Z.delete $ tgtLoc
+  anchorLoc <- zFindIdFirst anchor forestLoc'
+  insertLoc <- go anchorLoc
+  let forest'' = Z.forest . zForestRoot . Z.insert tgtTree $ insertLoc
+  return forest''
+  where
+    forestLoc = Z.fromForest forest
