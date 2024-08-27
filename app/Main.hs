@@ -153,6 +153,8 @@ myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverl
           inner = configTable $ table [[padRight (Pad 1) (txt keydesc), txt actdesc] | (keydesc, actdesc) <- pairs]
        in -- SOMEDAY minor bug: When `keymapName` is wider than the content (the key table), it's cut off.
           -- This happens in particular with smaller sub-mode keymaps.
+          -- The easiest fix is probably to set a min width for the keymap overlay (content of border; also looks better).
+          -- I think helix did this, e.g., in the `"` overlay.
           alignBottomRightLayer . borderWithLabel (padLeftRight 1 $ txt keymapName) $ renderTable inner
     keyHelpUI =
       let KeyDesc keymapName isToplevel keydescs = componentKeyDesc $ state ^. activeComponentL
