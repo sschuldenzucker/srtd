@@ -9,6 +9,7 @@ import Attr (EID)
 import Brick
 import Brick.BChan (BChan)
 import Data.Text (Text)
+import Keymap (KeyDesc)
 import Lens.Micro.Platform (lens)
 import ModelServer (ModelServer, MsgModelUpdated)
 
@@ -16,17 +17,32 @@ import ModelServer (ModelServer, MsgModelUpdated)
 -- I.e.: what they're calling; what they're expecting as a return value.
 data OverlayReturnValue = ORNone | OREID EID deriving (Show)
 
-data AppMsg = PopOverlay OverlayReturnValue | PushOverlay (AppResourceName -> SomeBrickComponent) | ModelUpdated MsgModelUpdated
+data AppMsg
+  = PopOverlay OverlayReturnValue
+  | PushOverlay (AppResourceName -> SomeBrickComponent)
+  | PushTab (AppResourceName -> SomeBrickComponent)
+  | -- SOMEDAY PopOverlay and PopTab should be reconciled into a generic "pop active" msg so views can safely "pop themselves".
+    PopTab
+  | NextTab
+  | PrevTab
+  | ModelUpdated MsgModelUpdated
 
 -- SOMEDAY we could make Show a precondition for BrickComponent or for SomeBrickComponent for better vis
 instance Show AppMsg where
   show (PopOverlay ret) = "PopOverlay(" ++ show ret ++ ")"
   show (PushOverlay _) = "PushOverlay _"
+  show (PushTab _) = "PushTab _"
+  show PopTab = "PopTab"
+  show NextTab = "NextTab"
+  show PrevTab = "PrevTab"
   show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
 
--- Not super clean but I don't think I'll need a lot here.
-data AppResourceName = MainList | Overlay Int | EditorFor AppResourceName deriving (Eq, Ord, Show)
+-- Not super clean but I don't think I'll need a lot here. These nest to be unique across different tabs / overlays.
+-- SOMEDAY maybe our resource names should just be lists of strings, aka. Brick attr names.
+data AppResourceName = MainListFor AppResourceName | Overlay Int | Tab Int | EditorFor AppResourceName deriving (Eq, Ord, Show)
 
+-- SOMEDAY consider passing this as an implicit parameter. Especially if we include "normal" app config in here.
+-- (not sure if this would *actually* be cleaner: We then have to carry the type annotation around.)
 data AppContext = AppContext
   { acModelServer :: ModelServer,
     acAppChan :: BChan AppMsg
@@ -47,9 +63,10 @@ class BrickComponent s where
   handleEvent :: AppContext -> BrickEvent AppResourceName AppMsg -> EventM AppResourceName s ()
 
   -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
-  --
-  -- (is toplevel, descriptions)
-  componentKeyDesc :: s -> (Bool, [(Text, Text)])
+  componentKeyDesc :: s -> KeyDesc
+
+  -- | Title of the component. Used in tabs and (should be used in) overlay titles.
+  componentTitle :: s -> Text
 
 data SomeBrickComponent = forall s. (BrickComponent s) => SomeBrickComponent s
 
@@ -66,3 +83,5 @@ instance BrickComponent SomeBrickComponent where
     zoom theLens $ handleEvent ctx ev
 
   componentKeyDesc (SomeBrickComponent s) = componentKeyDesc s
+
+  componentTitle (SomeBrickComponent s) = componentTitle s

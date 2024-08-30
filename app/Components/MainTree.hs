@@ -8,9 +8,9 @@ module Components.MainTree (MainTree (..), make) where
 
 import AppAttr
 import Attr
-import Brick
+import Brick hiding (on)
 import Brick.BChan (writeBChan)
-import Brick.Keybindings (bind)
+import Brick.Keybindings (bind, ctrl)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Component
@@ -19,8 +19,10 @@ import Components.NewNodeOverlay (newNodeOverlay)
 import Components.TestOverlay (newTestOverlay)
 import Control.Monad.IO.Class (liftIO)
 import Data.CircularList qualified as CList
+import Data.Function (on)
 import Data.List (intercalate)
 import Data.Maybe (fromJust, fromMaybe, listToMaybe)
+import Data.Text qualified as T
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -29,6 +31,7 @@ import Lens.Micro.Platform
 import Log
 import Model
 import ModelServer
+import System.Hclip (setClipboard)
 import System.Process (callProcess)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
 import Todo
@@ -41,6 +44,8 @@ data MainTree = MainTree
     mtFilters :: CList.CList Filter,
     mtSubtree :: Subtree,
     mtList :: MyList,
+    -- | Top-level resource name for this component. We can assign anything nested below (or "above") it.
+    mtResourceName :: AppResourceName,
     mtKeymap :: KeymapZipper (AppContext -> EventM AppResourceName MainTree ())
   }
   deriving (Show)
@@ -61,7 +66,7 @@ defaultFilters =
 rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
 rootKeymap =
   kmMake
-    "Tree"
+    "Tree View"
     [ kmLeaf (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur After,
       kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur Before,
       kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur FirstChild,
@@ -75,42 +80,54 @@ rootKeymap =
                     modifyModelOnServer acModelServer' (modifyAttrByEID cur (nameL .~ name'))
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
                     return cur
-              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName)
+              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName "Edit Item")
             Nothing -> return ()
       ),
-      ( kmLeaf (bind 'T') "Open test overlay" $ \ctx -> do
+      ( kmLeaf (ctrl 't') "Open test overlay" $ \ctx -> do
           liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent newTestOverlay)
       ),
-      ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $ withCur $ \cur ->
-          modifyModel (moveSubtree cur NextSibling)
+      ( kmLeaf (bind 'T') "New tab" $ \ctx -> do
+          state <- get
+          liftIO $ writeBChan (acAppChan ctx) $ PushTab (\rname -> SomeBrickComponent $ setResourceName rname state)
       ),
-      ( kmLeaf (binding (KChar 'k') [MMeta]) "Move subtree up same level" $ withCur $ \cur ->
-          modifyModel (moveSubtree cur PrevSibling)
+      ( kmLeaf (bind 'Q') "Close tab" $ \ctx ->
+          liftIO $ writeBChan (acAppChan ctx) $ PopTab
       ),
-      ( kmLeaf (bind '<') "Move subtree after parent" $ withRoot $ \root -> withCur $ \cur ->
-          modifyModel (moveSubtreeBelow' root cur toAfterParent)
+      ( kmLeaf (bind ']') "Next tab" $ \ctx ->
+          liftIO $ writeBChan (acAppChan ctx) $ NextTab
       ),
-      ( kmLeaf (bind '>') "Move subtree last child of previous" $ withRoot $ \root -> withCur $ \cur ->
-          modifyModel (moveSubtreeBelow' root cur toLastChildOfPrev)
+      ( kmLeaf (bind '[') "Prev tab" $ \ctx ->
+          liftIO $ writeBChan (acAppChan ctx) $ PrevTab
       ),
-      -- TODO hierarchy-up and one hierarchy-down (taken from move-subtree keymap.)
+      ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $ moveCurRelative goNextSibling insAfter
+      ),
+      ( kmLeaf (binding (KChar 'k') [MMeta]) "Move subtree up same level" $ moveCurRelative goPrevSibling insBefore
+      ),
+      ( kmLeaf (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter
+      ),
+      ( kmLeaf (bind '>') "Move subtree last child of previous" $ moveCurRelative goPrevSibling insLastChild
+      ),
       -- (kmSub (bind 'm') moveSingleModeKeymap),
       (kmSub (bind 'M') moveSubtreeModeKeymap),
       (kmSub (bind 'd') deleteKeymap),
       ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
+          rname <- mtResourceName <$> get
           model <- liftIO $ getModel (acModelServer ctx)
           filters <- mtFilters <$> get
-          put $ makeWithFilters cur filters model
+          put $ makeWithFilters cur filters model rname
       ),
       ( kmLeaf (binding KBS []) "De-hoist" $ \ctx -> do
           s <- get
           case s ^. mtSubtreeL . breadcrumbsL of
             [] -> return ()
             (parent, _) : _ -> do
+              rname <- mtResourceName <$> get
               model <- liftIO $ getModel (acModelServer ctx)
               filters <- mtFilters <$> get
-              put $ makeWithFilters parent filters model & mtListL %~ scrollListToEID (mtRoot s)
+              put $ makeWithFilters parent filters model rname & mtListL %~ scrollListToEID (mtRoot s)
       ),
+      (kmSub (bind ',') sortCurKeymap),
+      (kmSub (bind ';') sortRootKeymap),
       (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur forestGetParentId))),
       (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur forestGetNextSiblingId))),
       (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur forestGetPrevSiblingId))),
@@ -141,7 +158,8 @@ setStatusKeymap =
       kmLeaf (bind 'l') "Later" (setStatus $ Just Later),
       kmLeaf (bind 'i') "WIP" (setStatus $ Just WIP),
       kmLeaf (binding KEnter []) "Done" (setStatus $ Just Done),
-      kmLeaf (bind 's') "Someday" (setStatus $ Just Someday)
+      kmLeaf (bind 's') "Someday" (setStatus $ Just Someday),
+      kmLeaf (bind 'o') "Someday" (setStatus $ Just Open)
     ]
 
 moveSubtreeModeKeymap :: Keymap (AppContext -> EventM n MainTree ())
@@ -158,27 +176,19 @@ moveSubtreeModeKeymap =
         ( kmLeaf (bind 'k') "Up" $ withRoot $ \root -> withCur $ \cur ->
             modifyModel (moveSubtreeBelow' root cur toAfterPrevPreorder)
         ),
-        ( kmLeaf (bind 'J') "Down same level" $ withRoot $ \root -> withCur $ \cur ctx -> do
-            liftIO $ glogL INFO "Running: Move down same level"
-            modifyModel (moveSubtreeBelow' root cur toNextSibling) ctx
+        ( kmLeaf (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter
         ),
-        ( kmLeaf (bind 'K') "Up same level" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toPrevSibling)
+        ( kmLeaf (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore
         ),
-        ( kmLeaf (bind 'h') "Before parent" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toBeforeParent)
+        ( kmLeaf (bind 'h') "Before parent" $ moveCurRelative goParent insBefore
         ),
-        ( kmLeaf (bind '<') "After parent" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toAfterParent)
+        ( kmLeaf (bind '<') "After parent" $ moveCurRelative goParent insAfter
         ),
-        ( kmLeaf (bind 'L') "Last child of next" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toLastChildOfNext)
+        ( kmLeaf (bind 'L') "Last child of next" $ moveCurRelative goNextSibling insLastChild
         ),
-        ( kmLeaf (bind 'l') "First child of next" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toFirstChildOfNext)
+        ( kmLeaf (bind 'l') "First child of next" $ moveCurRelative goNextSibling insFirstChild
         ),
-        ( kmLeaf (bind '>') "Last child of previous" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toLastChildOfPrev)
+        ( kmLeaf (bind '>') "Last child of previous" $ moveCurRelative goPrevSibling insLastChild
         )
         -- NB 'H' is not used and that's fine IMHO. I'm not sure why but these bindings were the most intuitive.
         -- SOMEDAY hierarchy-breaking '<' (dedent)
@@ -190,8 +200,35 @@ openExternallyKeymap =
     "Open externally"
     [ ( kmLeaf (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
           whenJust (findFirstURL name) $ \url -> liftIO (openURL url)
+      ),
+      ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
+          liftIO $ setClipboard name
       )
     ]
+
+-- SOMEDAY The following two only differ by what is used, `withRoot` or `withCur`. Could easily be unified.
+
+sortRootKeymap :: Keymap (AppContext -> EventM n MainTree ())
+sortRootKeymap =
+  kmMake
+    "Sort root by"
+    $ (kmSub (bind 'D') $ kmMake "Deep" (mkItems sortDeepBelow))
+      : mkItems sortShallowBelow
+  where
+    mkItems sorter =
+      [kmLeaf (bind 't') "Status" $ sortRootBy sorter (compareMStatusActionability `on` (view statusL))]
+    sortRootBy sorter ord = withRoot $ \root -> modifyModel (sorter ord root)
+
+sortCurKeymap :: Keymap (AppContext -> EventM n MainTree ())
+sortCurKeymap =
+  kmMake
+    "Sort selected by"
+    $ (kmSub (bind 'D') $ kmMake "Deep" (mkItems sortDeepBelow))
+      : mkItems sortShallowBelow
+  where
+    mkItems sorter =
+      [kmLeaf (bind 't') "Status" $ sortCurBy sorter (compareMStatusActionability `on` (view statusL))]
+    sortCurBy sorter ord = withCur $ \cur -> modifyModel (sorter ord cur)
 
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String
@@ -213,7 +250,7 @@ pushInsertNewItemRelToCur toLoc ctx = do
         uuid <- nextRandom
         modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
         return $ EIDNormal uuid
-  liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "")
+  liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "" "New Item")
 
 setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
@@ -224,19 +261,27 @@ cycleNextFilter ctx = do
   mtFiltersL %= CList.rotR
   pullNewModel ctx
 
-make :: EID -> Model -> MainTree
-make root model = makeWithFilters root (CList.fromList defaultFilters) model
+make :: EID -> Model -> AppResourceName -> MainTree
+make root = makeWithFilters root (CList.fromList defaultFilters)
 
 -- | filters must not be empty.
-makeWithFilters :: EID -> CList.CList Filter -> Model -> MainTree
-makeWithFilters root filters model = MainTree root filters subtree list (keymapToZipper rootKeymap)
+makeWithFilters :: EID -> CList.CList Filter -> Model -> AppResourceName -> MainTree
+makeWithFilters root filters model rname =
+  MainTree
+    { mtRoot = root,
+      mtFilters = filters,
+      mtSubtree = subtree,
+      mtList = list,
+      mtResourceName = rname,
+      mtKeymap = keymapToZipper rootKeymap
+    }
   where
     subtree = filterRun (fromJust $ CList.focus filters) root model
-    list = forestToBrickList $ stForest subtree
+    list = forestToBrickList (MainListFor rname) $ stForest subtree
 
-forestToBrickList :: MForest -> MyList
+forestToBrickList :: AppResourceName -> MForest -> MyList
 -- TODO when we have multiple tabs, MainList should be replaced by something that will actually be unique (take as an argument)
-forestToBrickList forest = L.list MainList (Vec.fromList contents) 1
+forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
   where
     contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels forest
 
@@ -303,6 +348,10 @@ instance BrickComponent MainTree where
 
   componentKeyDesc = kmzDesc . mtKeymap
 
+  componentTitle MainTree {mtSubtree} = T.pack $ pathStr
+    where
+      pathStr = intercalate " < " $ name (rootAttr mtSubtree) : [name attr | (_, attr) <- (breadcrumbs mtSubtree)]
+
 mtCur :: MainTree -> Maybe EID
 mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _)) -> i)
 
@@ -329,6 +378,22 @@ withRoot go ctx = do
   let root = mtRoot s
   go root ctx
 
+-- | Helper for relative move operations.
+--
+-- NB we do *not* need special precautions to prevent us from moving things out of the root b/c in
+-- that case, the respective anchor is just not found in the haystack. (this is a bit of a function
+-- of our insert walkers being not too crazy. When they do become more complex, we may need to bring
+-- this back.)
+--
+-- SOMEDAY ^^
+--
+-- SOMEDAY this can be generalized by replacing the first Label by whatever label type we ultimately use
+-- here. The forest just has to be labeled (EID, a) for some a. See `moveSubtreeRelFromForest`.
+moveCurRelative :: GoWalker Label -> InsertWalker Label -> AppContext -> EventM n MainTree ()
+moveCurRelative go ins = withCur $ \cur ctx -> do
+  forest <- use $ mtSubtreeL . stForestL
+  modifyModel (moveSubtreeRelFromForest cur go ins forest) ctx
+
 modifyModel :: (Model -> Model) -> AppContext -> EventM n MainTree ()
 modifyModel f AppContext {acModelServer} = do
   s@(MainTree {mtRoot, mtList}) <- get
@@ -339,7 +404,7 @@ modifyModel f AppContext {acModelServer} = do
     modifyModelOnServer acModelServer f
     getModel acModelServer
   let subtree = filterRun filter_ mtRoot model'
-  let list' = resetListPosition mtList $ forestToBrickList (stForest subtree)
+  let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
 
@@ -349,7 +414,7 @@ pullNewModel AppContext {acModelServer} = do
   let filter_ = mtFilter s
   model' <- liftIO $ getModel acModelServer
   let subtree = filterRun filter_ mtRoot model'
-  let list' = resetListPosition mtList $ forestToBrickList (stForest subtree)
+  let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
 
@@ -373,3 +438,11 @@ mtGoSubtreeFromCur f mt = fromMaybe mt mres
       cur <- mtCur mt
       par <- mt ^. mtSubtreeL . stForestL . to (f cur)
       return $ mt & mtListL %~ scrollListToEID par
+
+-- | Toplevel app resource name, including all contained resources. This is a "cloning" routine.
+setResourceName :: AppResourceName -> MainTree -> MainTree
+setResourceName rname state =
+  state
+    { mtList = resetListPosition (mtList state) $ forestToBrickList (MainListFor rname) (stForest . mtSubtree $ state),
+      mtResourceName = rname
+    }

@@ -15,9 +15,10 @@ renderStatus sel a = case a of
   Waiting -> withAttr (root <> attrName "waiting") (str "<")
   Project -> withAttr (root <> attrName "project") (str ">")
   Later -> withAttr (root <> attrName "later") (str "/")
-  WIP -> withAttr (root <> attrName "wip") (str ">") -- yeah we use the same for project and wip right now. Maybe it's fine.
+  WIP -> withAttr (root <> attrName "wip") (str "*")
   Someday -> withAttr (root <> attrName "someday") (str "~")
   Done -> withAttr (root <> attrName "done") (str "+")
+  Open -> withAttr (root <> attrName "open") (str "o")
   where
     root = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
 

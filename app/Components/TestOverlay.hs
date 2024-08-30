@@ -48,3 +48,5 @@ instance BrickComponent TestOverlay where
   handleEvent _ _ = return ()
 
   componentKeyDesc (TestOverlay kmz) = kmzDesc kmz
+
+  componentTitle _ = "Test Overlay"

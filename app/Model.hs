@@ -14,8 +14,10 @@ import Brick (suffixLenses)
 import Control.Applicative (asum, (<|>))
 import Data.Aeson
 import Data.Either (fromRight)
-import Data.List (find, unfoldr)
-import Data.Maybe (listToMaybe, mapMaybe)
+import Data.IntMap (IntMap)
+import Data.IntMap qualified as IntMap
+import Data.List (find, sortBy, unfoldr)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Tree
 import Data.Tree.Zipper (Empty, Full, TreePos)
 import Data.Tree.Zipper qualified as Z
@@ -264,20 +266,20 @@ stFilter p = stForestL %~ (filterForest p)
 
 type Label = (EID, Attr)
 
-moveSubtree' :: EID -> MWalker Label -> Model -> Model
+moveSubtree' :: EID -> MoveWalker Label -> Model -> Model
 moveSubtree' eid go = forestL %~ (forestMoveSubtreeId' eid go)
 
-moveSubtreeBelow' :: EID -> EID -> MWalker Label -> Model -> Model
+moveSubtreeBelow' :: EID -> EID -> MoveWalker Label -> Model -> Model
 moveSubtreeBelow' root tgt go = forestL %~ (forestMoveSubtreeIdBelow' root tgt go)
 
 -- | Does nothing if the EID is not found.
-forestMoveSubtreeId' :: (Eq id) => id -> MWalker (id, a) -> Forest (id, a) -> Forest (id, a)
+forestMoveSubtreeId' :: (Eq id) => id -> MoveWalker (id, a) -> Forest (id, a) -> Forest (id, a)
 forestMoveSubtreeId' tgt go forest = case zFindIdFirst tgt . Z.fromForest $ forest of
   Nothing -> forest
   Just loc -> zFullForest $ mzMove go loc
 
 -- | Like forestMoveSubtreeId' but only consider the subtree below `root`.
-forestMoveSubtreeIdBelow' :: (Eq id) => id -> id -> MWalker (id, a) -> Forest (id, a) -> Forest (id, a)
+forestMoveSubtreeIdBelow' :: (Eq id) => id -> id -> MoveWalker (id, a) -> Forest (id, a) -> Forest (id, a)
 forestMoveSubtreeIdBelow' root tgt go forest =
   -- SOMEDAY not really a deep reason to use zippers here other than that it's easy.
   case zFindIdFirst root . Z.fromForest $ forest of
@@ -323,6 +325,7 @@ zFindLabelFirst lp = zFindFirst $ lp . Z.label
 zFindIdFirst :: (ZDescendants t, Eq id) => id -> TreePos t (id, b) -> Maybe (TreePos Full (id, b))
 zFindIdFirst tgt = zFindLabelFirst $ \(i, _) -> i == tgt
 
+-- SOMEDAY may be obsolete, or can be simplified (actually vaporized) using ZForestRoot.
 class ZFullForest t where
   zFullForest :: TreePos t a -> Forest a
 
@@ -333,6 +336,18 @@ instance ZFullForest Empty where
   zFullForest eloc = case Z.parent eloc of
     Just loc -> zFullForest loc
     Nothing -> Z.forest . Z.first $ eloc
+
+class ZForestRoot t where
+  -- | The "root" of the forest, i.e., the space before the first child at the toplevel.
+  zForestRoot :: TreePos t a -> TreePos Empty a
+
+instance ZForestRoot Full where
+  zForestRoot = Z.first . Z.prevSpace . Z.root
+
+instance ZForestRoot Empty where
+  zForestRoot eloc = case Z.parent eloc of
+    Just loc -> zForestRoot loc
+    Nothing -> Z.first eloc
 
 -- SOMEDAY clean up the above manual code which should then be unused.
 -- SOMEDAY also implement deletion using this infra.
@@ -354,9 +369,10 @@ mzMove go pos = case go . Z.delete $ pos of
   Nothing -> pos
   Just epos' -> Z.insert (Z.tree pos) epos'
 
-type MWalker a = TreePos Empty a -> Maybe (TreePos Empty a)
+-- | Walks from an empty position (of a just-removed node) to a new empty position (where the node is to be moved), and may fail at that.
+type MoveWalker a = TreePos Empty a -> Maybe (TreePos Empty a)
 
-toNextSibling, toPrevSibling, toBeforeParent, toAfterParent, toFirstChildOfNext, toFirstChildOfPrev, toLastChildOfNext, toLastChildOfPrev :: MWalker a
+toNextSibling, toPrevSibling, toBeforeParent, toAfterParent, toFirstChildOfNext, toFirstChildOfPrev, toLastChildOfNext, toLastChildOfPrev :: MoveWalker a
 toNextSibling = Z.next
 toPrevSibling = Z.prev
 toBeforeParent = fmap Z.prevSpace . Z.parent
@@ -368,7 +384,7 @@ toLastChildOfPrev = fmap (Z.last . Z.children) . Z.prevTree
 
 -- Not sure if "preorder" is the right wording here; it doesn't actually recur upwards.
 -- SOMEDAY I'm sure there's a monad or something that does these alternatives.
-toBeforeNextPreorder, toAfterPrevPreorder :: MWalker a
+toBeforeNextPreorder, toAfterPrevPreorder :: MoveWalker a
 toBeforeNextPreorder eloc =
   toBeforeFirstChildOfNext eloc
     <|> Z.next eloc
@@ -389,3 +405,88 @@ toAfterPrevPreorder eloc =
       nxt <- Z.prevTree eloc
       fc <- Z.lastChild nxt
       return $ Z.nextSpace fc
+
+-- | Walks from a node position to another node position and may fail at that.
+type GoWalker a = TreePos Full a -> Maybe (TreePos Full a)
+
+-- The following are a trivial abstraction and could be eliminated, but we keep them for now to
+-- abstract the tree implementation away.
+goNextSibling, goPrevSibling, goParent :: GoWalker a
+goNextSibling = Z.next
+goPrevSibling = Z.prev
+goParent = Z.parent
+
+-- | Walks from a node position to an empty position where a new tree should be inserted.
+--
+-- TODO is it required that this can fail, or can we simplify?
+type InsertWalker a = TreePos Full a -> Maybe (TreePos Empty a)
+
+-- The following are a trivial abstraction and could be eliminated, but we keep them for now to
+-- abstract the tree implementation away.
+insBefore, insAfter, insFirstChild, insLastChild :: InsertWalker a
+insBefore = Just . Z.prevSpace
+insAfter = Just . Z.nextSpace
+insFirstChild = Just . Z.children
+insLastChild = Just . Z.last . Z.children
+
+-- | See `forestMoveSubtreeRelFromForest`
+moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker Label -> Forest (EID, a) -> Model -> Model
+moveSubtreeRelFromForest tgt go ins haystack = forestL %~ (forestMoveSubtreeRelFromForest tgt go ins haystack)
+
+-- | When called like `forestMoveSubtreeRelFromForest tgt go ins haystack forest`, this doesn the following:
+--
+-- 1. Apply `go` to the position of `tgt` in `haystack` to find an `anchor` node, identified by its ID.
+-- 2. Consider that ID in `forest` and apply `ins` to find a position to which `tgt` should be moved.
+-- 3. Move `tgt` there in `forest` and return the result.
+--
+-- This silently fails if one of the IDs cannot be found OR if one of the walkers fails.
+--
+-- SOMEDAY the former is actually an error. The latter is not.
+forestMoveSubtreeRelFromForest :: (Eq id) => id -> GoWalker (id, a) -> InsertWalker (id, b) -> Forest (id, a) -> Forest (id, b) -> Forest (id, b)
+forestMoveSubtreeRelFromForest tgt go ins haystack forest = fromMaybe forest $ do
+  tgtLoc <- zFindIdFirst tgt haystackLoc
+  anchorLoc <- go tgtLoc
+  let (anchorId, _) = Z.label anchorLoc
+  return $ forestMoveSubtreeIdRelToAnchor tgt anchorId ins forest
+  where
+    haystackLoc = Z.fromForest haystack
+
+-- | Given a `tgt` and an `anchor` and a walker to go from the anchor to an insert position, move `tgt` there.
+--
+-- `anchor` cannot be `tgt` or one of its descendants. This will silently fail.
+--
+-- SOMEDAY Instead of silent failure, it's actually an *error* if any of the nodes are not found (except maybe in `go`)
+forestMoveSubtreeIdRelToAnchor :: (Eq id) => id -> id -> InsertWalker (id, a) -> Forest (id, a) -> Forest (id, a)
+forestMoveSubtreeIdRelToAnchor tgt anchor go forest = fromMaybe forest $ do
+  tgtLoc <- zFindIdFirst tgt forestLoc
+  let tgtTree = Z.tree tgtLoc
+  let forestLoc' = zForestRoot . Z.delete $ tgtLoc
+  anchorLoc <- zFindIdFirst anchor forestLoc'
+  insertLoc <- go anchorLoc
+  let forest'' = Z.forest . zForestRoot . Z.insert tgtTree $ insertLoc
+  return forest''
+  where
+    forestLoc = Z.fromForest forest
+
+-- ------------------
+-- Sorting (physical)
+-- ------------------
+
+onForestBelowId :: (Eq id) => id -> (Forest (id, a) -> Forest (id, a)) -> Forest (id, a) -> Forest (id, a)
+-- This is probably a bit inefficient but it was there so w/e
+-- SOMEDAY it's actually an error if root is not found.
+onForestBelowId root f forest = case zFindIdFirst root . Z.fromForest $ forest of
+  Nothing -> forest
+  Just rootLoc -> Z.forest . zForestRoot . Z.modifyTree (onTreeChildren f) $ rootLoc
+
+sortShallowBelow :: (Attr -> Attr -> Ordering) -> EID -> Model -> Model
+sortShallowBelow ord root = forestL %~ onForestBelowId root (sortBy ord')
+  where
+    ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2
+
+sortDeepBelow :: (Attr -> Attr -> Ordering) -> EID -> Model -> Model
+sortDeepBelow ord root = forestL %~ onForestBelowId root deepSortByOrd
+  where
+    -- prob kinda inefficient but I got <= 10 levels or something.
+    deepSortByOrd = onForestChildren deepSortByOrd . sortBy ord'
+    ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2

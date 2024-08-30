@@ -46,6 +46,12 @@ bg = "base"
 fg = "text"
 
 [theme]
+
+# Helix uses mantle instead of crust but I think it's also got better color accuracy.
+"tab_bar" = {fg = "subtext1", bg = "crust"}
+# "tab_bar.tab_title" = {}  # Unused
+"tab_bar.selected.tab_title" = {fg = "mauve", bg = "base", style = "underline"}
+
 # SOMEDAY some background would be nice
 "filter_label" = {fg = "blue"}
 
@@ -53,20 +59,22 @@ fg = "text"
 "selected" = {bg = "surface1"}
 
 "status.next" = {fg = "green"}
-"status.waiting" = {fg = "red"}
-"status.project" = {fg = "blue"}
+"status.waiting" = {fg = "pink"}
+"status.project" = {fg = "green"}
 "status.later" = {fg = "teal"}
-"status.wip" = {fg = "peach"}
+"status.wip" = {fg = "yellow"}
 "status.done" = {fg = "overlay1"}
 "status.someday" = {fg = "mauve"}
+"status.open" = {fg = "yellow"}
 
 # SOMEDAY a bit annoying that we don't have the right kind of inheritance, so we have to duplicate this.
 # (it's the same as without selected)
 "selected.status.next" = {fg = "green"}
-"selected.status.waiting" = {fg = "red"}
-"selected.status.project" = {fg = "blue"}
+"selected.status.waiting" = {fg = "pink"}
+"selected.status.project" = {fg = "green"}
 "selected.status.later" = {fg = "teal"}
-"selected.status.wip" = {fg = "peach"}
+"selected.status.wip" = {fg = "yellow"}
 "selected.status.done" = {fg = "overlay1"}
 "selected.status.someday" = {fg = "mauve"}
+"selected.status.open" = {fg = "yellow"}
 
