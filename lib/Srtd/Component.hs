@@ -5,13 +5,13 @@
 -- The only place where we really need this is for overlays. We don't localize resource names or messages.
 module Srtd.Component where
 
-import Attr (EID)
 import Brick
 import Brick.BChan (BChan)
 import Data.Text (Text)
-import Keymap (KeyDesc)
 import Lens.Micro.Platform (lens)
-import ModelServer (ModelServer, MsgModelUpdated)
+import Srtd.Attr (EID)
+import Srtd.Keymap (KeyDesc)
+import Srtd.ModelServer (ModelServer, MsgModelUpdated)
 
 -- SOMEDAY This is really messy. Would be way way better if it could be typed to what the caller is even doing.
 -- I.e.: what they're calling; what they're expecting as a return value.

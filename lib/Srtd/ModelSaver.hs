@@ -3,14 +3,14 @@
 -- | A process that auto-saves the model.
 module Srtd.ModelSaver where
 
-import Config (model_filename)
 import Control.Concurrent
 import Control.Exception (SomeException, catch)
 import Control.Monad (forever)
 import Data.Aeson.Encode.Pretty
 import Data.ByteString.Lazy qualified as B
-import Model (Model)
-import ModelServer qualified as MS
+import Srtd.Config (model_filename)
+import Srtd.Model (Model)
+import Srtd.ModelServer qualified as MS
 
 -- SOMEDAY some handling of crashes (at least re-raise exceptions, or honestly restart like Erlang)
 startModelSaver :: MS.ModelServer -> IO ThreadId

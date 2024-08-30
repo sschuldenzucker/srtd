@@ -3,14 +3,14 @@
 -- There's not actually a server here but we *may* want to make it one later.
 module Srtd.ModelServer (ModelServer, MsgModelUpdated (..), getModel, modifyModelOnServer, startModelServer, subscribe) where
 
-import Config
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad (forM_)
 import Data.Aeson
 import Data.Maybe
-import Log
-import Model
+import Srtd.Config
+import Srtd.Log
+import Srtd.Model
 import System.IO.Error
 
 data MsgModelUpdated = MsgModelUpdated deriving (Show)

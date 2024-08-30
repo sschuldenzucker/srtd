@@ -1,9 +1,9 @@
 -- | Some functions for rendering attrs in Brick.
 module Srtd.Components.Attr where
 
-import AppAttr
-import Attr
 import Brick
+import Srtd.AppAttr
+import Srtd.Attr
 
 -- NB it's slightly unfortunate that both Brick and us use the term 'Attr' to refer to different things, but w/e.
 

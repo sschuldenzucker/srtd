@@ -8,7 +8,6 @@
 -- Most importantly, tree modification operations should be split out.
 module Srtd.Model where
 
-import Attr
 -- Really just a helper here. Should prob not import this for separation
 import Brick (suffixLenses)
 import Control.Applicative (asum, (<|>))
@@ -25,9 +24,10 @@ import Data.UUID (UUID)
 import GHC.Generics
 import GHC.List (uncons)
 import Lens.Micro.Platform
-import Log
-import ModelJSON qualified
-import Todo
+import Srtd.Attr
+import Srtd.Log
+import Srtd.ModelJSON qualified as ModelJSON
+import Srtd.Todo
 
 -- import Data.UUID.V4 (nextRandom)
 

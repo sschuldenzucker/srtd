@@ -3,19 +3,12 @@
 
 module Srtd.Main (main) where
 
-import Alignment
-import AppAttr
-import AppTheme qualified
-import Attr
 import Brick
 import Brick.BChan (newBChan, writeBChan)
 import Brick.Themes (Theme, themeToAttrMap)
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
-import CmdlineArgs qualified as CArgs
-import Component
-import Components.MainTree qualified as MainTree
 import Control.Arrow (second)
 import Control.Monad (forM_, void)
 import Control.Monad.State (liftIO)
@@ -29,16 +22,23 @@ import Data.Text.IO qualified as T
 import Data.Traversable (forM)
 import GHC.Stack (HasCallStack)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
-import Keymap (KeyDesc (..))
 import Lens.Micro.Platform
-import Log
-import Model
-import ModelSaver (startModelSaver)
-import ModelServer
+import Srtd.Alignment
+import Srtd.AppAttr
+import Srtd.AppTheme qualified as AppTheme
+import Srtd.Attr
+import Srtd.CmdlineArgs qualified as CArgs
+import Srtd.Component
+import Srtd.Components.MainTree qualified as MainTree
+import Srtd.Keymap (KeyDesc (..))
+import Srtd.Log
+import Srtd.Model
+import Srtd.ModelSaver (startModelSaver)
+import Srtd.ModelServer
+import Srtd.Todo
 import System.Directory (listDirectory)
 import System.Exit (exitFailure)
 import System.FilePath
-import Todo
 import Toml qualified
 
 data AppState = AppState

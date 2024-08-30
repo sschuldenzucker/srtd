@@ -5,11 +5,11 @@ module Srtd.Components.TestOverlay where
 import Brick
 import Brick.BChan (writeBChan)
 import Brick.Keybindings (bind)
-import Component
 import Control.Monad.State (liftIO)
 import Graphics.Vty (Event (..), Key (..))
-import Keymap
-import Log
+import Srtd.Component
+import Srtd.Keymap
+import Srtd.Log
 
 data TestOverlay = TestOverlay (KeymapZipper (AppContext -> EventM AppResourceName TestOverlay ()))
 

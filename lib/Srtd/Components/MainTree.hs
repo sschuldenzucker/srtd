@@ -6,17 +6,11 @@
 
 module Srtd.Components.MainTree (MainTree (..), make) where
 
-import AppAttr
-import Attr
 import Brick hiding (on)
 import Brick.BChan (writeBChan)
 import Brick.Keybindings (bind, ctrl)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
-import Component
-import Components.Attr (renderMaybeStatus)
-import Components.NewNodeOverlay (newNodeOverlay)
-import Components.TestOverlay (newTestOverlay)
 import Control.Monad.IO.Class (liftIO)
 import Data.CircularList qualified as CList
 import Data.Function (on)
@@ -26,16 +20,22 @@ import Data.Text qualified as T
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
-import Keymap
 import Lens.Micro.Platform
-import Log
-import Model
-import ModelServer
+import Srtd.AppAttr
+import Srtd.Attr
+import Srtd.Component
+import Srtd.Components.Attr (renderMaybeStatus)
+import Srtd.Components.NewNodeOverlay (newNodeOverlay)
+import Srtd.Components.TestOverlay (newTestOverlay)
+import Srtd.Keymap
+import Srtd.Log
+import Srtd.Model
+import Srtd.ModelServer
+import Srtd.Todo
+import Srtd.Util
 import System.Hclip (setClipboard)
 import System.Process (callProcess)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
-import Todo
-import Util
 
 type MyList = L.List AppResourceName (Int, EID, Attr)
 

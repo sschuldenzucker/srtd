@@ -6,17 +6,17 @@
 -- TODO Rename. It's more of a generic name editing component.
 module Srtd.Components.NewNodeOverlay where
 
-import Attr (EID)
 import Brick
 import Brick.BChan (writeBChan)
 import Brick.Widgets.Edit
-import Component
 import Control.Monad.State (liftIO)
 import Data.List (intercalate)
 import Data.Text (Text)
 import Graphics.Vty (Event (..), Key (..))
-import Keymap (KeyDesc (..))
 import Lens.Micro.Platform
+import Srtd.Attr (EID)
+import Srtd.Component
+import Srtd.Keymap (KeyDesc (..))
 
 -- SOMEDAY instead of this half-assed continuation passing style, maybe we can find something that's:
 -- - Either actual CPS
