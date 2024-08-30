@@ -91,29 +91,30 @@ library
         ListZipper ^>= 1.2.0.2,
         Hclip ^>= 3.0.0.4,
 
-    other-modules:
-        Log,
-        Model,
-        ModelServer,
-        ModelSaver,
-        ModelJSON,
-        Attr,
-        Config,
-        Todo,
-        AppAttr,
-        AppTheme,
-        Component,
-        Components.MainTree,
-        Components.TestOverlay,
-        Components.NewNodeOverlay,
-        Components.Attr,
-        Keymap,
-        Alignment,
-        CmdlineArgs,
-        Util,
+    exposed-modules:
+        Srtd.Log,
+        Srtd.Model,
+        Srtd.ModelServer,
+        Srtd.ModelSaver,
+        Srtd.ModelJSON,
+        Srtd.Attr,
+        Srtd.Config,
+        Srtd.Todo,
+        Srtd.AppAttr,
+        Srtd.AppTheme,
+        Srtd.Main,
+        Srtd.Component,
+        Srtd.Components.MainTree,
+        Srtd.Components.TestOverlay,
+        Srtd.Components.NewNodeOverlay,
+        Srtd.Components.Attr,
+        Srtd.Keymap,
+        Srtd.Alignment,
+        Srtd.CmdlineArgs,
+        Srtd.Util,
 
     -- Directories containing source files.
-    hs-source-dirs:   app
+    hs-source-dirs:   lib
 
     -- Base language which the package is written in.
     default-language: GHC2021
@@ -123,6 +124,9 @@ executable srtd
         base ^>=4.17.2.1,
         srtd,
 
+    -- -threaded is required for brick, rest optional.
+    ghc-options: -threaded -Wall -Wcompat
+
     -- .hs or .lhs file containing the Main module.
     main-is:          Main.hs
     hs-source-dirs: app
@@ -130,7 +134,7 @@ executable srtd
 
 test-suite srtd-test
     type: exitcode-stdio-1.0
-    main-is: MainTest.hs
+    main-is: Main.hs
     hs-source-dirs: test
     build-depends:
         base ^>=4.17.2.1,

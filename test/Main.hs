@@ -1,8 +1,8 @@
-module MainTest (main) where
+module Main (main) where
 
-import Main qualified
-import Test.HUnit.Tasty
+import Srtd.Main qualified -- import test
 import Test.Tasty
+import Test.Tasty.HUnit
 
 unit_additionTest :: TestTree
 unit_additionTest =
@@ -13,4 +13,4 @@ tests :: TestTree
 tests = testGroup "Simple tests" [unit_additionTest]
 
 main :: IO ()
-main = defaultTest tests
+main = defaultMain tests
