@@ -5,7 +5,7 @@
 -- NB if you want non-transparent (non-"layer") alignment, this can simply be achieved using
 -- `padLeft Max` etc. That is probably the better choice in most situations (and less flakey with
 -- colors), *except* overlay windows.
-module Alignment where
+module Srtd.Alignment where
 
 import Brick.Types
 import Brick.Widgets.Core

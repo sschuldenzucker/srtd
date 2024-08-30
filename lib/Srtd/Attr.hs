@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 -- | Attributes. There's no deep reason this is separate other than to avoid cycles in the module graph.
-module Attr where
+module Srtd.Attr where
 
 -- SOMEDAY it's not very nice we depend on Brick here. Copy the definition (I'm sure it's easy)
 import Brick (suffixLenses)

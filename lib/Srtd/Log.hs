@@ -2,7 +2,7 @@
 -- Some convenience helpers for logging.
 --
 -- May see some changes going forward (e.g., for concurrency)
-module Log (setupLogger, glogL, uglogL, traceUGlogl, Priority (..)) where
+module Srtd.Log (setupLogger, glogL, uglogL, traceUGlogl, Priority (..)) where
 
 import GHC.IO.Unsafe (unsafePerformIO)
 import System.Log.Formatter

@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Keymap where
+module Srtd.Keymap where
 
 import Brick.Keybindings (Binding)
 import Brick.Keybindings.KeyConfig (binding)

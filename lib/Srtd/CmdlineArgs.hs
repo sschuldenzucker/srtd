@@ -2,7 +2,7 @@
 {-# LANGUAGE RecordWildCards #-}
 
 -- | Module for cmdline args. Separate module to prevent namespace pollution mostly.
-module CmdlineArgs where
+module Srtd.CmdlineArgs where
 
 import Options.Applicative
 

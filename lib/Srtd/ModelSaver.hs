@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | A process that auto-saves the model.
-module ModelSaver where
+module Srtd.ModelSaver where
 
 import Config (model_filename)
 import Control.Concurrent

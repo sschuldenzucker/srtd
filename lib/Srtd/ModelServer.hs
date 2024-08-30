@@ -1,7 +1,7 @@
 -- | Synchronization framework for concurrent model access.
 --
 -- There's not actually a server here but we *may* want to make it one later.
-module ModelServer (ModelServer, MsgModelUpdated (..), getModel, modifyModelOnServer, startModelServer, subscribe) where
+module Srtd.ModelServer (ModelServer, MsgModelUpdated (..), getModel, modifyModelOnServer, startModelServer, subscribe) where
 
 import Config
 import Control.Concurrent.STM

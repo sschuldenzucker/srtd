@@ -4,7 +4,7 @@
 
 {-# HLINT ignore "Redundant bracket" #-}
 
-module Components.MainTree (MainTree (..), make) where
+module Srtd.Components.MainTree (MainTree (..), make) where
 
 import AppAttr
 import Attr

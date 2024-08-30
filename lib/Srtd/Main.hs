@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Main (main) where
+module Srtd.Main (main) where
 
 import Alignment
 import AppAttr

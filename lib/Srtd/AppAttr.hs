@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Brick attributes
-module AppAttr where
+module Srtd.AppAttr where
 
 import Brick.AttrMap (AttrName, attrName)
 

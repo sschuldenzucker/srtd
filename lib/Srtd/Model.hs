@@ -6,7 +6,7 @@
 --
 -- SOMEDAY this model has grown very large and should be split into sub-aspects.
 -- Most importantly, tree modification operations should be split out.
-module Model where
+module Srtd.Model where
 
 import Attr
 -- Really just a helper here. Should prob not import this for separation

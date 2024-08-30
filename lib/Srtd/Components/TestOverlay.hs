@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Components.TestOverlay where
+module Srtd.Components.TestOverlay where
 
 import Brick
 import Brick.BChan (writeBChan)

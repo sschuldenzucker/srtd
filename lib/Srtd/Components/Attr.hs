@@ -1,5 +1,5 @@
 -- | Some functions for rendering attrs in Brick.
-module Components.Attr where
+module Srtd.Components.Attr where
 
 import AppAttr
 import Attr

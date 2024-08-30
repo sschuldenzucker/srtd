@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 -- | Helpers for JSON encoding. We put them here not to pollute the namespace. Should be imported qualified.
-module ModelJSON where
+module Srtd.ModelJSON where
 
 import Attr
 import Data.Aeson
