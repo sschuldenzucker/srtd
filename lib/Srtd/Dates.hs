@@ -10,8 +10,11 @@ import Data.Maybe (fromMaybe, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Time
+import Data.Time.Calendar.Month
+import Data.Time.Calendar.WeekDate (toWeekDate)
 import Data.Void
 import Srtd.Todo
+import Srtd.Util (composeNTimes, composeNTimesM, maybeToEither)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 
@@ -55,6 +58,74 @@ data DateAnchor
   | AnchorDayOfMonth Int
   | AnchorMonthDay Int Int
   deriving (Eq, Show)
+
+-- | Given the current time, interpret the human date.
+--
+-- May fail when an invalid date was specified, e.g. '31st' when it's currently April.
+interpretHumanDateOrTime :: HumanDateOrTime -> ZonedTime -> Either String DateOrTime
+interpretHumanDateOrTime hdt now = case hdt of
+  HDateMaybeTime hd Nothing -> OnlyDate <$> interpretHumanDate hd
+  HDateMaybeTime hd (Just tod) -> do
+    day <- interpretHumanDate hd
+    let beginOfDay = ZonedTime (LocalTime day midnight) (zonedTimeZone now)
+    let deltaTOD = daysAndTimeOfDayToTime 0 tod
+    return $ DateAndTime . zonedTimeToUTC $ mapZonedTime (addLocalTime deltaTOD) beginOfDay
+  HDiffTime dt -> Right $ DateAndTime . zonedTimeToUTC $ mapZonedTime (addLocalTime dt) now
+  HTimeOnly tod ->
+    let deltaTOD = daysAndTimeOfDayToTime 0 tod
+     in -- TODO if at 9:00 this is set to 8:00, do we want 8:00 of the *current* day (in the past) or of the *next* day?
+        -- Currently, it's the current day (in the past).
+        Right $ DateAndTime . zonedTimeToUTC $ mapZonedTime (addLocalTime deltaTOD) beginOfToday
+  where
+    -- Current day in *local* time.
+    today :: Day
+    today = localDay . zonedTimeToLocalTime $ now
+
+    -- Beginning (i.e. 00:00) of the current day in *local* time.
+    beginOfToday :: ZonedTime
+    beginOfToday = ZonedTime (LocalTime today midnight) (zonedTimeZone now)
+
+    interpretHumanDate :: HumanDate -> Either String Day
+    interpretHumanDate (HDAbs day) = return $ day
+    interpretHumanDate (HDDiff dd) = return $ addGregorianDurationRollOver dd today
+    interpretHumanDate (HDToNext n anchor)
+      | n <= 0 = Left $ "Invalid number of steps: " ++ show n
+      | otherwise = stepOverAnchorTimes n anchor $ today
+
+-- | Step n times over the given anchor. Require `times > 0`.
+--
+-- This always goes forward in time. For example, if it's the 4th today, then '4th' will give the
+-- 4th of the *next* month. The assumption is that there is a reason that the user didn't write
+-- 'tod'. This is different from todoist, for instance.
+--
+-- The function directly takes the `times` parameter instead of iterating to handle corner cases.
+-- E.g., `in 2 31st` should go to the 31st of 2 months later, but if that's possible, then the next
+-- month doesn't have a 31st, so we can't just walk to the next 31st twice.
+stepOverAnchorTimes :: Int -> DateAnchor -> Day -> Either String Day
+stepOverAnchorTimes n (AnchorDayOfWeek dow) day = return $ addDays ((toInteger n - 1) * 7) $ nextWeekday dow day
+stepOverAnchorTimes n (AnchorDayOfMonth dom) day =
+  let MonthDay currentMonth currentMonthDay = day
+      deltaMonths = toInteger $ if currentMonthDay < dom then n - 1 else n
+   in maybeToEither "Invalid day of month" $ fromMonthDayValid (addMonths deltaMonths currentMonth) dom
+stepOverAnchorTimes n (AnchorMonthDay m d) day =
+  let YearMonthDay currentYear currentMonth currentMonthDay = day
+      deltaYears = toInteger $ if (currentMonth, currentMonthDay) < (m, d) then n - 1 else n
+   in maybeToEither "Invalid month-day" $ fromGregorianValid (currentYear + deltaYears) m d
+
+-- | Next of the given weekday strictly after the given day.
+--
+-- One of those things that should really be part of time.
+nextWeekday :: DayOfWeek -> Day -> Day
+nextWeekday dow day = addDays deltaDays day
+  where
+    (_, _, currentDOW) = toWeekDate day
+    dowInt = fromEnum dow
+    deltaDays0 = (dowInt - currentDOW) `mod` 7
+    -- Ensure we go strictly forward:
+    deltaDays = toInteger $ if deltaDays0 == 0 then 7 else deltaDays0
+
+mapZonedTime :: (LocalTime -> LocalTime) -> ZonedTime -> ZonedTime
+mapZonedTime f (ZonedTime t tz) = ZonedTime (f t) tz
 
 -------------------------------------------------------------------------------
 -- Parsing
@@ -109,10 +180,10 @@ pTimeOfDay :: Parser TimeOfDay
 pTimeOfDay = do
   h <- pNonNegInt
   mm <- try (string "t" >> return Nothing) <|> (string ":" >> Just <$> pNonNegInt)
-  when (h > 23) $ fail "Invalid hour"
-  when (mm > Just 59) $ fail "Invalid minute"
   -- We don't support seconds b/c we don't need it rn.
-  return $ TimeOfDay h (fromMaybe 0 mm) 0
+  case makeTimeOfDayValid h (fromMaybe 0 mm) 0 of
+    Nothing -> fail "Invalid time of day"
+    Just res -> return res
 
 -- | "2024-03-27" or "24-03-27" as a short form.
 pHDAbs :: Parser HumanDate

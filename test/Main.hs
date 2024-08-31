@@ -18,12 +18,18 @@ testTests :: TestTree
 testTests = testGroup "Test tests" [unit_additionTest]
 
 dateTests :: TestTree
-dateTests = testGroup "Date" [parseHumanDateOrTimeTests]
+dateTests = testGroup "Date" [parseHumanDateOrTimeTests, nextWeekdayTests, interpretHumanDateOrTimeTests]
 
 parseE p = mapLeft Parsec.errorBundlePretty . Parsec.parse p "none"
 
 parseDateE :: Text -> Either String HumanDateOrTime
 parseDateE = mapLeft Parsec.errorBundlePretty . Parsec.parse pHumanDateOrTime "none"
+
+parseAndInterpretDateE :: Text -> ZonedTime -> Either String DateOrTime
+parseAndInterpretDateE s now = do
+  hdt <- parseDateE s
+  res <- interpretHumanDateOrTime hdt now
+  return res
 
 -- Don't wanna depend on extra right now.
 mapLeft :: (a -> b) -> Either a c -> Either b c
@@ -71,6 +77,57 @@ parseHumanDateOrTimeTests =
       testCase "relative time only, minute short" $
         parseDateE "2min" `shouldBeRight` (HDiffTime $ fromInteger (60 * 2))
     ]
+
+nextWeekdayTests =
+  testGroup
+    "Next weekdays"
+    [ testCase "Next weekday 1" $
+        nextWeekday Tuesday (fromGregorian 2024 8 30) @?= fromGregorian 2024 9 3,
+      testCase "Next weekday 2" $
+        nextWeekday Tuesday (fromGregorian 2024 9 2) @?= fromGregorian 2024 9 3,
+      testCase "Next weekday 3" $
+        nextWeekday Sunday (fromGregorian 2024 9 1) @?= fromGregorian 2024 9 8
+    ]
+
+interpretHumanDateOrTimeTests =
+  testGroup
+    "Parse & interpret HumanDateOrTime"
+    [ testCase "Next 13th" $
+        parseAndInterpretDateE "13th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 8 13),
+      testCase "Next 9th" $
+        parseAndInterpretDateE "9th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 9 9),
+      testCase "Next 10th" $
+        parseAndInterpretDateE "10th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 9 10),
+      testCase "Next mon" $
+        parseAndInterpretDateE "mon" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 8 12),
+      testCase "Next year-month" $
+        parseAndInterpretDateE "11-10" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 11 10),
+      testCase "Next year-month before" $
+        parseAndInterpretDateE "08-09" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2025 8 9),
+      testCase "In 2 days" $
+        parseAndInterpretDateE "in 2 days" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 8 12),
+      testCase "In 2 months" $
+        parseAndInterpretDateE "2 months" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 10 10),
+      testCase "In 2 15th" $
+        parseAndInterpretDateE "2 15th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 9 15),
+      testCase "In 2 9th" $
+        parseAndInterpretDateE "2 9th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 10 9),
+      testCase "In 2 10th" $
+        parseAndInterpretDateE "2 10th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 10 10),
+      testCase "In 3 31st" $
+        parseAndInterpretDateE "3 31st" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 10 31),
+      testCase "Time only 1" $
+        parseAndInterpretDateE "17:00" now1 `shouldBeRight` (DateAndTime $ UTCTime (fromGregorian 2024 8 10) (secondsToDiffTime $ hours 16)),
+      -- SOMEDAY This is a behavior where I'm not sure I want it rn: Going to an earlier time in the day doesn't leap to the next day!
+      testCase "Time only 2" $
+        parseAndInterpretDateE "8:00" now1 `shouldBeRight` (DateAndTime $ UTCTime (fromGregorian 2024 8 10) (secondsToDiffTime $ hours 7)),
+      testCase "Date and time" $
+        parseAndInterpretDateE "mon 17:00" now1 `shouldBeRight` (DateAndTime $ UTCTime (fromGregorian 2024 8 12) (secondsToDiffTime $ hours 16))
+    ]
+  where
+    now1 = ZonedTime (LocalTime (fromGregorian 2024 8 10) (TimeOfDay 8 0 0)) cet
+    cet = hoursToTimeZone 1
+    hours n = n * 60 * 60
 
 tests :: TestTree
 tests = testGroup "Tests" [testTests, dateTests]
