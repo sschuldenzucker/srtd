@@ -3,18 +3,14 @@
 module Srtd.Dates where
 
 import Control.Monad (void, when)
-import Control.Monad.Combinators.NonEmpty qualified as NE
-import Data.Map (Map)
-import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (fromMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Time
 import Data.Time.Calendar.Month
 import Data.Time.Calendar.WeekDate (toWeekDate)
 import Data.Void
-import Srtd.Todo
-import Srtd.Util (composeNTimes, composeNTimesM, maybeToEither)
+import Srtd.Util (maybeToEither)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 
