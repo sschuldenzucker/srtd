@@ -91,7 +91,7 @@ library
         ListZipper ^>= 1.2.0.2,
         Hclip ^>= 3.0.0.4,
         -- slightly old version to be compatible with uuid
-        time ^>= 1.12,  
+        time ^>= 1.12,
         megaparsec ^>= 9.6.1,
         parser-combinators ^>= 1.3,
 
@@ -144,6 +144,9 @@ test-suite srtd-test
     build-depends:
         base ^>=4.17.2.1,
         srtd,
+        text ^>= 2.1.1,
+        time ^>= 1.12,
+        megaparsec ^>= 9.6.1,
         tasty ^>= 1.5,
         tasty-hunit ^>= 0.10.2
     default-language: GHC2021
