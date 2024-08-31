@@ -13,6 +13,7 @@ import Data.Text qualified as Text
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
 import GHC.Generics
+import Srtd.Dates (DateOrTime)
 
 data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
 
@@ -55,14 +56,16 @@ data Attr = Attr
   { name :: String,
     -- | If Nothing, this item is treated as a transparent "folder" by most analyses.
     -- TODO should Status have a special 'None' element instead? Or just a default 'Item" or whatever?
-    status :: Maybe Status
+    status :: Maybe Status,
+    -- TODO mostly a dummy attr
+    deadline :: Maybe DateOrTime
   }
   deriving (Show, Generic)
 
 suffixLenses ''Attr
 
 attrMinimal :: String -> Attr
-attrMinimal s = Attr s Nothing
+attrMinimal s = Attr s Nothing Nothing
 
 instance ToJSON Status where
   toEncoding = genericToEncoding defaultOptions
