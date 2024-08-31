@@ -1,3 +1,4 @@
+{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
@@ -8,7 +9,7 @@ module Srtd.Components.MainTree (MainTree (..), make) where
 
 import Brick hiding (on)
 import Brick.BChan (writeBChan)
-import Brick.Keybindings (bind, ctrl)
+import Brick.Keybindings (Binding, bind, ctrl)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Control.Monad.IO.Class (liftIO)
@@ -16,6 +17,7 @@ import Data.CircularList qualified as CList
 import Data.Function (on)
 import Data.List (intercalate)
 import Data.Maybe (fromJust, fromMaybe, listToMaybe)
+import Data.Text (Text)
 import Data.Text qualified as T
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
@@ -25,8 +27,10 @@ import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.Component
 import Srtd.Components.Attr (renderMaybeStatus)
+import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
+import Srtd.Dates (DateOrTime)
 import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
@@ -109,7 +113,7 @@ rootKeymap =
       ),
       -- (kmSub (bind 'm') moveSingleModeKeymap),
       (kmSub (bind 'M') moveSubtreeModeKeymap),
-      (kmSub (bind 'd') deleteKeymap),
+      (kmSub (bind 'D') deleteKeymap),
       ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
           rname <- mtResourceName <$> get
           model <- liftIO $ getModel (acModelServer ctx)
@@ -134,10 +138,10 @@ rootKeymap =
       (kmSub (bind 't') setStatusKeymap),
       (kmSub (bind 'o') openExternallyKeymap),
       (kmLeaf (bind '.') "Next filter" cycleNextFilter),
+      (kmSub (bind 'd') editDateKeymap),
       (kmLeaf (bind 'q') "Quit" (const halt))
     ]
 
--- TODO bubble up the keymap name so it's displayed in the help overlay. Prob easiest to just duplicate the name.
 deleteKeymap :: Keymap (AppContext -> EventM n MainTree ())
 deleteKeymap =
   kmMake
@@ -161,6 +165,22 @@ setStatusKeymap =
       kmLeaf (bind 's') "Someday" (setStatus $ Just Someday),
       kmLeaf (bind 'o') "Someday" (setStatus $ Just Open)
     ]
+
+editDateKeymap :: Keymap (AppContext -> EventM n MainTree ())
+editDateKeymap =
+  kmMake
+    "Edit Date"
+    $ map mkDateEditShortcut
+    $ [(bind 'd', "Deadline", deadlineL)]
+  where
+    mkDateEditShortcut :: (Binding, Text, Lens' Attr (Maybe DateOrTime)) -> (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
+    mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, attr) ctx ->
+      let ztime = acZonedTime ctx
+          cb date' ctx' = do
+            modifyModelOnServer (acModelServer ctx') (modifyAttrByEID cur (l .~ date'))
+            return cur
+          mkDateEdit = dateSelectOverlay cb (attr ^. l) ztime ("Edit " <> label)
+       in liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . mkDateEdit)
 
 moveSubtreeModeKeymap :: Keymap (AppContext -> EventM n MainTree ())
 moveSubtreeModeKeymap =
@@ -344,6 +364,10 @@ instance BrickComponent MainTree where
       (VtyEvent e) -> handleFallback e
       _miscEvents -> return ()
     where
+      -- SOMEDAY when I want mouse support, I prob have to revise this: this only interprets
+      -- keystroke events (Event, from vty), not BrickEvent. Possible I have to run *both* event
+      -- handlers. Really a shame we can't know if somethings was handled. - or can we somehow??
+      -- NB e.g., Editor handles the full BrickEvent type.
       handleFallback e = zoom mtListL $ L.handleListEventVi (const $ return ()) e
 
   componentKeyDesc = kmzDesc . mtKeymap

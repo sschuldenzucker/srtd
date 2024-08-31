@@ -103,6 +103,7 @@ library
         Srtd.CmdlineArgs,
         Srtd.Component,
         Srtd.Components.Attr,
+        Srtd.Components.DateSelectOverlay,
         Srtd.Components.MainTree,
         Srtd.Components.NewNodeOverlay,
         Srtd.Components.TestOverlay,
