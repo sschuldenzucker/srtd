@@ -69,7 +69,7 @@ interpretHumanDateOrTime hdt now = case hdt of
   HDiffTime dt -> Right $ DateAndTime . zonedTimeToUTC $ mapZonedTime (addLocalTime dt) now
   HTimeOnly tod ->
     let deltaTOD = daysAndTimeOfDayToTime 0 tod
-     in -- TODO if at 9:00 this is set to 8:00, do we want 8:00 of the *current* day (in the past) or of the *next* day?
+     in -- SOMEDAY if at 9:00 this is set to 8:00, do we want 8:00 of the *current* day (in the past) or of the *next* day?
         -- Currently, it's the current day (in the past).
         Right $ DateAndTime . zonedTimeToUTC $ mapZonedTime (addLocalTime deltaTOD) beginOfToday
   where
