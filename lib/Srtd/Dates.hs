@@ -21,10 +21,6 @@ import Text.Megaparsec.Char
 -- expected in different situations.
 data DateOrTime = OnlyDate Day | DateAndTime UTCTime deriving (Eq, Show)
 
--------------------------------------------------------------------------------
--- Parsing
--------------------------------------------------------------------------------
-
 -- The following contain methods to parse a free-form description.
 -- This is intentionally incomplete, just what I use.
 
@@ -60,6 +56,10 @@ data DateAnchor
   | AnchorMonthDay Int Int
   deriving (Eq, Show)
 
+-------------------------------------------------------------------------------
+-- Parsing
+-------------------------------------------------------------------------------
+
 type Parser = Parsec Void Text
 
 type MyParseErrorBundle = ParseErrorBundle Text Void
@@ -86,7 +86,7 @@ parseHumanDateOrTime = parseMaybe pHumanDateOrTime
 -- - in 2 days
 -- - 2d
 -- - in 3 hours
--- - 3h
+-- - 3h  (this is why we can't use '17h' as a short notation, would clash here)
 pHumanDateOrTime :: Parser HumanDateOrTime
 pHumanDateOrTime = space >> (try pHDateMaybeTime <|> try pHTimeOnly <|> pHDiffTime) <* (space >> eof)
 
