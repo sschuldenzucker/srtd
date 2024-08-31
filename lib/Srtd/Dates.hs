@@ -13,7 +13,7 @@ import Data.Time.Calendar.Month
 import Data.Time.Calendar.WeekDate (toWeekDate)
 import Data.Void
 import GHC.Generics
-import Srtd.Util (maybeToEither)
+import Srtd.Util (eitherToMaybe, maybeToEither)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 
@@ -72,6 +72,16 @@ data DateAnchor
   | AnchorDayOfMonth Int
   | AnchorMonthDay Int Int
   deriving (Eq, Show)
+
+-- | Quick entry point: Parse and interpret, and discard errors.
+parseInterpretHumanDateOrTime :: Text -> ZonedTime -> Maybe DateOrTime
+parseInterpretHumanDateOrTime s now = do
+  hdt <- parseHumanDateOrTime s
+  eitherToMaybe $ interpretHumanDateOrTime hdt now
+
+-------------------------------------------------------------------------------
+-- Interpreting
+-------------------------------------------------------------------------------
 
 -- | Given the current time, interpret the human date.
 --
@@ -140,6 +150,21 @@ nextWeekday dow day = addDays deltaDays day
 
 mapZonedTime :: (LocalTime -> LocalTime) -> ZonedTime -> ZonedTime
 mapZonedTime f (ZonedTime t tz) = ZonedTime (f t) tz
+
+-------------------------------------------------------------------------------
+-- Pretty printing
+-------------------------------------------------------------------------------
+
+-- | Pretty-render the date/time wrt. the given time zone.
+prettyAbsolute :: TimeZone -> DateOrTime -> String
+-- SOMEDAY This commits to making OnlyDate in local time zone, which is slightly inconsistent (see
+-- above)
+prettyAbsolute _ (OnlyDate day) = formatTime defaultTimeLocale "%a, %Y-%m-%d" day
+-- SOMEDAY show time zone (%Z). Needs an extended locale though, the default doesn't know CET for
+-- instance by name.
+prettyAbsolute tz (DateAndTime time) = formatTime defaultTimeLocale "%a, %Y-%m-%d %H:%M" zonedTime
+  where
+    zonedTime = utcToZonedTime tz time
 
 -------------------------------------------------------------------------------
 -- Parsing
