@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Srtd.Keymap where
 
+import Brick (suffixLenses)
 import Brick.Keybindings (Binding)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Keybindings.Pretty (ppBinding)
@@ -110,6 +112,8 @@ data KeyDesc = KeyDesc
     kdIsToplevel :: Bool,
     kdPairs :: [(Text, Text)]
   }
+
+suffixLenses ''KeyDesc
 
 kmzDesc :: KeymapZipper a -> KeyDesc
 kmzDesc (KeymapZipper ps cur) =
