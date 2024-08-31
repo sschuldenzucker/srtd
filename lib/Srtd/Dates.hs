@@ -1,8 +1,10 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Srtd.Dates where
 
 import Control.Monad (void, when)
+import Data.Aeson
 import Data.Maybe (fromMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
@@ -10,6 +12,7 @@ import Data.Time
 import Data.Time.Calendar.Month
 import Data.Time.Calendar.WeekDate (toWeekDate)
 import Data.Void
+import GHC.Generics
 import Srtd.Util (maybeToEither)
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -18,7 +21,22 @@ import Text.Megaparsec.Char
 --
 -- No Ord instance is provided because *different* behaviors (beginning of day vs end of day) are
 -- expected in different situations.
-data DateOrTime = OnlyDate Day | DateAndTime UTCTime deriving (Eq, Show)
+--
+-- SOMEDAY Note that Day is fundamentally local while UTCTime is of course independent of time zone.
+-- Not sure if it's a non-issue or wat do. (maybe the caller has to deal with that)
+-- Currently, Day is *determined* in a local fashion when setting, but that's also fine.
+data DateOrTime = OnlyDate Day | DateAndTime UTCTime deriving (Eq, Show, Generic)
+
+jsonOptionsDateOrTime :: Options
+jsonOptionsDateOrTime = defaultOptions {sumEncoding = UntaggedValue}
+
+-- DateOrTime is encoded transparently (untagged) to give nicer JSON.
+instance ToJSON DateOrTime where
+  toJSON = genericToJSON jsonOptionsDateOrTime
+  toEncoding = genericToEncoding jsonOptionsDateOrTime
+
+instance FromJSON DateOrTime where
+  parseJSON = genericParseJSON jsonOptionsDateOrTime
 
 -- The following contain methods to parse a free-form description.
 -- This is intentionally incomplete, just what I use.
