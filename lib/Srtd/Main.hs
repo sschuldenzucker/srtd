@@ -19,6 +19,7 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
+import Data.Time (getZonedTime)
 import Data.Traversable (forM)
 import GHC.Stack (HasCallStack)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -102,9 +103,10 @@ main = do
   -- SOMEDAY it's unfortunate that this is bounded actually, could in principle lead to deadlock.
   appChan <- newBChan 100
   subscribe modelServer $ writeBChan appChan . ModelUpdated
+  ztime <- getZonedTime
   let appState =
         AppState
-          { asContext = AppContext modelServer appChan,
+          { asContext = AppContext modelServer appChan ztime,
             asTabs = LZ.fromList [SomeBrickComponent $ MainTree.make Vault model (Tab 0)],
             asNextTabID = 1,
             asOverlays = [],
@@ -162,7 +164,7 @@ myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverl
 
 myHandleEvent :: BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
 myHandleEvent ev =
-  dbgprint >> case ev of
+  dbgprint >> updateCurrentTime >> case ev of
     (VtyEvent (EvKey (KChar 'q') [MCtrl])) -> do
       liftIO (glogL INFO "quitting...")
       halt
@@ -191,6 +193,7 @@ myHandleEvent ev =
       zoom activeComponentL $ handleEvent asContext ev
   where
     dbgprint = liftIO $ glogL INFO $ "Received: " ++ show ev
+    updateCurrentTime = liftIO getZonedTime >>= assign (asContextL . acZonedTimeL)
 
 forComponentsM :: EventM AppResourceName SomeBrickComponent () -> EventM AppResourceName AppState ()
 forComponentsM act = do

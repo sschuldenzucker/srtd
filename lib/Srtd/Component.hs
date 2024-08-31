@@ -1,4 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -- | A model defining a unified component interface. I have no idea why Brick doesn't include this.
 --
@@ -8,7 +9,8 @@ module Srtd.Component where
 import Brick
 import Brick.BChan (BChan)
 import Data.Text (Text)
-import Lens.Micro.Platform (lens)
+import Data.Time (ZonedTime)
+import Lens.Micro.Platform
 import Srtd.Attr (EID)
 import Srtd.Keymap (KeyDesc)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
@@ -45,8 +47,17 @@ data AppResourceName = MainListFor AppResourceName | Overlay Int | Tab Int | Edi
 -- (not sure if this would *actually* be cleaner: We then have to carry the type annotation around.)
 data AppContext = AppContext
   { acModelServer :: ModelServer,
-    acAppChan :: BChan AppMsg
+    acAppChan :: BChan AppMsg,
+    -- | Current time and time zone at the time of processing this event. ONLY for user-facing
+    -- interactions, NOT for internal process coordination!
+    acZonedTime :: ZonedTime
   }
+
+-- Somehow TemplateHaskell breaks everything here. Perhaps b/c of the circularity.
+-- suffixLenses ''AppContext
+
+acZonedTimeL :: Lens' AppContext ZonedTime
+acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 
 -- TODO add type AppHandler s = AppContext -> EventM AppResourceName s ()
 -- or AppHandler n s a or something.
