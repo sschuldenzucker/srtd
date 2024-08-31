@@ -21,9 +21,9 @@ import Text.Megaparsec.Char
 -- expected in different situations.
 data DateOrTime = OnlyDate Day | DateAndTime UTCTime deriving (Eq, Show)
 
------------------------------
+-------------------------------------------------------------------------------
 -- Parsing
------------------------------
+-------------------------------------------------------------------------------
 
 -- The following contain methods to parse a free-form description.
 -- This is intentionally incomplete, just what I use.
@@ -172,7 +172,6 @@ pDAMonthDay = do
   -- \^ We do *not* check the (day, month) combo here, b/c we can't anyways, b/c of leap years.
   return $ AnchorMonthDay month day
 
--- TODO Remember to implement today and tomorrow.
 pHDDiff :: Parser HumanDate
 pHDDiff = HDDiff <$> (try pToday <|> try pTomorrow <|> pProperOffset)
   where
