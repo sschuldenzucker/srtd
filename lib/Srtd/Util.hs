@@ -6,6 +6,9 @@ import Control.Monad ((<=<))
 maybeToEither :: a -> Maybe b -> Either a b
 maybeToEither err = maybe (Left err) Right
 
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe = either (const Nothing) Just
+
 -- | This is really defined for anything with a neutral element, in this case the neutral element being `pure ()`
 whenJust :: (Applicative m) => Maybe a -> (a -> m ()) -> m ()
 whenJust mx f = maybe (pure ()) f mx
