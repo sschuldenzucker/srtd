@@ -19,6 +19,7 @@ import Data.List (intercalate)
 import Data.Maybe (fromJust, fromMaybe, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Time (ZonedTime, zonedTimeZone)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -175,11 +176,11 @@ editDateKeymap =
   where
     mkDateEditShortcut :: (Binding, Text, Lens' Attr (Maybe DateOrTime)) -> (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
     mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, attr) ctx ->
-      let ztime = acZonedTime ctx
+      let tz = zonedTimeZone $ acZonedTime ctx
           cb date' ctx' = do
             modifyModelOnServer (acModelServer ctx') (modifyAttrByEID cur (l .~ date'))
             return cur
-          mkDateEdit = dateSelectOverlay cb (attr ^. l) ztime ("Edit " <> label)
+          mkDateEdit = dateSelectOverlay cb (attr ^. l) tz ("Edit " <> label)
        in liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . mkDateEdit)
 
 moveSubtreeModeKeymap :: Keymap (AppContext -> EventM n MainTree ())

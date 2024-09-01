@@ -9,7 +9,6 @@ import Brick.Keybindings (bind, binding, ctrl)
 import Brick.Widgets.Edit
 import Control.Monad (when)
 import Control.Monad.State (liftIO)
-import Data.List (intercalate)
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -33,27 +32,22 @@ data DateSelectOverlay = DateSelectOverlay
   { dsEditor :: Editor Text AppResourceName,
     dsValue :: Maybe DateOrTime,
     dsCallback :: Callback,
-    dsZonedTime :: ZonedTime,
+    dsTimeZone :: TimeZone,
     dsOrigValue :: Maybe DateOrTime,
     dsTitle :: Text
   }
 
 suffixLenses ''DateSelectOverlay
 
-dsTimeZone :: DateSelectOverlay -> TimeZone
-dsTimeZone = zonedTimeZone . dsZonedTime
-
--- SOMEDAY we don't pull new times when this overlay is open for longer.
--- That should be fine really but if we ever wanna be super-clean we could make a periodic "tick"
--- event (emitted by another thread) and listen to that.
-dateSelectOverlay :: Callback -> Maybe DateOrTime -> ZonedTime -> Text -> AppResourceName -> DateSelectOverlay
-dateSelectOverlay cb origValue ztime title rname =
+-- | NB the TimeZone is only required to render the *first* time before we receive an event (which is where it's updated).
+dateSelectOverlay :: Callback -> Maybe DateOrTime -> TimeZone -> Text -> AppResourceName -> DateSelectOverlay
+dateSelectOverlay cb origValue tz title rname =
   DateSelectOverlay
     { dsEditor = theEditor,
       dsValue = Nothing,
       dsCallback = cb,
-      dsZonedTime = ztime,
       dsOrigValue = origValue,
+      dsTimeZone = tz,
       dsTitle = title
     }
   where
@@ -86,7 +80,6 @@ keymapZipper = keymapToZipper keymap
 instance BrickComponent DateSelectOverlay where
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
   -- TODO make prettier, e.g., colors, spacing, padding, etc.
-  -- TODO should we just show the original value (if any), to make the UI less weird?
   renderComponent self = editUI <=> dateUI <=> origDateUI
     where
       editUI = renderEditor (txt . T.intercalate "\n") True (dsEditor self)
@@ -95,19 +88,21 @@ instance BrickComponent DateSelectOverlay where
       renderDate date = maybe emptyWidget (str . prettyAbsolute (dsTimeZone self)) $ date
 
   -- NB we don't have sub-keymaps here atm, so don't need to handle as much as MainTree, for instance.
-  handleEvent ctx ev = case ev of
-    (VtyEvent (EvKey key mods)) -> do
-      case kmzLookup keymapZipper key mods of
-        NotFound -> handleFallback ev
-        LeafResult act _nxt -> act ctx
-        SubmapResult _sm -> error "wtf submap?"
-    _ -> handleFallback ev
+  handleEvent ctx ev =
+    updateTimeZone >> case ev of
+      (VtyEvent (EvKey key mods)) -> do
+        case kmzLookup keymapZipper key mods of
+          NotFound -> handleFallback ev
+          LeafResult act _nxt -> act ctx
+          SubmapResult _sm -> error "wtf submap?"
+      _ -> handleFallback ev
     where
       handleFallback ev' = do
         zoom dsEditorL $ handleEditorEvent ev'
         text <- (T.intercalate "\n" . getEditContents) <$> use dsEditorL
-        ztime <- use dsZonedTimeL
-        dsValueL .= parseInterpretHumanDateOrTime text ztime
+        dsValueL .= parseInterpretHumanDateOrTime text (acZonedTime ctx)
+      -- Yeah time zones change really rarely but w/e.
+      updateTimeZone = dsTimeZoneL .= zonedTimeZone (acZonedTime ctx)
 
   componentKeyDesc self = kmzDesc keymapZipper & kdNameL .~ (dsTitle self)
 
