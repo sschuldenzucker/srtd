@@ -7,7 +7,8 @@ import Srtd.Attr
 
 -- NB it's slightly unfortunate that both Brick and us use the term 'Attr' to refer to different things, but w/e.
 
--- TODO WIP this works but the attrs look kinda atrocious b/c I don't match them to the background if selected.
+-- TODO We use `withDefAttr` for selected in the context where this is rendered, therefore we *can* actually make it status.waiting.selected where .selected is optional. Do that! Makes cleaner theme files.
+
 -- - Improve rendering for the rows in MainTree, see there.
 renderStatus :: Bool -> Status -> Widget n
 renderStatus sel a = case a of
