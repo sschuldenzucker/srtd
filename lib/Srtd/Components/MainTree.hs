@@ -51,6 +51,7 @@ data MainTree = MainTree
     mtList :: MyList,
     -- | Top-level resource name for this component. We can assign anything nested below (or "above") it.
     mtResourceName :: AppResourceName,
+    mtZonedTime :: ZonedTime,
     mtKeymap :: KeymapZipper (AppContext -> EventM AppResourceName MainTree ())
   }
   deriving (Show)
@@ -118,8 +119,9 @@ rootKeymap =
       ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
           rname <- mtResourceName <$> get
           model <- liftIO $ getModel (acModelServer ctx)
+          ztime <- use mtZonedTimeL
           filters <- mtFilters <$> get
-          put $ makeWithFilters cur filters model rname
+          put $ makeWithFilters cur filters model ztime rname
       ),
       ( kmLeaf (binding KBS []) "De-hoist" $ \ctx -> do
           s <- get
@@ -128,8 +130,9 @@ rootKeymap =
             (parent, _) : _ -> do
               rname <- mtResourceName <$> get
               model <- liftIO $ getModel (acModelServer ctx)
+              ztime <- use mtZonedTimeL
               filters <- mtFilters <$> get
-              put $ makeWithFilters parent filters model rname & mtListL %~ scrollListToEID (mtRoot s)
+              put $ makeWithFilters parent filters model ztime rname & mtListL %~ scrollListToEID (mtRoot s)
       ),
       (kmSub (bind ',') sortCurKeymap),
       (kmSub (bind ';') sortRootKeymap),
@@ -282,18 +285,19 @@ cycleNextFilter ctx = do
   mtFiltersL %= CList.rotR
   pullNewModel ctx
 
-make :: EID -> Model -> AppResourceName -> MainTree
+make :: EID -> Model -> ZonedTime -> AppResourceName -> MainTree
 make root = makeWithFilters root (CList.fromList defaultFilters)
 
 -- | filters must not be empty.
-makeWithFilters :: EID -> CList.CList Filter -> Model -> AppResourceName -> MainTree
-makeWithFilters root filters model rname =
+makeWithFilters :: EID -> CList.CList Filter -> Model -> ZonedTime -> AppResourceName -> MainTree
+makeWithFilters root filters model ztime rname =
   MainTree
     { mtRoot = root,
       mtFilters = filters,
       mtSubtree = subtree,
       mtList = list,
       mtResourceName = rname,
+      mtZonedTime = ztime,
       mtKeymap = keymapToZipper rootKeymap
     }
   where
@@ -343,33 +347,34 @@ instance BrickComponent MainTree where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
       headrow = renderRoot rootAttr breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
       box = headrow <=> L.renderList renderRow True mtList
-
-  handleEvent ctx ev = do
-    isTopLevel <- use (mtKeymapL . to kmzIsToplevel)
-    case ev of
-      (AppEvent (ModelUpdated _)) -> pullNewModel ctx
-      (AppEvent (PopOverlay (OREID eid))) -> do
-        -- We do not distinguish between *who* returned or *why* rn. That's a bit of a hole but not needed right now.
-        -- NB we really trust in synchronicity here b/c we don't reload the model. That's fine now but could be an issue later.
-        mtListL %= scrollListToEID eid
-      -- Code for keymap. NB this is a bit nasty, having some abstraction here would be good if we need it again.
-      -- We also gotta be a bit careful not to overlap these in principle.
-      (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzResetRoot
-      (VtyEvent (EvKey KBS [])) | not isTopLevel -> mtKeymapL %= kmzUp
-      (VtyEvent e@(EvKey key mods)) -> do
-        keymap <- use mtKeymapL
-        case kmzLookup keymap key mods of
-          NotFound -> handleFallback e
-          LeafResult act nxt -> act ctx >> mtKeymapL .= nxt
-          SubmapResult sm -> mtKeymapL .= sm
-      (VtyEvent e) -> handleFallback e
-      _miscEvents -> return ()
+  handleEvent ctx ev =
+    updateZonedTime >> do
+      isTopLevel <- use (mtKeymapL . to kmzIsToplevel)
+      case ev of
+        (AppEvent (ModelUpdated _)) -> pullNewModel ctx
+        (AppEvent (PopOverlay (OREID eid))) -> do
+          -- We do not distinguish between *who* returned or *why* rn. That's a bit of a hole but not needed right now.
+          -- NB we really trust in synchronicity here b/c we don't reload the model. That's fine now but could be an issue later.
+          mtListL %= scrollListToEID eid
+        -- Code for keymap. NB this is a bit nasty, having some abstraction here would be good if we need it again.
+        -- We also gotta be a bit careful not to overlap these in principle.
+        (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzResetRoot
+        (VtyEvent (EvKey KBS [])) | not isTopLevel -> mtKeymapL %= kmzUp
+        (VtyEvent e@(EvKey key mods)) -> do
+          keymap <- use mtKeymapL
+          case kmzLookup keymap key mods of
+            NotFound -> handleFallback e
+            LeafResult act nxt -> act ctx >> mtKeymapL .= nxt
+            SubmapResult sm -> mtKeymapL .= sm
+        (VtyEvent e) -> handleFallback e
+        _miscEvents -> return ()
     where
       -- SOMEDAY when I want mouse support, I prob have to revise this: this only interprets
       -- keystroke events (Event, from vty), not BrickEvent. Possible I have to run *both* event
       -- handlers. Really a shame we can't know if somethings was handled. - or can we somehow??
       -- NB e.g., Editor handles the full BrickEvent type.
       handleFallback e = zoom mtListL $ L.handleListEventVi (const $ return ()) e
+      updateZonedTime = mtZonedTimeL .= acZonedTime ctx
 
   componentKeyDesc = kmzDesc . mtKeymap
 

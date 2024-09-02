@@ -107,7 +107,7 @@ main = do
   let appState =
         AppState
           { asContext = AppContext modelServer appChan ztime,
-            asTabs = LZ.fromList [SomeBrickComponent $ MainTree.make Vault model (Tab 0)],
+            asTabs = LZ.fromList [SomeBrickComponent $ MainTree.make Vault model ztime (Tab 0)],
             asNextTabID = 1,
             asOverlays = [],
             asHelpAlways = False,
