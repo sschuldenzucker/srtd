@@ -27,7 +27,7 @@ import Lens.Micro.Platform
 import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.Component
-import Srtd.Components.Attr (renderMaybeStatus)
+import Srtd.Components.Attr (renderMaybeDeadline, renderMaybeStatus)
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
@@ -314,19 +314,22 @@ withSelAttr :: Bool -> Widget n -> Widget n
 withSelAttr True = withDefAttr selectedItemRowAttr
 withSelAttr False = id
 
-renderRow :: Bool -> (Int, a, Attr) -> Widget n
-renderRow sel (lvl, _, Attr {name, status}) =
+renderRow :: ZonedTime -> Bool -> (Int, a, Attr) -> Widget n
+renderRow ztime sel (lvl, _, Attr {name, status, deadline}) =
   withSelAttr sel $
     hBox $
       -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
       -- alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
       -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
-      [indentW, statusW, str " ", nameW]
+      [deadlineW, str " ", indentW, statusW, str " ", nameW]
   where
-    indentW = str (concat (replicate (lvl + 1) "    "))
+    -- The first level doesn't take indent b/c deadlines are enough rn.
+    indentW = str (concat (replicate (lvl) "    "))
+    deadlineW = renderMaybeDeadline ztime sel deadline
     statusW = renderMaybeStatus sel status
     nameW = str name
 
+-- SOMEDAY also deadline for the root (if any)?
 renderRoot :: Attr -> [(a, Attr)] -> Widget n
 renderRoot rootAttr breadcrumbs =
   hBox
@@ -342,11 +345,12 @@ renderFilters fs = maybe emptyWidget go (CList.focus fs)
     go f = withDefAttr filterLabelAttr $ str (filterName f)
 
 instance BrickComponent MainTree where
-  renderComponent MainTree {mtList, mtSubtree = Subtree {rootAttr, breadcrumbs}, mtFilters} = box
+  renderComponent MainTree {mtList, mtSubtree = Subtree {rootAttr, breadcrumbs}, mtFilters, mtZonedTime} = box
     where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
       headrow = renderRoot rootAttr breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
-      box = headrow <=> L.renderList renderRow True mtList
+      box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
+
   handleEvent ctx ev =
     updateZonedTime >> do
       isTopLevel <- use (mtKeymapL . to kmzIsToplevel)
