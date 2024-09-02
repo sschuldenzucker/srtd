@@ -25,7 +25,7 @@ import Text.Megaparsec.Char
 -- SOMEDAY Note that Day is fundamentally local while UTCTime is of course independent of time zone.
 -- Not sure if it's a non-issue or wat do. (maybe the caller has to deal with that)
 -- Currently, Day is *determined* in a local fashion when setting, but that's also fine.
-data DateOrTime = OnlyDate Day | DateAndTime UTCTime deriving (Eq, Show, Generic)
+data DateOrTime = DateOnly Day | DateAndTime UTCTime deriving (Eq, Show, Generic)
 
 jsonOptionsDateOrTime :: Options
 jsonOptionsDateOrTime = defaultOptions {sumEncoding = UntaggedValue}
@@ -88,7 +88,7 @@ parseInterpretHumanDateOrTime s now = do
 -- May fail when an invalid date was specified, e.g. '31st' when it's currently April.
 interpretHumanDateOrTime :: HumanDateOrTime -> ZonedTime -> Either String DateOrTime
 interpretHumanDateOrTime hdt now = case hdt of
-  HDateMaybeTime hd Nothing -> OnlyDate <$> interpretHumanDate hd
+  HDateMaybeTime hd Nothing -> DateOnly <$> interpretHumanDate hd
   HDateMaybeTime hd (Just tod) -> do
     day <- interpretHumanDate hd
     let beginOfDay = ZonedTime (LocalTime day midnight) (zonedTimeZone now)
@@ -157,9 +157,9 @@ mapZonedTime f (ZonedTime t tz) = ZonedTime (f t) tz
 
 -- | Pretty-render the date/time wrt. the given time zone.
 prettyAbsolute :: TimeZone -> DateOrTime -> String
--- SOMEDAY This commits to making OnlyDate in local time zone, which is slightly inconsistent (see
+-- SOMEDAY This commits to making DateOnly in local time zone, which is slightly inconsistent (see
 -- above)
-prettyAbsolute _ (OnlyDate day) = formatTime defaultTimeLocale "%a, %Y-%m-%d" day
+prettyAbsolute _ (DateOnly day) = formatTime defaultTimeLocale "%a, %Y-%m-%d" day
 -- SOMEDAY show time zone (%Z). Needs an extended locale though, the default doesn't know CET for
 -- instance by name.
 prettyAbsolute tz (DateAndTime time) = formatTime defaultTimeLocale "%a, %Y-%m-%d %H:%M" zonedTime
@@ -260,6 +260,12 @@ dayOfWeekPairs =
     (["sun"], Sunday)
   ]
 
+namedOffsetPairs :: [([Text], CalendarDiffDays)]
+namedOffsetPairs =
+  [ (["tomorrow", "tom"], CalendarDiffDays 0 1),
+    (["today", "tod"], CalendarDiffDays 0 0)
+  ]
+
 pDADayOfWeek :: Parser DateAnchor
 pDADayOfWeek = AnchorDayOfWeek <$> keywords dayOfWeekPairs
 
@@ -283,10 +289,9 @@ pDAMonthDay = do
   return $ AnchorMonthDay month day
 
 pHDDiff :: Parser HumanDate
-pHDDiff = HDDiff <$> (try pToday <|> try pTomorrow <|> pProperOffset)
+pHDDiff = HDDiff <$> (try pNamedOffset <|> pProperOffset)
   where
-    pToday = string "tod" >> return (CalendarDiffDays 0 0)
-    pTomorrow = string "tom" >> return (CalendarDiffDays 0 1)
+    pNamedOffset = keywords namedOffsetPairs
     pProperOffset = do
       void $ optional (string "in" >> space)
       n <- pNonNegInt

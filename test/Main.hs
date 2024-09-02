@@ -93,29 +93,29 @@ interpretHumanDateOrTimeTests =
   testGroup
     "Parse & interpret HumanDateOrTime"
     [ testCase "Next 13th" $
-        parseAndInterpretDateE "13th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 8 13),
+        parseAndInterpretDateE "13th" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 8 13),
       testCase "Next 9th" $
-        parseAndInterpretDateE "9th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 9 9),
+        parseAndInterpretDateE "9th" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 9 9),
       testCase "Next 10th" $
-        parseAndInterpretDateE "10th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 9 10),
+        parseAndInterpretDateE "10th" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 9 10),
       testCase "Next mon" $
-        parseAndInterpretDateE "mon" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 8 12),
+        parseAndInterpretDateE "mon" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 8 12),
       testCase "Next year-month" $
-        parseAndInterpretDateE "11-10" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 11 10),
+        parseAndInterpretDateE "11-10" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 11 10),
       testCase "Next year-month before" $
-        parseAndInterpretDateE "08-09" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2025 8 9),
+        parseAndInterpretDateE "08-09" now1 `shouldBeRight` (DateOnly $ fromGregorian 2025 8 9),
       testCase "In 2 days" $
-        parseAndInterpretDateE "in 2 days" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 8 12),
+        parseAndInterpretDateE "in 2 days" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 8 12),
       testCase "In 2 months" $
-        parseAndInterpretDateE "2 months" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 10 10),
+        parseAndInterpretDateE "2 months" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 10 10),
       testCase "In 2 15th" $
-        parseAndInterpretDateE "2 15th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 9 15),
+        parseAndInterpretDateE "2 15th" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 9 15),
       testCase "In 2 9th" $
-        parseAndInterpretDateE "2 9th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 10 9),
+        parseAndInterpretDateE "2 9th" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 10 9),
       testCase "In 2 10th" $
-        parseAndInterpretDateE "2 10th" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 10 10),
+        parseAndInterpretDateE "2 10th" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 10 10),
       testCase "In 3 31st" $
-        parseAndInterpretDateE "3 31st" now1 `shouldBeRight` (OnlyDate $ fromGregorian 2024 10 31),
+        parseAndInterpretDateE "3 31st" now1 `shouldBeRight` (DateOnly $ fromGregorian 2024 10 31),
       testCase "Time only 1" $
         parseAndInterpretDateE "17:00" now1 `shouldBeRight` (DateAndTime $ UTCTime (fromGregorian 2024 8 10) (secondsToDiffTime $ hours 16)),
       -- SOMEDAY This is a behavior where I'm not sure I want it rn: Going to an earlier time in the day doesn't leap to the next day!
