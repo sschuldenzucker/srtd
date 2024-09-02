@@ -4,15 +4,19 @@
 module Srtd.Dates where
 
 import Control.Monad (void, when)
-import Data.Aeson
+import Data.Aeson hiding (pairs) -- annoying overlap
+import Data.Functor ((<&>))
+import Data.List qualified as L
 import Data.Maybe (fromMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Time
 import Data.Time.Calendar.Month
 import Data.Time.Calendar.WeekDate (toWeekDate)
 import Data.Void
 import GHC.Generics
+import Srtd.Todo
 import Srtd.Util (eitherToMaybe, maybeToEither)
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -78,6 +82,42 @@ parseInterpretHumanDateOrTime :: Text -> ZonedTime -> Maybe DateOrTime
 parseInterpretHumanDateOrTime s now = do
   hdt <- parseHumanDateOrTime s
   eitherToMaybe $ interpretHumanDateOrTime hdt now
+
+-------------------------------------------------------------------------------
+-- Convenience Accessors
+-------------------------------------------------------------------------------
+
+isBefore :: DateOrTime -> ZonedTime -> Bool
+isBefore (DateAndTime t) zt = t < zonedTimeToUTC zt
+isBefore (DateOnly d) (ZonedTime lt _) = endOfDay d <= lt
+
+isTodayOf :: DateOrTime -> ZonedTime -> Bool
+isTodayOf (DateAndTime t) (ZonedTime lt tz) = zonedDay (utcToZonedTime tz t) == localDay lt
+isTodayOf (DateOnly d) (ZonedTime lt _) = d == localDay lt
+
+isTomorrowOf :: DateOrTime -> ZonedTime -> Bool
+isTomorrowOf (DateAndTime t) (ZonedTime lt tz) = zonedDay (utcToZonedTime tz t) == nextDay (localDay lt)
+isTomorrowOf (DateOnly d) (ZonedTime lt _) = d == nextDay (localDay lt)
+
+dotDay :: TimeZone -> DateOrTime -> Day
+dotDay _ (DateOnly d) = d
+dotDay tz (DateAndTime t) = localDay $ utcToLocalTime tz t
+
+dotmLocalTimeOfDay :: TimeZone -> DateOrTime -> Maybe TimeOfDay
+dotmLocalTimeOfDay _ (DateOnly _) = Nothing
+dotmLocalTimeOfDay tz (DateAndTime t) = Just . localTimeOfDay $ utcToLocalTime tz t
+
+-- Helpers
+
+zonedDay :: ZonedTime -> Day
+zonedDay (ZonedTime lt _) = localDay lt
+
+nextDay :: Day -> Day
+nextDay = addDays 1
+
+-- NB we do *not* differentiate between end-of-day and beginning-of-next-day!
+endOfDay :: Day -> LocalTime
+endOfDay d = LocalTime (addDays 1 d) midnight
 
 -------------------------------------------------------------------------------
 -- Interpreting
@@ -165,6 +205,39 @@ prettyAbsolute _ (DateOnly day) = formatTime defaultTimeLocale "%a, %Y-%m-%d" da
 prettyAbsolute tz (DateAndTime time) = formatTime defaultTimeLocale "%a, %Y-%m-%d %H:%M" zonedTime
   where
     zonedTime = utcToZonedTime tz time
+
+-- | Pretty-render relative to the given `now` moment in time. Medium-length.
+--
+-- Relative rendering for 'today', 'tomorrow', or 'mon', but not 'in 1 hour' or 'in 2 months'.
+--
+-- This is a valid inverse to `parseInterpretHumanDateOrTime`.
+prettyRelativeMed :: ZonedTime -> DateOrTime -> String
+prettyRelativeMed (ZonedTime lnow tz) dot = dayS <> maybe mempty (" " <>) mtimeS
+  where
+    dayS = prettyDayRelativeMed (localDay lnow) (dotDay tz dot)
+    mtimeS = prettyTimeOfDay <$> dotmLocalTimeOfDay tz dot
+
+prettyDayRelativeMed :: Day -> Day -> String
+prettyDayRelativeMed dnow d =
+  fromMaybe (prettyDay d) $
+    findDelta namedOffsetPairs cdiffDays
+      <|> (findDelta dayOfWeekPairs =<< dowIfNext)
+  where
+    deltaDays = diffDays d dnow
+    cdiffDays = CalendarDiffDays 0 deltaDays
+    dowIfNext
+      | deltaDays > 7 = Nothing
+      | otherwise = Just $ dayOfWeek d
+    findDelta pairs delta =
+      L.find (\(_names, v) -> v == delta) pairs <&> \(names, _) ->
+        T.unpack $ head names
+
+-- SOMEDAY maybe include %a (day of week, short)
+prettyDay :: Day -> String
+prettyDay = formatTime defaultTimeLocale "%Y-%m-%d"
+
+prettyTimeOfDay :: TimeOfDay -> String
+prettyTimeOfDay = formatTime defaultTimeLocale "%H:%M"
 
 -------------------------------------------------------------------------------
 -- Parsing
