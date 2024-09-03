@@ -175,7 +175,11 @@ editDateKeymap =
   kmMake
     "Edit Date"
     $ map mkDateEditShortcut
-    $ [(bind 'd', "Deadline", datesL . deadlineL)]
+    $ [ (bind 'd', "Deadline", datesL . deadlineL),
+        (bind 'g', "Goalline", datesL . goallineL),
+        (bind 's', "Scheduled", datesL . scheduledL),
+        (bind 'r', "Remind", datesL . remindL)
+      ]
   where
     mkDateEditShortcut :: (Binding, Text, Lens' Attr (Maybe DateOrTime)) -> (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
     mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, attr) ctx ->
