@@ -51,36 +51,65 @@ compareMStatusActionability = compare
 
 suffixLenses ''Status
 
+jsonOptionsAttr :: Options
+jsonOptionsAttr = defaultOptions {omitNothingFields = True}
+
+data AttrDates = AttrDates
+  { -- SOMEDAY consistency check: remind <= schedule <= goalline <= deadline, if any
+    deadline :: Maybe DateOrTime,
+    goalline :: Maybe DateOrTime,
+    scheduled :: Maybe DateOrTime,
+    remind :: Maybe DateOrTime
+  }
+  deriving (Show, Generic)
+
+suffixLenses ''AttrDates
+
+noDates :: AttrDates
+noDates = AttrDates Nothing Nothing Nothing Nothing
+
 -- SOMEDAY should be Text.
 data Attr = Attr
   { name :: String,
     -- | If Nothing, this item is treated as a transparent "folder" by most analyses.
     -- TODO should Status have a special 'None' element instead? Or just a default 'Item" or whatever?
     status :: Maybe Status,
-    -- TODO mostly a dummy attr
-    deadline :: Maybe DateOrTime
+    dates :: AttrDates
   }
   deriving (Show, Generic)
 
 suffixLenses ''Attr
 
 attrMinimal :: String -> Attr
-attrMinimal s = Attr s Nothing Nothing
+attrMinimal s = Attr s Nothing noDates
 
 instance ToJSON Status where
   toEncoding = genericToEncoding defaultOptions
 
 instance FromJSON Status
 
-instance ToJSON Attr where
-  toEncoding = genericToEncoding defaultOptions
+instance ToJSON AttrDates where
+  toEncoding = genericToEncoding jsonOptionsAttr
+  toJSON = genericToJSON jsonOptionsAttr
 
--- LATER As soon as we add more here, we prob want an implementation with optional fields (which can be configured somehow abstractly)
-instance FromJSON Attr
+instance FromJSON AttrDates where
+  parseJSON = genericParseJSON jsonOptionsAttr
+
+instance ToJSON Attr where
+  toEncoding = genericToEncoding jsonOptionsAttr
+  toJSON = genericToJSON jsonOptionsAttr
+
+instance FromJSON Attr where
+  -- Need to write it out manually here to make 'dates' optional (b/c it's not a Maybe)
+  parseJSON = withObject "Attr" $ \v ->
+    Attr
+      <$> v .: "name"
+      <*> v .:? "status"
+      <*> v .:? "dates" .!= noDates
 
 -- We use a custom instance here to get more readable JSON.
 instance ToJSON EID where
-  -- SOMEDAY implement toEncoding, I can't be bothered rn.
+  -- SOMEDAY implement toEncoding for speed, I can't be bothered rn.
   toJSON Inbox = String "INBOX"
   toJSON Vault = String "VAULT"
   toJSON (EIDNormal uuid) = String (UUID.toText uuid)

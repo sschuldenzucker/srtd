@@ -175,7 +175,7 @@ editDateKeymap =
   kmMake
     "Edit Date"
     $ map mkDateEditShortcut
-    $ [(bind 'd', "Deadline", deadlineL)]
+    $ [(bind 'd', "Deadline", datesL . deadlineL)]
   where
     mkDateEditShortcut :: (Binding, Text, Lens' Attr (Maybe DateOrTime)) -> (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
     mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, attr) ctx ->
@@ -315,7 +315,8 @@ withSelAttr True = withDefAttr selectedItemRowAttr
 withSelAttr False = id
 
 renderRow :: ZonedTime -> Bool -> (Int, a, Attr) -> Widget n
-renderRow ztime sel (lvl, _, Attr {name, status, deadline}) =
+-- TODO render all the dates
+renderRow ztime sel (lvl, _, Attr {name, status, dates = AttrDates {deadline}}) =
   withSelAttr sel $
     hBox $
       -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
