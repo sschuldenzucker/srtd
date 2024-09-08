@@ -87,6 +87,20 @@ parseInterpretHumanDateOrTime s now = do
 -- Convenience Accessors
 -------------------------------------------------------------------------------
 
+-- | 'compare'-like function. We don't provide an Ord instance for DateOrTime b/c it's subjective
+-- which is the right one in any given situation.
+--
+-- This assumes end-of-day for date-only values.
+--
+-- TODO not really quite right. E.g., `remind` usually refers to beginning-of-day while `deadline` refers to end-of-day.
+ordBefore :: TimeZone -> DateOrTime -> DateOrTime -> Ordering
+ordBefore _tz (DateAndTime t1) (DateAndTime t2) = compare t1 t2
+ordBefore _tz (DateOnly d1) (DateOnly d2) = compare d1 d2
+ordBefore tz (DateOnly d1) (DateAndTime t2) = compare (endOfDay d1) (utcToLocalTime tz t2)
+ordBefore tz (DateAndTime t1) (DateOnly d2) = compare (utcToLocalTime tz t1) (endOfDay d2)
+
+-- SOMEDAY these can prob be simplified.
+
 isBefore :: DateOrTime -> ZonedTime -> Bool
 isBefore (DateAndTime t) zt = t < zonedTimeToUTC zt
 isBefore (DateOnly d) (ZonedTime lt _) = endOfDay d <= lt

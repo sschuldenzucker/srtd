@@ -27,7 +27,7 @@ import Lens.Micro.Platform
 import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.Component
-import Srtd.Components.Attr (renderMaybeDeadline, renderMaybeStatus)
+import Srtd.Components.Attr (renderMaybeStatus, renderMostUrgentDate)
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
@@ -320,17 +320,17 @@ withSelAttr False = id
 
 renderRow :: ZonedTime -> Bool -> (Int, a, Attr) -> Widget n
 -- TODO render all the dates
-renderRow ztime sel (lvl, _, Attr {name, status, dates = AttrDates {deadline}}) =
+renderRow ztime sel (lvl, _, Attr {name, status, dates}) =
   withSelAttr sel $
     hBox $
       -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
       -- alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
       -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
-      [deadlineW, str " ", indentW, statusW, str " ", nameW]
+      [dateW, str " ", indentW, statusW, str " ", nameW]
   where
     -- The first level doesn't take indent b/c deadlines are enough rn.
     indentW = str (concat (replicate (lvl) "    "))
-    deadlineW = renderMaybeDeadline ztime sel deadline
+    dateW = renderMostUrgentDate ztime sel dates
     statusW = renderMaybeStatus sel status
     nameW = str name
 
