@@ -78,3 +78,18 @@ fg = "text"
 "selected.status.someday" = {fg = "mauve"}
 "selected.status.open" = {fg = "yellow"}
 
+# TODO 'bold' doesn't really work. (but italic and underline do)
+"date.deadline" = {style = "underline"}
+"date.deadline.today" = {fg = "yellow", style = "underline"}
+"date.deadline.tomorrow" = {fg = "green", style = "underline"}
+"date.deadline.overdue" = {fg = "red", style = "underline"}
+
+"date.goalline.today" = {fg = "yellow"}
+"date.goalline.tomorrow" = {fg = "green"}
+"date.goalline.overdue" = {fg = "red"}
+
+# SOMEDAY slightly inconsistent among green/yellow.
+"date.scheduled.today" = {fg = "green"}
+
+"date.remind.today" = {fg = "blue"}
+
