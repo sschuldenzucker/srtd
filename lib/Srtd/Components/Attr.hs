@@ -88,6 +88,11 @@ renderMostUrgentDate now sel dates = setWidth 12 . maybe almostEmptyWidget (rend
     -- BUG WORKAROUND: Using emptyWidget or str "" instead doesn't grow right in setWidth. No idea why.
     almostEmptyWidget = str " "
 
+-- | Variant of 'renderMostUrgentDate' that does not have a fixed width, but minimal, and returns
+-- 'Nothing' if there's nothing to display.
+renderMostUrgentDateMaybe :: ZonedTime -> Bool -> AttrDates -> Maybe (Widget n)
+renderMostUrgentDateMaybe now sel dates = fmap (renderLabeledDate now sel) . mostUrgentDateLabeled now $ dates
+
 renderDeadline :: ZonedTime -> Bool -> DateOrTime -> Widget n
 renderDeadline now sel dt = withAttr (rootattr <> subattr <> selattr) . str . prettyRelativeMed now $ dt
   where
