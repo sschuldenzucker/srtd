@@ -372,6 +372,9 @@ instance BrickComponent MainTree where
         -- We also gotta be a bit careful not to overlap these in principle.
         (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzResetRoot
         (VtyEvent (EvKey KBS [])) | not isTopLevel -> mtKeymapL %= kmzUp
+        -- Map Down to vi j and Up to vi k. This also handles mouse wheel scroll. (but we don't get clicks yet)
+        (VtyEvent (EvKey KDown [])) -> handleEvent ctx (VtyEvent (EvKey (KChar 'j') []))
+        (VtyEvent (EvKey KUp [])) -> handleEvent ctx (VtyEvent (EvKey (KChar 'k') []))
         (VtyEvent e@(EvKey key mods)) -> do
           keymap <- use mtKeymapL
           case kmzLookup keymap key mods of
