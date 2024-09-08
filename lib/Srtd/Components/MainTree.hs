@@ -23,6 +23,7 @@ import Data.Time (ZonedTime, zonedTimeZone)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
+import Graphics.Vty.Input (Button (..))
 import Lens.Micro.Platform
 import Srtd.AppAttr
 import Srtd.Attr
@@ -362,6 +363,7 @@ instance BrickComponent MainTree where
   handleEvent ctx ev =
     updateZonedTime >> do
       isTopLevel <- use (mtKeymapL . to kmzIsToplevel)
+      listRName <- use (mtListL . L.listNameL)
       case ev of
         (AppEvent (ModelUpdated _)) -> pullNewModel ctx
         (AppEvent (PopOverlay (OREID eid))) -> do
@@ -372,9 +374,31 @@ instance BrickComponent MainTree where
         -- We also gotta be a bit careful not to overlap these in principle.
         (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzResetRoot
         (VtyEvent (EvKey KBS [])) | not isTopLevel -> mtKeymapL %= kmzUp
-        -- Map Down to vi j and Up to vi k. This also handles mouse wheel scroll. (but we don't get clicks yet)
+        -- Map Down to vi j and Up to vi k. This also handles basic mouse wheel scroll if mouse
+        -- support is not activated (see Main.hs / brick mouse example)
+        -- NB we don't receive these for mouse scroll if mouse support is activated. See below.
+        -- NB the following are basically modifications to list. If we need more of these, we should
+        -- make a function / wrapper.
         (VtyEvent (EvKey KDown [])) -> handleEvent ctx (VtyEvent (EvKey (KChar 'j') []))
         (VtyEvent (EvKey KUp [])) -> handleEvent ctx (VtyEvent (EvKey (KChar 'k') []))
+        -- Mouse support
+        (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
+          | rname' == listRName ->
+              mtListL %= L.listMoveTo rown
+        -- SOMEDAY ideally, we could actually scroll the list while keeping the selection the same
+        -- (except if it would go out of bounds), but Brick lists don't provide that feature.
+        -- Implementing this may be related to implementing a "scrolloff" type feature later. I
+        -- probably have to reach into the List implementation for this. I'm really not quite sure
+        -- how it remembers its scroll position tbh. Something with viewports and Brick's 'visible'.
+        -- I *think* we can just append the right visibility request (from Brick.Types.Internal).
+        (MouseDown rname' BScrollDown [] _)
+          | rname' == listRName ->
+              mtListL %= L.listMoveBy 3
+        (MouseDown rname' BScrollUp [] _)
+          | rname' == listRName ->
+              mtListL %= L.listMoveBy (-3)
+        -- zoom mtListL $ L.listMoveByPages (0.3 :: Double)
+        -- Keymap
         (VtyEvent e@(EvKey key mods)) -> do
           keymap <- use mtKeymapL
           case kmzLookup keymap key mods of

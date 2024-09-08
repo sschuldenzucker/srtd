@@ -23,6 +23,7 @@ import Data.Time (getZonedTime)
 import Data.Traversable (forM)
 import GHC.Stack (HasCallStack)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
+import Graphics.Vty qualified as Vty
 import Lens.Micro.Platform
 import Srtd.Alignment
 import Srtd.AppAttr
@@ -251,12 +252,18 @@ myChooseAttrMap state = case CList.focus $ asAttrMapRing state of
   -- Only relevant when there are no themes. This shouldn't really happen.
   Nothing -> error "No themes?!?"
 
+myAppStartEvent = do
+  -- Set up mouse support. For some reason we have to do this here, not in 'main'.
+  -- See Brick's `MouseDemo.hs`
+  vty <- getVtyHandle
+  liftIO $ Vty.setMode (Vty.outputIface vty) Vty.Mouse True
+
 app :: App AppState AppMsg AppResourceName
 app =
   App
     { appDraw = myAppDraw,
       appHandleEvent = myHandleEvent,
-      appStartEvent = return (),
+      appStartEvent = myAppStartEvent,
       appAttrMap = myChooseAttrMap,
       appChooseCursor = myChooseCursor
     }
