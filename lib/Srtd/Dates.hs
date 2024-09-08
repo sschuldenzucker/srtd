@@ -350,7 +350,8 @@ dayOfWeekPairs =
 
 namedOffsetPairs :: [([Text], CalendarDiffDays)]
 namedOffsetPairs =
-  [ (["tomorrow", "tom"], CalendarDiffDays 0 1),
+  [ (["yesterday", "yest"], CalendarDiffDays 0 (-1)),
+    (["tomorrow", "tom"], CalendarDiffDays 0 1),
     (["today", "tod"], CalendarDiffDays 0 0)
   ]
 
