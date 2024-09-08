@@ -333,7 +333,7 @@ renderRow ztime sel (lvl, _, Attr {name, status, dates}) =
       [indentW, statusW, str " ", padRight Max nameW, str " ", dateW]
   where
     -- The first level doesn't take indent b/c deadlines are enough rn.
-    indentW = str (concat (replicate (lvl) "    "))
+    indentW = str (concat (replicate (lvl + 1) "    "))
     dateW = renderMostUrgentDate ztime sel dates
     statusW = renderMaybeStatus sel status
     nameW = strTruncateAvailable name
