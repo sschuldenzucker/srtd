@@ -88,8 +88,7 @@ fg = "text"
 "date.goalline.tomorrow" = {fg = "green"}
 "date.goalline.overdue" = {fg = "red"}
 
-# SOMEDAY slightly inconsistent among green/yellow.
-"date.scheduled.today" = {fg = "green"}
+"date.scheduled.today" = {fg = "yellow"}
 
 "date.remind.today" = {fg = "blue"}
 
