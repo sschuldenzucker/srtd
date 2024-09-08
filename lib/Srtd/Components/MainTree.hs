@@ -26,6 +26,7 @@ import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Lens.Micro.Platform
 import Srtd.AppAttr
 import Srtd.Attr
+import Srtd.BrickHelpers
 import Srtd.Component
 import Srtd.Components.Attr (renderMaybeStatus, renderMostUrgentDate)
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
@@ -326,13 +327,15 @@ renderRow ztime sel (lvl, _, Attr {name, status, dates}) =
       -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
       -- alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
       -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
-      [dateW, str " ", indentW, statusW, str " ", nameW]
+      -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
+      -- I think it's so we don't have two greedy widgets or something.
+      [indentW, statusW, str " ", padRight Max nameW, str " ", dateW]
   where
     -- The first level doesn't take indent b/c deadlines are enough rn.
     indentW = str (concat (replicate (lvl) "    "))
     dateW = renderMostUrgentDate ztime sel dates
     statusW = renderMaybeStatus sel status
-    nameW = str name
+    nameW = strTruncateAvailable name
 
 -- SOMEDAY also deadline for the root (if any)?
 renderRoot :: Attr -> [(a, Attr)] -> Widget n
