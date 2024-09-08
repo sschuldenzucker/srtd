@@ -85,6 +85,8 @@ fg = "text"
 "date.goalline.overdue" = {fg = "red"}
 
 "date.scheduled.today" = {fg = "yellow"}
+"date.scheduled.overdue" = {fg = "red"}
 
 "date.remind.today" = {fg = "blue"}
+"date.remind.overdue" = {fg = "blue"}
 
