@@ -77,6 +77,7 @@ renderLabeledDate now sel ldt = withAttr (rootattr <> kindattr <> subattr <> sel
       | dt `isBefore` now = attrName "overdue"
       | dt `isTodayOf` now = attrName "today"
       | dt `isTomorrowOf` now = attrName "tomorrow"
+      -- SOMEDAY style for next 7 days (like todoist)
       | otherwise = mempty
     selattr = if sel then attrName "selected" else mempty
 
