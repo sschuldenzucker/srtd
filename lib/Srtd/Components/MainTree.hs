@@ -153,7 +153,7 @@ deleteKeymap =
   kmMake
     "Delete"
     -- TOOD some undo would be nice, lol.
-    [ (kmLeaf (bind 'd') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur))
+    [ (kmLeaf (bind 'D') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur))
     -- (kmLeaf (bind 's') "Single" $ withCur $ \cur -> modifyModel (deleteSingle cur))
     ]
 
