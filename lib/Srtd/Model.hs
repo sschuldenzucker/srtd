@@ -81,6 +81,8 @@ emptyModel =
       leaf (Vault, unsafeAttrMinimal "VAULT")
     ]
 
+-- SOMEDAY cleanup: the following are probably unused. (see below for a solution with zippers)
+
 -- SOMEDAY put these into a separate module
 
 data InsertLoc id
