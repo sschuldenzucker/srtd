@@ -15,7 +15,7 @@ import Brick.Widgets.List qualified as L
 import Control.Monad.IO.Class (liftIO)
 import Data.CircularList qualified as CList
 import Data.Function (on)
-import Data.List (intercalate)
+import Data.List (intercalate, intersperse)
 import Data.Maybe (fromJust, fromMaybe, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -29,7 +29,7 @@ import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
 import Srtd.Component
-import Srtd.Components.Attr (renderMaybeStatus, renderMostUrgentDate)
+import Srtd.Components.Attr (mostUrgentDateAttr, renderMaybeStatus, renderMostUrgentDate, renderMostUrgentDateMaybe)
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
@@ -339,13 +339,21 @@ renderRow ztime sel (lvl, _, Attr {name, status, dates}) =
     nameW = strTruncateAvailable name
 
 -- SOMEDAY also deadline for the root (if any)?
-renderRoot :: Attr -> [(a, Attr)] -> Widget n
-renderRoot rootAttr breadcrumbs =
+renderRoot :: ZonedTime -> Attr -> [(a, Attr)] -> Widget n
+renderRoot ztime rootAttr breadcrumbs =
   hBox
-    [statusW, str " ", str pathStr]
+    [statusW, str " ", pathW]
   where
     statusW = renderMaybeStatus False (status rootAttr)
-    pathStr = intercalate " < " $ name rootAttr : [name attr | (_, attr) <- breadcrumbs]
+    pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootAttr : map snd breadcrumbs
+    wrapBreadcrumbWidget attr w =
+      let battr = mostUrgentDateAttr ztime False (dates attr)
+       in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
+    mkBreadcrumbW attr =
+      hBox
+        [ str (name attr),
+          maybe emptyWidget (wrapBreadcrumbWidget attr) (renderMostUrgentDateMaybe ztime False (dates attr))
+        ]
 
 -- Currently we only render the currently selected filter.
 renderFilters :: CList.CList Filter -> Widget n
@@ -357,7 +365,7 @@ instance BrickComponent MainTree where
   renderComponent MainTree {mtList, mtSubtree = Subtree {rootAttr, breadcrumbs}, mtFilters, mtZonedTime} = box
     where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
-      headrow = renderRoot rootAttr breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
+      headrow = renderRoot mtZonedTime rootAttr breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
       box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
 
   handleEvent ctx ev =
