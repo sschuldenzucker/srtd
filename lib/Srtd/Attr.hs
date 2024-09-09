@@ -175,4 +175,4 @@ setLastModified :: UTCTime -> Attr -> Attr
 setLastModified now = autoDatesL . lastModifiedL .~ now
 
 setLastStatusModified :: UTCTime -> Attr -> Attr
-setLastStatusModified now = autoDatesL . lastStatusModifiedL .~ now
+setLastStatusModified now = autoDatesL %~ ((lastModifiedL .~ now) . (lastStatusModifiedL .~ now))
