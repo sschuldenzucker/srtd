@@ -19,7 +19,7 @@ import Data.List (intercalate, intersperse)
 import Data.Maybe (fromJust, fromMaybe, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Time (ZonedTime, zonedTimeZone)
+import Data.Time (ZonedTime, zonedTimeToUTC, zonedTimeZone)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -84,8 +84,9 @@ rootKeymap =
           case mtCurWithAttr state of
             Just (cur, curAttr) -> do
               let oldName = name curAttr
-              let cb name' (AppContext {acModelServer = acModelServer'}) = do
-                    modifyModelOnServer acModelServer' (modifyAttrByEID cur (nameL .~ name'))
+              let cb name' (AppContext {acModelServer = acModelServer', acZonedTime = acZonedTime'}) = do
+                    let f = setLastModified (zonedTimeToUTC acZonedTime') . (nameL .~ name')
+                    modifyModelOnServer acModelServer' (modifyAttrByEID cur f)
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
                     return cur
               liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName "Edit Item")
@@ -187,7 +188,8 @@ editDateKeymap =
     mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, attr) ctx ->
       let tz = zonedTimeZone $ acZonedTime ctx
           cb date' ctx' = do
-            modifyModelOnServer (acModelServer ctx') (modifyAttrByEID cur (l .~ date'))
+            let f = setLastModified (zonedTimeToUTC $ acZonedTime ctx) . (l .~ date')
+            modifyModelOnServer (acModelServer ctx') (modifyAttrByEID cur f)
             return cur
           mkDateEdit = dateSelectOverlay cb (attr ^. l) tz ("Edit " <> label)
        in liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . mkDateEdit)
@@ -275,8 +277,8 @@ pushInsertNewItemRelToCur :: (EID -> InsertLoc EID) -> AppContext -> EventM n Ma
 pushInsertNewItemRelToCur toLoc ctx = do
   state <- get
   let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) toLoc
-  let cb name (AppContext {acModelServer = acModelServer'}) = do
-        let attr = attrMinimal name
+  let cb name (AppContext {acModelServer = acModelServer', acZonedTime = acZonedTime'}) = do
+        let attr = attrMinimal (zonedTimeToUTC acZonedTime') name
         uuid <- nextRandom
         modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
         return $ EIDNormal uuid
@@ -284,7 +286,9 @@ pushInsertNewItemRelToCur toLoc ctx = do
 
 setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
-  modifyModel (modifyAttrByEID cur (statusL .~ status'))
+  modifyModelWithCtx $ \ctx ->
+    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ctx) . (statusL .~ status')
+     in modifyAttrByEID cur f
 
 cycleNextFilter :: AppContext -> EventM n MainTree ()
 cycleNextFilter ctx = do
@@ -472,13 +476,16 @@ moveCurRelative go ins = withCur $ \cur ctx -> do
   modifyModel (moveSubtreeRelFromForest cur go ins forest) ctx
 
 modifyModel :: (Model -> Model) -> AppContext -> EventM n MainTree ()
-modifyModel f AppContext {acModelServer} = do
+modifyModel f = modifyModelWithCtx (const f)
+
+modifyModelWithCtx :: (AppContext -> Model -> Model) -> AppContext -> EventM n MainTree ()
+modifyModelWithCtx f ctx@(AppContext {acModelServer}) = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
-    modifyModelOnServer acModelServer f
+    modifyModelOnServer acModelServer (f ctx)
     getModel acModelServer
   let subtree = filterRun filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
