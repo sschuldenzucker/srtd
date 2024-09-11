@@ -11,6 +11,7 @@ import Data.Time (ZonedTime (..))
 import Lens.Micro.Platform
 import Srtd.AppAttr
 import Srtd.Attr
+import Srtd.BrickHelpers
 import Srtd.Dates
 import Srtd.Todo
 
@@ -91,10 +92,6 @@ mostUrgentDateAttr now sel dates = maybe mempty (dateAttrForLabeled now sel) (mo
 
 renderMostUrgentDate :: ZonedTime -> Bool -> AttrDates -> Widget n
 renderMostUrgentDate now sel dates = setWidth 12 . maybe almostEmptyWidget (renderLabeledDate now sel) . mostUrgentDateLabeled now $ dates
-  where
-    setWidth w = hLimit w . padRight Max
-    -- BUG WORKAROUND: Using emptyWidget or str "" instead doesn't grow right in setWidth. No idea why.
-    almostEmptyWidget = str " "
 
 -- | Variant of 'renderMostUrgentDate' that does not have a fixed width, but minimal, and returns
 -- 'Nothing' if there's nothing to display.
@@ -124,10 +121,6 @@ renderDeadline now sel dt = withAttr (rootattr <> subattr <> selattr) . str . pr
 -- year unless after this year, etc. We're semi doing this rn.
 renderMaybeDeadline :: ZonedTime -> Bool -> Maybe DateOrTime -> Widget n
 renderMaybeDeadline now sel = setWidth 10 . maybe almostEmptyWidget (renderDeadline now sel)
-  where
-    setWidth w = hLimit w . padRight Max
-    -- BUG WORKAROUND: Using emptyWidget or str "" instead doesn't grow right in setWidth. No idea why.
-    almostEmptyWidget = str " "
 
 renderMaybeStatus :: Bool -> Maybe Status -> Widget n
 renderMaybeStatus sel = maybe (str "-") (renderStatus sel)
