@@ -126,6 +126,14 @@ dotmLocalTimeOfDay tz (DateAndTime t) = Just . localTimeOfDay $ utcToLocalTime t
 zonedDay :: ZonedTime -> Day
 zonedDay (ZonedTime lt _) = localDay lt
 
+utcTimeToDay :: TimeZone -> UTCTime -> Day
+utcTimeToDay tz t = localDay $ utcToLocalTime tz t
+
+-- | Crop any `DateAndTime` value to a `DateOnly` value. (does nothing on `DateOnly` values)
+cropDate :: TimeZone -> DateOrTime -> DateOrTime
+cropDate tz (DateAndTime t) = DateOnly $ utcTimeToDay tz t
+cropDate _ dt@(DateOnly _) = dt
+
 nextDay :: Day -> Day
 nextDay = addDays 1
 

@@ -29,11 +29,11 @@ import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
 import Srtd.Component
-import Srtd.Components.Attr (mostUrgentDateAttr, renderMaybeStatus, renderMostUrgentDate, renderMostUrgentDateMaybe)
+import Srtd.Components.Attr (mostUrgentDateAttr, renderMaybeStatus, renderMostUrgentDate, renderMostUrgentDateMaybe, renderPastDate)
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
-import Srtd.Dates (DateOrTime)
+import Srtd.Dates (DateOrTime (..), cropDate)
 import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
@@ -325,8 +325,7 @@ withSelAttr True = withDefAttr selectedItemRowAttr
 withSelAttr False = id
 
 renderRow :: ZonedTime -> Bool -> (Int, a, Attr) -> Widget n
--- TODO render all the dates
-renderRow ztime sel (lvl, _, Attr {name, status, dates}) =
+renderRow ztime sel (lvl, _, Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}) =
   withSelAttr sel $
     hBox $
       -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
@@ -334,11 +333,12 @@ renderRow ztime sel (lvl, _, Attr {name, status, dates}) =
       -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
       -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
       -- I think it's so we don't have two greedy widgets or something.
-      [indentW, statusW, str " ", padRight Max nameW, str " ", dateW]
+      [indentW, statusW, str " ", padRight Max nameW, str " ", dateW, str " ", lastStatusModifiedW]
   where
     -- The first level doesn't take indent b/c deadlines are enough rn.
     indentW = str (concat (replicate (lvl + 1) "    "))
     dateW = renderMostUrgentDate ztime sel dates
+    lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
     statusW = renderMaybeStatus sel status
     nameW = strTruncateAvailable name
 

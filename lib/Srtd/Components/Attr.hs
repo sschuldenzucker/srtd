@@ -101,6 +101,12 @@ renderMostUrgentDate now sel dates = setWidth 12 . maybe almostEmptyWidget (rend
 renderMostUrgentDateMaybe :: ZonedTime -> Bool -> AttrDates -> Maybe (Widget n)
 renderMostUrgentDateMaybe now sel dates = fmap (renderLabeledDate now sel) . mostUrgentDateLabeled now $ dates
 
+renderPastDate :: ZonedTime -> Bool -> DateOrTime -> Widget n
+-- SOMEDAY styling options (`withAttr`), but I'm not using them rn.
+renderPastDate now _sel dt = str label
+  where
+    label = prettyRelativeMed now dt
+
 -- SOMEDAY remove, is dead
 renderDeadline :: ZonedTime -> Bool -> DateOrTime -> Widget n
 renderDeadline now sel dt = withAttr (rootattr <> subattr <> selattr) . str . prettyRelativeMed now $ dt
