@@ -170,7 +170,8 @@ setStatusKeymap =
       kmLeaf (bind 'i') "WIP" (setStatus $ Just WIP),
       kmLeaf (binding KEnter []) "Done" (setStatus $ Just Done),
       kmLeaf (bind 's') "Someday" (setStatus $ Just Someday),
-      kmLeaf (bind 'o') "Open" (setStatus $ Just Open)
+      kmLeaf (bind 'o') "Open" (setStatus $ Just Open),
+      kmLeaf (bind 't') "Touch" touchLastStatusModified
     ]
 
 editDateKeymap :: Keymap (AppContext -> EventM n MainTree ())
@@ -288,6 +289,12 @@ setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
   modifyModelWithCtx $ \ctx ->
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ctx) . (statusL .~ status')
+     in modifyAttrByEID cur f
+
+touchLastStatusModified :: AppContext -> EventM n MainTree ()
+touchLastStatusModified = withCur $ \cur ->
+  modifyModelWithCtx $ \ctx ->
+    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ctx)
      in modifyAttrByEID cur f
 
 cycleNextFilter :: AppContext -> EventM n MainTree ()
