@@ -11,6 +11,7 @@ import Data.Time (ZonedTime (..))
 import Lens.Micro.Platform
 import Srtd.AppAttr
 import Srtd.Attr
+import Srtd.BrickHelpers
 import Srtd.Dates
 import Srtd.Todo
 
@@ -91,16 +92,19 @@ mostUrgentDateAttr now sel dates = maybe mempty (dateAttrForLabeled now sel) (mo
 
 renderMostUrgentDate :: ZonedTime -> Bool -> AttrDates -> Widget n
 renderMostUrgentDate now sel dates = setWidth 12 . maybe almostEmptyWidget (renderLabeledDate now sel) . mostUrgentDateLabeled now $ dates
-  where
-    setWidth w = hLimit w . padRight Max
-    -- BUG WORKAROUND: Using emptyWidget or str "" instead doesn't grow right in setWidth. No idea why.
-    almostEmptyWidget = str " "
 
 -- | Variant of 'renderMostUrgentDate' that does not have a fixed width, but minimal, and returns
 -- 'Nothing' if there's nothing to display.
 renderMostUrgentDateMaybe :: ZonedTime -> Bool -> AttrDates -> Maybe (Widget n)
 renderMostUrgentDateMaybe now sel dates = fmap (renderLabeledDate now sel) . mostUrgentDateLabeled now $ dates
 
+renderPastDate :: ZonedTime -> Bool -> DateOrTime -> Widget n
+-- SOMEDAY styling options (`withAttr`), but I'm not using them rn.
+renderPastDate now _sel dt = setWidth 10 $ str label
+  where
+    label = prettyRelativeMed now dt
+
+-- SOMEDAY remove, is dead
 renderDeadline :: ZonedTime -> Bool -> DateOrTime -> Widget n
 renderDeadline now sel dt = withAttr (rootattr <> subattr <> selattr) . str . prettyRelativeMed now $ dt
   where
@@ -117,10 +121,6 @@ renderDeadline now sel dt = withAttr (rootattr <> subattr <> selattr) . str . pr
 -- year unless after this year, etc. We're semi doing this rn.
 renderMaybeDeadline :: ZonedTime -> Bool -> Maybe DateOrTime -> Widget n
 renderMaybeDeadline now sel = setWidth 10 . maybe almostEmptyWidget (renderDeadline now sel)
-  where
-    setWidth w = hLimit w . padRight Max
-    -- BUG WORKAROUND: Using emptyWidget or str "" instead doesn't grow right in setWidth. No idea why.
-    almostEmptyWidget = str " "
 
 renderMaybeStatus :: Bool -> Maybe Status -> Widget n
 renderMaybeStatus sel = maybe (str "-") (renderStatus sel)

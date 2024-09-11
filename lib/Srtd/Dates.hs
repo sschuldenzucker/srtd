@@ -126,6 +126,14 @@ dotmLocalTimeOfDay tz (DateAndTime t) = Just . localTimeOfDay $ utcToLocalTime t
 zonedDay :: ZonedTime -> Day
 zonedDay (ZonedTime lt _) = localDay lt
 
+utcTimeToDay :: TimeZone -> UTCTime -> Day
+utcTimeToDay tz t = localDay $ utcToLocalTime tz t
+
+-- | Crop any `DateAndTime` value to a `DateOnly` value. (does nothing on `DateOnly` values)
+cropDate :: TimeZone -> DateOrTime -> DateOrTime
+cropDate tz (DateAndTime t) = DateOnly $ utcTimeToDay tz t
+cropDate _ dt@(DateOnly _) = dt
+
 nextDay :: Day -> Day
 nextDay = addDays 1
 
@@ -236,12 +244,19 @@ prettyDayRelativeMed dnow d =
   fromMaybe (prettyDay d) $
     findDelta namedOffsetPairs cdiffDays
       <|> (findDelta dayOfWeekPairs =<< dowIfNext)
+      <|> (fmap ("-" ++) $ findDelta namedOffsetPairs negCdiffDays)
+      <|> (fmap ("-" ++) . findDelta dayOfWeekPairs =<< dowIfPrev)
   where
     deltaDays = diffDays d dnow
     cdiffDays = CalendarDiffDays 0 deltaDays
+    negCdiffDays = CalendarDiffDays 0 (-deltaDays)
     dowIfNext
       | deltaDays <= 0 = Nothing
       | deltaDays > 7 = Nothing
+      | otherwise = Just $ dayOfWeek d
+    dowIfPrev
+      | deltaDays >= 0 = Nothing
+      | deltaDays < -7 = Nothing
       | otherwise = Just $ dayOfWeek d
     findDelta pairs delta =
       L.find (\(_names, v) -> v == delta) pairs <&> \(names, _) ->

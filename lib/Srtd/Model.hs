@@ -71,9 +71,17 @@ instance FromJSON Model where
 emptyModel :: Model
 emptyModel =
   Model
-    [ leaf (Inbox, attrMinimal "INBOX"),
-      leaf (Vault, attrMinimal "VAULT")
+    -- SOMEDAY this is a bad hack that points us to the fact that the "synthetic" elements should
+    -- really be different from the rest.
+    -- But I'm too attached to the nice rose trees & everything right now.
+    -- We shouldn't make a special node type b/c in almost all relevant cases, a node will be a
+    -- "normal" one. Perhaps we can restructure 'Model' so that the toplevel elements are not part
+    -- of a tree. It would be a bit cumbersome, but maybe not too much.
+    [ leaf (Inbox, unsafeAttrMinimal "INBOX"),
+      leaf (Vault, unsafeAttrMinimal "VAULT")
     ]
+
+-- SOMEDAY cleanup: the following are probably unused. (see below for a solution with zippers)
 
 -- SOMEDAY put these into a separate module
 

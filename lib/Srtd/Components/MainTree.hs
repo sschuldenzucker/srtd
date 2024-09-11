@@ -19,7 +19,7 @@ import Data.List (intercalate, intersperse)
 import Data.Maybe (fromJust, fromMaybe, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Time (ZonedTime, zonedTimeZone)
+import Data.Time (ZonedTime, zonedTimeToUTC, zonedTimeZone)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -29,11 +29,11 @@ import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
 import Srtd.Component
-import Srtd.Components.Attr (mostUrgentDateAttr, renderMaybeStatus, renderMostUrgentDate, renderMostUrgentDateMaybe)
+import Srtd.Components.Attr (mostUrgentDateAttr, renderMaybeStatus, renderMostUrgentDate, renderMostUrgentDateMaybe, renderPastDate)
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
-import Srtd.Dates (DateOrTime)
+import Srtd.Dates (DateOrTime (..), cropDate)
 import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
@@ -84,8 +84,9 @@ rootKeymap =
           case mtCurWithAttr state of
             Just (cur, curAttr) -> do
               let oldName = name curAttr
-              let cb name' (AppContext {acModelServer = acModelServer'}) = do
-                    modifyModelOnServer acModelServer' (modifyAttrByEID cur (nameL .~ name'))
+              let cb name' (AppContext {acModelServer = acModelServer', acZonedTime = acZonedTime'}) = do
+                    let f = setLastModified (zonedTimeToUTC acZonedTime') . (nameL .~ name')
+                    modifyModelOnServer acModelServer' (modifyAttrByEID cur f)
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
                     return cur
               liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName "Edit Item")
@@ -169,7 +170,8 @@ setStatusKeymap =
       kmLeaf (bind 'i') "WIP" (setStatus $ Just WIP),
       kmLeaf (binding KEnter []) "Done" (setStatus $ Just Done),
       kmLeaf (bind 's') "Someday" (setStatus $ Just Someday),
-      kmLeaf (bind 'o') "Open" (setStatus $ Just Open)
+      kmLeaf (bind 'o') "Open" (setStatus $ Just Open),
+      kmLeaf (bind 't') "Touch" touchLastStatusModified
     ]
 
 editDateKeymap :: Keymap (AppContext -> EventM n MainTree ())
@@ -187,7 +189,8 @@ editDateKeymap =
     mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, attr) ctx ->
       let tz = zonedTimeZone $ acZonedTime ctx
           cb date' ctx' = do
-            modifyModelOnServer (acModelServer ctx') (modifyAttrByEID cur (l .~ date'))
+            let f = setLastModified (zonedTimeToUTC $ acZonedTime ctx) . (l .~ date')
+            modifyModelOnServer (acModelServer ctx') (modifyAttrByEID cur f)
             return cur
           mkDateEdit = dateSelectOverlay cb (attr ^. l) tz ("Edit " <> label)
        in liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . mkDateEdit)
@@ -274,8 +277,8 @@ pushInsertNewItemRelToCur :: (EID -> InsertLoc EID) -> AppContext -> EventM n Ma
 pushInsertNewItemRelToCur toLoc ctx = do
   state <- get
   let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) toLoc
-  let cb name (AppContext {acModelServer = acModelServer'}) = do
-        let attr = attrMinimal name
+  let cb name (AppContext {acModelServer = acModelServer', acZonedTime = acZonedTime'}) = do
+        let attr = attrMinimal (zonedTimeToUTC acZonedTime') name
         uuid <- nextRandom
         modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
         return $ EIDNormal uuid
@@ -283,7 +286,15 @@ pushInsertNewItemRelToCur toLoc ctx = do
 
 setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
-  modifyModel (modifyAttrByEID cur (statusL .~ status'))
+  modifyModelWithCtx $ \ctx ->
+    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ctx) . (statusL .~ status')
+     in modifyAttrByEID cur f
+
+touchLastStatusModified :: AppContext -> EventM n MainTree ()
+touchLastStatusModified = withCur $ \cur ->
+  modifyModelWithCtx $ \ctx ->
+    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ctx)
+     in modifyAttrByEID cur f
 
 cycleNextFilter :: AppContext -> EventM n MainTree ()
 cycleNextFilter ctx = do
@@ -320,8 +331,7 @@ withSelAttr True = withDefAttr selectedItemRowAttr
 withSelAttr False = id
 
 renderRow :: ZonedTime -> Bool -> (Int, a, Attr) -> Widget n
--- TODO render all the dates
-renderRow ztime sel (lvl, _, Attr {name, status, dates}) =
+renderRow ztime sel (lvl, _, Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}) =
   withSelAttr sel $
     hBox $
       -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
@@ -329,11 +339,12 @@ renderRow ztime sel (lvl, _, Attr {name, status, dates}) =
       -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
       -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
       -- I think it's so we don't have two greedy widgets or something.
-      [indentW, statusW, str " ", padRight Max nameW, str " ", dateW]
+      [indentW, statusW, str " ", padRight Max nameW, str " ", dateW, str " ", lastStatusModifiedW]
   where
     -- The first level doesn't take indent b/c deadlines are enough rn.
     indentW = str (concat (replicate (lvl + 1) "    "))
     dateW = renderMostUrgentDate ztime sel dates
+    lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
     statusW = renderMaybeStatus sel status
     nameW = strTruncateAvailable name
 
@@ -471,13 +482,16 @@ moveCurRelative go ins = withCur $ \cur ctx -> do
   modifyModel (moveSubtreeRelFromForest cur go ins forest) ctx
 
 modifyModel :: (Model -> Model) -> AppContext -> EventM n MainTree ()
-modifyModel f AppContext {acModelServer} = do
+modifyModel f = modifyModelWithCtx (const f)
+
+modifyModelWithCtx :: (AppContext -> Model -> Model) -> AppContext -> EventM n MainTree ()
+modifyModelWithCtx f ctx@(AppContext {acModelServer}) = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
-    modifyModelOnServer acModelServer f
+    modifyModelOnServer acModelServer (f ctx)
     getModel acModelServer
   let subtree = filterRun filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
