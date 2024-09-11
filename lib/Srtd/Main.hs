@@ -194,6 +194,9 @@ myHandleEvent ev =
     (AppEvent (ModelUpdated _)) -> do
       AppState {asContext} <- get
       forComponentsM $ handleEvent asContext ev
+    (AppEvent Tick) -> do
+      AppState {asContext} <- get
+      forComponentsM $ handleEvent asContext ev
     _ -> do
       AppState {asContext} <- get
       zoom activeComponentL $ handleEvent asContext ev
