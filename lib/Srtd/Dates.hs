@@ -244,12 +244,19 @@ prettyDayRelativeMed dnow d =
   fromMaybe (prettyDay d) $
     findDelta namedOffsetPairs cdiffDays
       <|> (findDelta dayOfWeekPairs =<< dowIfNext)
+      <|> (fmap ("-" ++) $ findDelta namedOffsetPairs negCdiffDays)
+      <|> (fmap ("-" ++) . findDelta dayOfWeekPairs =<< dowIfPrev)
   where
     deltaDays = diffDays d dnow
     cdiffDays = CalendarDiffDays 0 deltaDays
+    negCdiffDays = CalendarDiffDays 0 (-deltaDays)
     dowIfNext
       | deltaDays <= 0 = Nothing
       | deltaDays > 7 = Nothing
+      | otherwise = Just $ dayOfWeek d
+    dowIfPrev
+      | deltaDays >= 0 = Nothing
+      | deltaDays < -7 = Nothing
       | otherwise = Just $ dayOfWeek d
     findDelta pairs delta =
       L.find (\(_names, v) -> v == delta) pairs <&> \(names, _) ->
