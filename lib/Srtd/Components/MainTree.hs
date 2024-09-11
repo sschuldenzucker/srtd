@@ -270,7 +270,6 @@ findFirstURL s = listToMaybe $ getAllTextMatches (s =~ urlPattern :: AllTextMatc
     urlPattern :: String
     urlPattern = "(\\b[a-z]+://[a-zA-Z0-9./?=&-_%]+)"
 
--- TODO This doens't work with Obisdian URLs. Not sure if it's a detection problem (prob not) or if open gets confused with special chars (prob yes). This command shouldn't go through a shell.
 openURL :: String -> IO ()
 openURL url = callProcess "open" [url]
 
