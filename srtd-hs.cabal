@@ -117,6 +117,7 @@ library
         Srtd.ModelJSON,
         Srtd.ModelSaver,
         Srtd.ModelServer,
+        Srtd.Ticker,
         Srtd.Todo,
         Srtd.Util,
 

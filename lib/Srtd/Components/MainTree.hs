@@ -379,6 +379,10 @@ instance BrickComponent MainTree where
       box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
 
   handleEvent ctx ev =
+    -- LATER when filters become more fancy and filter something wrt. the current time, this *may*
+    -- need to process the Tick event and update its filter. (we probably don't wanna do this on
+    -- \*every* event though to keep it usable, and maybe we don't even wanna process Tick in this
+    -- way. If it ever matters, manual reload may be better.)
     updateZonedTime >> do
       isTopLevel <- use (mtKeymapL . to kmzIsToplevel)
       listRName <- use (mtListL . L.listNameL)

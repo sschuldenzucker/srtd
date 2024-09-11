@@ -28,8 +28,13 @@ data AppMsg
   | NextTab
   | PrevTab
   | ModelUpdated MsgModelUpdated
+  | -- | A signal sent once per minute. Only needs to be handled for components where the internal
+    -- state depends on the clock. (which typically means they cache data that depends on entered
+    -- dates). Even then, blanket handlers (running on *every* event) are often fine.
+    Tick
 
 -- SOMEDAY we could make Show a precondition for BrickComponent or for SomeBrickComponent for better vis
+-- This is a custom instance b/c some constructors' data doesn't have show and there are no sane defaults. :/
 instance Show AppMsg where
   show (PopOverlay ret) = "PopOverlay(" ++ show ret ++ ")"
   show (PushOverlay _) = "PushOverlay _"
@@ -38,6 +43,7 @@ instance Show AppMsg where
   show NextTab = "NextTab"
   show PrevTab = "PrevTab"
   show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
+  show Tick = "Tick"
 
 -- Not super clean but I don't think I'll need a lot here. These nest to be unique across different tabs / overlays.
 -- SOMEDAY maybe our resource names should just be lists of strings, aka. Brick attr names.

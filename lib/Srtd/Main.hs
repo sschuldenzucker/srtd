@@ -37,6 +37,7 @@ import Srtd.Log
 import Srtd.Model
 import Srtd.ModelSaver (startModelSaver)
 import Srtd.ModelServer
+import Srtd.Ticker
 import Srtd.Todo
 import System.Directory (listDirectory)
 import System.Exit (exitFailure)
@@ -100,10 +101,14 @@ main = do
   modelServer <- startModelServer
   -- SOMEDAY I should probably do something with the returned thread ID.
   _ <- startModelSaver modelServer
-  model <- getModel modelServer
+
   -- SOMEDAY it's unfortunate that this is bounded actually, could in principle lead to deadlock.
   appChan <- newBChan 100
   subscribe modelServer $ writeBChan appChan . ModelUpdated
+
+  _ <- startTicker 60 $ writeBChan appChan Tick
+
+  model <- getModel modelServer
   ztime <- getZonedTime
   let appState =
         AppState
