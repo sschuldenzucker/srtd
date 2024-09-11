@@ -100,7 +100,7 @@ renderMostUrgentDateMaybe now sel dates = fmap (renderLabeledDate now sel) . mos
 
 renderPastDate :: ZonedTime -> Bool -> DateOrTime -> Widget n
 -- SOMEDAY styling options (`withAttr`), but I'm not using them rn.
-renderPastDate now _sel dt = str label
+renderPastDate now _sel dt = setWidth 10 $ str label
   where
     label = prettyRelativeMed now dt
 
