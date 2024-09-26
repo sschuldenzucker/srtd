@@ -439,9 +439,17 @@ instance BrickComponent MainTree where
 
   componentKeyDesc = kmzDesc . mtKeymap
 
+  -- "Root name - Realm" unless the Realm is the root itself, or higher.
   componentTitle MainTree {mtSubtree} = T.pack $ pathStr
     where
-      pathStr = intercalate " < " $ name (rootAttr mtSubtree) : [name attr | (_, attr) <- (breadcrumbs mtSubtree)]
+      -- pathStr = intercalate " < " $ name (rootAttr mtSubtree) : [name attr | (_, attr) <- (breadcrumbs mtSubtree)]
+      pathStr = case mRealmBreadcrumb of
+        Nothing -> rootName
+        Just (_, c) -> rootName ++ " - " ++ name c
+      mRealmBreadcrumb = case reverse (breadcrumbs mtSubtree) of
+        _ : c : _ -> Just c
+        _ -> Nothing
+      rootName = name (rootAttr mtSubtree)
 
 mtCur :: MainTree -> Maybe EID
 mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _)) -> i)
