@@ -25,6 +25,7 @@ import GHC.Generics
 import GHC.List (uncons)
 import Lens.Micro.Platform
 import Srtd.Attr
+import Srtd.IdTree
 import Srtd.Log
 import Srtd.ModelJSON qualified as ModelJSON
 import Srtd.Todo
@@ -34,8 +35,7 @@ import Srtd.Todo
 leaf :: a -> Tree a
 leaf x = Node x []
 
--- TODO custom encoding for EID and Attr to get cleaner JSON?
-type MForest = Forest (EID, Attr)
+type MForest = IdForest EID (Attr, DerivedAttr)
 
 data Model = Model
   { forest :: MForest
@@ -44,33 +44,41 @@ data Model = Model
 
 suffixLenses ''Model
 
+data DiskModel = DiskModel
+  { dmForest :: IdForest EID Attr
+  }
+
+suffixLenses ''DiskModel
+
 -- We do *not* use the generic JSON instance b/c the ToJSON instance of Tree (provided by aeson)
 -- makes for kinda messy JSON. It encodes the whole thing as a list (not an object). While we're
 -- at it, we also transform the presentation of attr and id. The whole thing is a bit slow b/c we
 -- transmogrify the whole structure.
 
-modelToJSONModel :: Model -> ModelJSON.Model
-modelToJSONModel (Model forest) = ModelJSON.Model forestJSON
+-- TODO these should now be for the `DiskModel`, not `Model`.
+
+diskModelToJSONModel :: DiskModel -> ModelJSON.Model
+diskModelToJSONModel (DiskModel forest) = ModelJSON.Model forestJSON
   where
     forestJSON = map treeToJSONTree forest
     treeToJSONTree = foldTree $ \(i, attr) children -> ModelJSON.Tree i attr children
 
-modelFromJSONModel :: ModelJSON.Model -> Model
-modelFromJSONModel (ModelJSON.Model forestJSON) = Model forest
+diskModelFromJSONModel :: ModelJSON.Model -> DiskModel
+diskModelFromJSONModel (ModelJSON.Model forestJSON) = DiskModel forest
   where
     forest = jsonForestToForest forestJSON
     jsonForestToForest = unfoldForest $ \(ModelJSON.Tree i attr children) -> ((i, attr), children)
 
-instance ToJSON Model where
-  toJSON = toJSON . modelToJSONModel
-  toEncoding = toEncoding . modelToJSONModel
+instance ToJSON DiskModel where
+  toJSON = toJSON . diskModelToJSONModel
+  toEncoding = toEncoding . diskModelToJSONModel
 
-instance FromJSON Model where
-  parseJSON = fmap modelFromJSONModel . parseJSON
+instance FromJSON DiskModel where
+  parseJSON = fmap diskModelFromJSONModel . parseJSON
 
-emptyModel :: Model
-emptyModel =
-  Model
+emptyDiskModel :: DiskModel
+emptyDiskModel =
+  DiskModel
     -- SOMEDAY this is a bad hack that points us to the fact that the "synthetic" elements should
     -- really be different from the rest.
     -- But I'm too attached to the nice rose trees & everything right now.
@@ -301,23 +309,6 @@ mForestZipper = Z.fromForest . forest
 -- TODO unused
 zChildList :: TreePos Full a -> [TreePos Full a]
 zChildList = zFollowingTrees . Z.children
-
-zFollowingTrees :: TreePos Empty a -> [TreePos Full a]
-zFollowingTrees epos = case Z.nextTree epos of
-  Nothing -> []
-  Just pos -> pos : unfoldr go pos
-  where
-    go = fmap dup . Z.next
-    dup x = (x, x)
-
-class ZDescendants t where
-  zDescendants :: TreePos t a -> [TreePos Full a]
-
-instance ZDescendants Full where
-  zDescendants pos = pos : zDescendants (Z.children pos)
-
-instance ZDescendants Empty where
-  zDescendants epos = zFollowingTrees epos >>= zDescendants
 
 zFindLabelFirst :: (ZDescendants t) => (b -> Bool) -> TreePos t b -> Maybe (TreePos Full b)
 zFindLabelFirst lp = zFindFirst $ lp . Z.label

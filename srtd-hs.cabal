@@ -110,6 +110,7 @@ library
         Srtd.Components.TestOverlay,
         Srtd.Config,
         Srtd.Dates,
+        Srtd.IdTree,
         Srtd.Keymap,
         Srtd.Log,
         Srtd.Main,

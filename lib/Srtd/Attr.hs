@@ -176,3 +176,7 @@ setLastModified now = autoDatesL . lastModifiedL .~ now
 
 setLastStatusModified :: UTCTime -> Attr -> Attr
 setLastStatusModified now = autoDatesL %~ ((lastModifiedL .~ now) . (lastStatusModifiedL .~ now))
+
+-- | Derived properties. These are *not* saved but recomputed live as needed.
+data DerivedAttr = DerivedAttr
+  deriving (Show)
