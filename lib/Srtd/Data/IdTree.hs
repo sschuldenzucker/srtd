@@ -21,9 +21,8 @@ type IdForest id attr = Forest (id, attr)
 -- * Listing nodes
 
 -- | Find the descendant with the given ID, or Nothing if none was found.
--- TODO rename to `zFindId`
-zFindIdFirst :: (ZDescendants t, Eq id) => id -> TreePos t (id, b) -> Maybe (TreePos Full (id, b))
-zFindIdFirst tgt = zFindDescendantByLabel $ \(i, _) -> i == tgt
+zFindId :: (ZDescendants t, Eq id) => id -> TreePos t (id, b) -> Maybe (TreePos Full (id, b))
+zFindId tgt = zFindDescendantByLabel $ \(i, _) -> i == tgt
 
 -- * Modification
 
@@ -31,7 +30,7 @@ zFindIdFirst tgt = zFindDescendantByLabel $ \(i, _) -> i == tgt
 onForestBelowId :: (Eq id) => id -> (IdForest id a -> IdForest id a) -> IdForest id a -> IdForest id a
 -- This is probably a bit inefficient but it was there so w/e
 -- SOMEDAY it's actually an error if root is not found.
-onForestBelowId root f forest = case zFindIdFirst root . Z.fromForest $ forest of
+onForestBelowId root f forest = case zFindId root . Z.fromForest $ forest of
   Nothing -> forest
   Just rootLoc -> Z.forest . zForestRoot . Z.modifyTree (onTreeChildren f) $ rootLoc
   where
@@ -41,7 +40,7 @@ onForestBelowId root f forest = case zFindIdFirst root . Z.fromForest $ forest o
 
 forestInsertLabelRelToId :: (Eq id) => id -> InsertWalker (id, a) -> id -> a -> IdForest id a -> IdForest id a
 forestInsertLabelRelToId tgt go i label forest = fromMaybe forest $ do
-  tgtLoc <- zFindIdFirst tgt forestLoc
+  tgtLoc <- zFindId tgt forestLoc
   insLoc <- go tgtLoc
   let postInsLoc = Z.insert (Node (i, label) []) insLoc
   return $ Z.forest . zForestRoot $ postInsLoc
@@ -57,10 +56,10 @@ forestInsertLabelRelToId tgt go i label forest = fromMaybe forest $ do
 -- SOMEDAY Instead of silent failure, it's actually an *error* if any of the nodes are not found (except maybe in `go`)
 forestMoveSubtreeIdRelToAnchorId :: (Eq id) => id -> id -> InsertWalker (id, a) -> IdForest id a -> IdForest id a
 forestMoveSubtreeIdRelToAnchorId tgt anchor go forest = fromMaybe forest $ do
-  tgtLoc <- zFindIdFirst tgt forestLoc
+  tgtLoc <- zFindId tgt forestLoc
   let tgtTree = Z.tree tgtLoc
   let forestLoc' = zForestRoot . Z.delete $ tgtLoc
-  anchorLoc <- zFindIdFirst anchor forestLoc'
+  anchorLoc <- zFindId anchor forestLoc'
   insertLoc <- go anchorLoc
   let forest'' = Z.forest . zForestRoot . Z.insert tgtTree $ insertLoc
   return forest''
@@ -78,7 +77,7 @@ forestMoveSubtreeIdRelToAnchorId tgt anchor go forest = fromMaybe forest $ do
 -- SOMEDAY the former is actually an error. The latter is not.
 forestMoveSubtreeRelFromForestId :: (Eq id) => id -> GoWalker (id, a) -> InsertWalker (id, b) -> IdForest id a -> Forest (id, b) -> Forest (id, b)
 forestMoveSubtreeRelFromForestId tgt go ins haystack forest = fromMaybe forest $ do
-  tgtLoc <- zFindIdFirst tgt haystackLoc
+  tgtLoc <- zFindId tgt haystackLoc
   anchorLoc <- go tgtLoc
   let (anchorId, _) = Z.label anchorLoc
   return $ forestMoveSubtreeIdRelToAnchorId tgt anchorId ins forest
