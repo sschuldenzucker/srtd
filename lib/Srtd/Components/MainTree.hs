@@ -33,6 +33,8 @@ import Srtd.Components.Attr (mostUrgentDateAttr, renderMaybeStatus, renderMostUr
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
+import Srtd.Data.IdTree
+import Srtd.Data.TreeZipper
 import Srtd.Dates (DateOrTime (..), cropDate)
 import Srtd.Keymap
 import Srtd.Log
@@ -44,7 +46,7 @@ import System.Hclip (setClipboard)
 import System.Process (callProcess)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
 
-type MyList = L.List AppResourceName (Int, EID, Attr)
+type MyList = L.List AppResourceName (Int, EID, Label)
 
 data MainTree = MainTree
   { mtRoot :: EID,
@@ -75,14 +77,14 @@ rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
 rootKeymap =
   kmMake
     "Tree View"
-    [ kmLeaf (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur After,
-      kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur Before,
-      kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur FirstChild,
-      kmLeaf (bind 's') "New as last child" $ pushInsertNewItemRelToCur LastChild,
+    [ kmLeaf (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur insAfter,
+      kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore,
+      kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild,
+      kmLeaf (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild,
       ( kmLeaf (bind 'e') "Edit name" $ \ctx -> do
           state <- get
           case mtCurWithAttr state of
-            Just (cur, curAttr) -> do
+            Just (cur, (curAttr, _)) -> do
               let oldName = name curAttr
               let cb name' (AppContext {acModelServer = acModelServer', acZonedTime = acZonedTime'}) = do
                     let f = setLastModified (zonedTimeToUTC acZonedTime') . (nameL .~ name')
@@ -186,7 +188,7 @@ editDateKeymap =
       ]
   where
     mkDateEditShortcut :: (Binding, Text, Lens' Attr (Maybe DateOrTime)) -> (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
-    mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, attr) ctx ->
+    mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, (attr, _)) ctx ->
       let tz = zonedTimeZone $ acZonedTime ctx
           cb date' ctx' = do
             let f = setLastModified (zonedTimeToUTC $ acZonedTime ctx) . (l .~ date')
@@ -203,12 +205,17 @@ moveSubtreeModeKeymap =
       -- SOMEDAY clean up repetition
       -- TODO WIP I think these moveSubtree (and moveSingle) things can take a cleanup with their destinations.
       -- Can we reduce the number of different options? E.g., ("next based on preorder relative to self", "next based on siblings relative to parent") - Prob think about indicating the *target* relative to sth.
-      [ ( kmLeaf (bind 'j') "Down" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toBeforeNextPreorder)
-        ),
-        ( kmLeaf (bind 'k') "Up" $ withRoot $ \root -> withCur $ \cur ->
-            modifyModel (moveSubtreeBelow' root cur toAfterPrevPreorder)
-        ),
+      [ -- TODO put this back in. Need to implement goNextPreorder etc. Also check if this structure makes sense actually.
+        -- ( kmLeaf (bind 'j') "Down" $
+        --     -- withRoot $ \root -> withCur $ \cur ->
+        --     --   modifyModel (moveSubtreeBelow' root cur toBeforeNextPreorder)
+        --     moveCurRelative goNextPreorder insBefore
+        -- ),
+        -- ( kmLeaf (bind 'k') "Up" $
+        --     -- withRoot $ \root -> withCur $ \cur ->
+        --     --   modifyModel (moveSubtreeBelow' root cur toAfterPrevPreorder)
+        --     moveCurRelative goPrevPreorder insAfter
+        -- ),
         ( kmLeaf (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter
         ),
         ( kmLeaf (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore
@@ -231,10 +238,10 @@ openExternallyKeymap :: Keymap (AppContext -> EventM n MainTree ())
 openExternallyKeymap =
   kmMake
     "Open externally"
-    [ ( kmLeaf (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
+    [ ( kmLeaf (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, (Attr {name}, _)) _ctx ->
           whenJust (findFirstURL name) $ \url -> liftIO (openURL url)
       ),
-      ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
+      ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, (Attr {name}, _)) _ctx ->
           liftIO $ setClipboard name
       ),
       ( kmLeaf (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
@@ -252,7 +259,7 @@ sortRootKeymap =
       : mkItems sortShallowBelow
   where
     mkItems sorter =
-      [kmLeaf (bind 't') "Status" $ sortRootBy sorter (compareMStatusActionability `on` (view statusL))]
+      [kmLeaf (bind 't') "Status" $ sortRootBy sorter (compareMStatusActionability `on` (view $ _1 . statusL))]
     sortRootBy sorter ord = withRoot $ \root -> modifyModel (sorter ord root)
 
 sortCurKeymap :: Keymap (AppContext -> EventM n MainTree ())
@@ -263,7 +270,7 @@ sortCurKeymap =
       : mkItems sortShallowBelow
   where
     mkItems sorter =
-      [kmLeaf (bind 't') "Status" $ sortCurBy sorter (compareMStatusActionability `on` (view statusL))]
+      [kmLeaf (bind 't') "Status" $ sortCurBy sorter (compareMStatusActionability `on` (view $ _1 . statusL))]
     sortCurBy sorter ord = withCur $ \cur -> modifyModel (sorter ord cur)
 
 -- SOMEDAY these should be moved to another module.
@@ -282,14 +289,16 @@ findFirstHexCode s = listToMaybe $ getAllTextMatches (s =~ pat :: AllTextMatches
 openURL :: String -> IO ()
 openURL url = callProcess "open" [url]
 
-pushInsertNewItemRelToCur :: (EID -> InsertLoc EID) -> AppContext -> EventM n MainTree ()
-pushInsertNewItemRelToCur toLoc ctx = do
+pushInsertNewItemRelToCur :: InsertWalker IdLabel -> AppContext -> EventM n MainTree ()
+pushInsertNewItemRelToCur go ctx = do
   state <- get
-  let tgtLoc = mtCur state & maybe (LastChild (mtRoot state)) toLoc
-  let cb name (AppContext {acModelServer = acModelServer', acZonedTime = acZonedTime'}) = do
-        let attr = attrMinimal (zonedTimeToUTC acZonedTime') name
+  let (tgt', go') = case mtCur state of
+        Just cur -> (cur, go)
+        Nothing -> (mtRoot state, insLastChild)
+  let cb name ctx' = do
+        let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ ctx') name
         uuid <- nextRandom
-        modifyModelOnServer acModelServer' (insertNewNormalWithNewId uuid attr tgtLoc)
+        modifyModelOnServer (acModelServer ctx') (insertNewNormalWithNewId uuid attr tgt' go')
         return $ EIDNormal uuid
   liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "" "New Item")
 
@@ -339,8 +348,8 @@ withSelAttr :: Bool -> Widget n -> Widget n
 withSelAttr True = withDefAttr selectedItemRowAttr
 withSelAttr False = id
 
-renderRow :: ZonedTime -> Bool -> (Int, a, Attr) -> Widget n
-renderRow ztime sel (lvl, _, Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}) =
+renderRow :: ZonedTime -> Bool -> (Int, a, Label) -> Widget n
+renderRow ztime sel (lvl, _, (Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}, _)) =
   withSelAttr sel $
     hBox $
       -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
@@ -358,13 +367,13 @@ renderRow ztime sel (lvl, _, Attr {name, status, dates, autoDates = AttrAutoDate
     nameW = strTruncateAvailable name
 
 -- SOMEDAY also deadline for the root (if any)?
-renderRoot :: ZonedTime -> Attr -> [(a, Attr)] -> Widget n
-renderRoot ztime rootAttr breadcrumbs =
+renderRoot :: ZonedTime -> Label -> [IdLabel] -> Widget n
+renderRoot ztime (rootAttr, _) breadcrumbs =
   hBox
     [statusW, str " ", pathW]
   where
     statusW = renderMaybeStatus False (status rootAttr)
-    pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootAttr : map snd breadcrumbs
+    pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootAttr : map (fst . snd) breadcrumbs
     wrapBreadcrumbWidget attr w =
       let battr = mostUrgentDateAttr ztime False (dates attr)
        in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
@@ -381,10 +390,10 @@ renderFilters fs = maybe emptyWidget go (CList.focus fs)
     go f = withDefAttr filterLabelAttr $ str (filterName f)
 
 instance BrickComponent MainTree where
-  renderComponent MainTree {mtList, mtSubtree = Subtree {rootAttr, breadcrumbs}, mtFilters, mtZonedTime} = box
+  renderComponent MainTree {mtList, mtSubtree = Subtree {rootLabel, breadcrumbs}, mtFilters, mtZonedTime} = box
     where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
-      headrow = renderRoot mtZonedTime rootAttr breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
+      headrow = renderRoot mtZonedTime rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
       box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
 
   handleEvent ctx ev =
@@ -454,16 +463,16 @@ instance BrickComponent MainTree where
       -- pathStr = intercalate " < " $ name (rootAttr mtSubtree) : [name attr | (_, attr) <- (breadcrumbs mtSubtree)]
       pathStr = case mRealmBreadcrumb of
         Nothing -> rootName
-        Just (_, c) -> rootName ++ " - " ++ name c
+        Just (_, (c, _)) -> rootName ++ " - " ++ name c
       mRealmBreadcrumb = case reverse (breadcrumbs mtSubtree) of
         _ : c : _ -> Just c
         _ -> Nothing
-      rootName = name (rootAttr mtSubtree)
+      rootName = name (fst . rootLabel $ mtSubtree)
 
 mtCur :: MainTree -> Maybe EID
 mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _)) -> i)
 
-mtCurWithAttr :: MainTree -> Maybe (EID, Attr)
+mtCurWithAttr :: MainTree -> Maybe IdLabel
 mtCurWithAttr (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, attr)) -> (i, attr))
 
 withCur :: (EID -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
@@ -473,7 +482,7 @@ withCur go ctx = do
     Just cur -> go cur ctx
     Nothing -> return ()
 
-withCurWithAttr :: ((EID, Attr) -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
+withCurWithAttr :: (IdLabel -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
 withCurWithAttr go ctx = do
   s <- get
   case mtCurWithAttr s of
@@ -497,7 +506,7 @@ withRoot go ctx = do
 --
 -- SOMEDAY this can be generalized by replacing the first Label by whatever label type we ultimately use
 -- here. The forest just has to be labeled (EID, a) for some a. See `moveSubtreeRelFromForest`.
-moveCurRelative :: GoWalker Label -> InsertWalker Label -> AppContext -> EventM n MainTree ()
+moveCurRelative :: GoWalker IdLabel -> InsertWalker IdLabel -> AppContext -> EventM n MainTree ()
 moveCurRelative go ins = withCur $ \cur ctx -> do
   forest <- use $ mtSubtreeL . stForestL
   modifyModel (moveSubtreeRelFromForest cur go ins forest) ctx

@@ -9,7 +9,7 @@ import Control.Monad (forever)
 import Data.Aeson.Encode.Pretty
 import Data.ByteString.Lazy qualified as B
 import Srtd.Config (model_filename)
-import Srtd.Model (Model)
+import Srtd.Model (Model, modelToDiskModel)
 import Srtd.ModelServer qualified as MS
 
 -- SOMEDAY some handling of crashes (at least re-raise exceptions, or honestly restart like Erlang)
@@ -30,7 +30,7 @@ startModelSaver mserver = do
   forkIO (server `catch` handler)
 
 writeModelToFile :: Model -> IO ()
-writeModelToFile model = B.writeFile model_filename (encodePretty' prettyConfig model)
+writeModelToFile model = B.writeFile model_filename (encodePretty' prettyConfig $ modelToDiskModel model)
   where
     prettyConfig = defConfig {confIndent = Spaces 2, confCompare = keyComp}
     keyComp = keyOrder ["id", "name"] `mappend` compare

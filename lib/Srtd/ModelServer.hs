@@ -43,7 +43,7 @@ modifyModelOnServer server@(ModelServer mv _) f = do
 startModelServer :: IO ModelServer
 startModelServer = do
   mmodel <- readModelFromFile
-  let model = fromMaybe emptyModel mmodel
+  let model = fromMaybe (diskModelToModel $ emptyDiskModel) mmodel
   mv <- newTVarIO model
   subs <- newTVarIO []
   return (ModelServer mv subs)
@@ -55,12 +55,12 @@ readModelFromFile = run `catch` handleFileNotFound
       | isDoesNotExistError e = return Nothing
       | otherwise = throwIO e
     run = do
-      emodel <- eitherDecodeFileStrict model_filename :: IO (Either String Model)
-      case emodel of
+      edmodel <- eitherDecodeFileStrict model_filename :: IO (Either String DiskModel)
+      case edmodel of
         Left e -> do
           glogL ERROR ("Failed to decode file " ++ model_filename ++ ": " ++ e)
           throwIO $ AesonException e
-        Right m -> return $ Just m
+        Right m -> return . Just $ diskModelToModel m
 
 subscribe :: ModelServer -> (MsgModelUpdated -> IO ()) -> IO ()
 subscribe (ModelServer _ msubs) sub = atomically $ modifyTVar' msubs (sub :)
