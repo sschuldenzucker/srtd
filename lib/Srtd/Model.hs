@@ -108,69 +108,19 @@ diskModelToModel (DiskModel forest) = Model (mapForest (\(i, attr) -> (i, (attr,
 modelToDiskModel :: Model -> DiskModel
 modelToDiskModel (Model forest) = DiskModel (mapForest (\(i, (attr, _)) -> (i, attr)) forest)
 
--- SOMEDAY cleanup: the following are probably unused. (see below for a solution with zippers)
-
--- SOMEDAY put these into a separate module
-
-data InsertLoc id
-  = Before id
-  | After id
-  | FirstChild id
-  | LastChild id
-  deriving (Show)
-
--- TODO these should have Either return types b/c it's possible that the loc node was deleted just before we were trying to insert.
--- Currently, insert does nothing in these cases.
-
--- There's probably some clever monadic way of doing this but I'm not smart enough for that.
-
 splitFind :: (a -> Bool) -> [a] -> Maybe ([a], a, [a])
 splitFind p xs = case break p xs of
   (before, x : after) -> Just (before, x, after)
   _ -> Nothing
 
-forestInsertAtId :: (Eq id) => InsertLoc id -> (id, a) -> Forest (id, a) -> Forest (id, a)
--- forestInsertAtId (Before tgt) idattr (n@(Node (i, _) _) : rst) | i == tgt = Node idattr [] : n : rst
--- forestInsertAtId (After tgt) idattr (n@(Node (i, _) _) : rst) | i == tgt = n : Node idattr [] : rst
-forestInsertAtId loc@(Before tgt) idattr forest = case splitFind (treeHasID tgt) forest of
-  Just (before, n, after) -> before ++ (Node idattr [] : n : after)
-  Nothing -> map (treeInsertAtId loc idattr) forest
-forestInsertAtId loc@(After tgt) idattr forest = case splitFind (treeHasID tgt) forest of
-  Just (before, n, after) -> before ++ (n : Node idattr [] : after)
-  Nothing -> map (treeInsertAtId loc idattr) forest
-forestInsertAtId loc idattr forest = map (treeInsertAtId loc idattr) forest
-
 treeHasID :: (Eq id) => id -> Tree (id, a) -> Bool
 treeHasID tgt (Node (i, _) _) = tgt == i
-
-treeInsertAtId :: (Eq id) => InsertLoc id -> (id, a) -> Tree (id, a) -> Tree (id, a)
-treeInsertAtId (FirstChild tgt) idattr (Node (i, attr) children) | i == tgt = Node (i, attr) (Node idattr [] : children)
-treeInsertAtId (LastChild tgt) idattr (Node (i, attr) children) | i == tgt = Node (i, attr) (children ++ [Node idattr []])
-treeInsertAtId loc idattr (Node (i, attr) children) = Node (i, attr) (forestInsertAtId loc idattr children)
 
 onTreeChildren :: ([Tree a] -> [Tree a]) -> Tree a -> Tree a
 onTreeChildren f (Node x children) = Node x (f children)
 
 onForestChildren :: ([Tree a] -> [Tree a]) -> [Tree a] -> [Tree a]
 onForestChildren f = map (onTreeChildren f)
-
-data MoveLoc
-  = PrevSibling
-  | NextSibling
-
-moveSubtree :: EID -> MoveLoc -> Model -> Model
-moveSubtree tgt loc (Model forest) = Model (forestMoveSubtreeId tgt loc forest)
-
-forestMoveSubtreeId :: (Eq id) => id -> MoveLoc -> Forest (id, a) -> Forest (id, a)
-forestMoveSubtreeId tgt loc@NextSibling forest = case splitFind (treeHasID tgt) forest of
-  -- Just (prevs@(_ : _), n, nexts) -> let (prevs', p) = splitLast prevs in prevs' ++ [p, n] ++ nexts
-  Just (prevs, n, nx : nexts') -> prevs ++ [nx, n] ++ nexts'
-  Just _ -> forest
-  Nothing -> onForestChildren (forestMoveSubtreeId tgt loc) forest
-forestMoveSubtreeId tgt loc@PrevSibling forest = case splitFind (treeHasID tgt) forest of
-  Just (prevs@(_ : _), n, nexts) -> let (prevs', p) = splitLast prevs in prevs' ++ [n, p] ++ nexts
-  Just _ -> forest
-  Nothing -> onForestChildren (forestMoveSubtreeId tgt loc) forest
 
 splitLast :: [a] -> ([a], a)
 splitLast xs = case uncons (reverse xs) of
