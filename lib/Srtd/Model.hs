@@ -213,23 +213,29 @@ f_hide_completed =
 
 -- SOMEDAY Implemente Undo. Major restructuring probably.
 
--- | Update an item's attr.
+-- | Update derived attrs for the whole model.
 --
--- TODO update derived attrs. This is the case for many many places here.
+-- Currently a dummy.
+--
+-- SOMEDAY this is currently used in all modifying functions, which is quite expensive and not necessary.
+updateDerivedAttrs :: Model -> Model
+updateDerivedAttrs = forestL %~ mapForest (\(i, (attr, _)) -> (i, (attr, DerivedAttr)))
+
+-- | Update an item's attr.
 modifyAttrByEID :: EID -> (Attr -> Attr) -> Model -> Model
-modifyAttrByEID tgt f = forestL %~ map (fmap updateContent)
+modifyAttrByEID tgt f = updateDerivedAttrs . (forestL %~ map (fmap updateContent))
   where
     updateContent (eid, (attr, dattr)) = (eid, (if eid == tgt then f attr else attr, dattr))
 
 -- | Delete the given ID and the subtree below it.
 deleteSubtree :: EID -> Model -> Model
-deleteSubtree eid (Model forest) = Model (filterForest (\(eid', _) -> eid' /= eid) forest)
+deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterForest (\(eid', _) -> eid' /= eid))
 
 -- | Insert new node relative to a target using the given 'InsertWalker'.
 --
 -- The caller needs to make sure that the provided uuid is actually new, probably using `UUID.nextRandom`.
 insertNewNormalWithNewId :: UUID -> Attr -> EID -> InsertWalker IdLabel -> Model -> Model
-insertNewNormalWithNewId uuid attr tgt go (Model forest) = Model forest'
+insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ Model forest'
   where
     -- TODO actually derive something (DerivedAttr is dummy): Everything needs to update (in general)
     forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, DerivedAttr) forest
@@ -237,19 +243,19 @@ insertNewNormalWithNewId uuid attr tgt go (Model forest) = Model forest'
 -- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
 -- TODO update derived values
 moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> Forest (EID, a) -> Model -> Model
-moveSubtreeRelFromForest tgt go ins haystack = forestL %~ (forestMoveSubtreeRelFromForestId tgt go ins haystack)
+moveSubtreeRelFromForest tgt go ins haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestId tgt go ins haystack))
 
 -- * Sorting (physical)
 
 -- | Sort the subtree below the given target ID (only one level).
 sortShallowBelow :: (Label -> Label -> Ordering) -> EID -> Model -> Model
-sortShallowBelow ord root = forestL %~ onForestBelowId root (sortBy ord')
+sortShallowBelow ord root = updateDerivedAttrs . (forestL %~ onForestBelowId root (sortBy ord'))
   where
     ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2
 
 -- | Sort the subtree below the given target ID, recursive at all levels
 sortDeepBelow :: (Label -> Label -> Ordering) -> EID -> Model -> Model
-sortDeepBelow ord root = forestL %~ onForestBelowId root deepSortByOrd
+sortDeepBelow ord root = updateDerivedAttrs . (forestL %~ onForestBelowId root deepSortByOrd)
   where
     -- prob kinda inefficient but I got <= 10 levels or something.
     deepSortByOrd = onForestChildren deepSortByOrd . sortBy ord'
