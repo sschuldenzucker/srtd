@@ -3,14 +3,12 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 -- | Model stuff.
---
--- SOMEDAY this model has grown very large and should be split into sub-aspects.
--- Most importantly, tree modification operations should be split out.
 module Srtd.Model where
 
 -- Really just a helper here. Should prob not import this for separation
 import Brick (suffixLenses)
 import Control.Applicative (asum, (<|>))
+import Control.Monad ((<=<))
 import Data.Aeson
 import Data.Either (fromRight)
 import Data.IntMap (IntMap)
@@ -33,8 +31,7 @@ import Srtd.Todo
 
 -- import Data.UUID.V4 (nextRandom)
 
-leaf :: a -> Tree a
-leaf x = Node x []
+-- * Helper Types
 
 type Label = (Attr, DerivedAttr)
 
@@ -42,6 +39,9 @@ type IdLabel = (EID, Label)
 
 type MForest = IdForest EID Label
 
+-- * Fundamental Data Structures
+
+-- | In-memory model
 data Model = Model
   { forest :: MForest
   }
@@ -49,18 +49,31 @@ data Model = Model
 
 suffixLenses ''Model
 
+-- | Model that's written to disk. This does not include derived attrs.
 data DiskModel = DiskModel
   { dmForest :: IdForest EID Attr
   }
 
 suffixLenses ''DiskModel
 
+-- | Empty model with only the required toplevel entries.
+emptyDiskModel :: DiskModel
+emptyDiskModel =
+  DiskModel
+    -- SOMEDAY this is a bad hack that points us to the fact that the "synthetic" elements should
+    -- really be different from the rest.
+    -- But I'm too attached to the nice rose trees & everything right now.
+    -- We shouldn't make a special node type b/c in almost all relevant cases, a node will be a
+    -- "normal" one. Perhaps we can restructure 'Model' so that the toplevel elements are not part
+    -- of a tree. It would be a bit cumbersome, but maybe not too much.
+    [ leaf (Inbox, unsafeAttrMinimal "INBOX"),
+      leaf (Vault, unsafeAttrMinimal "VAULT")
+    ]
+
 -- We do *not* use the generic JSON instance b/c the ToJSON instance of Tree (provided by aeson)
 -- makes for kinda messy JSON. It encodes the whole thing as a list (not an object). While we're
 -- at it, we also transform the presentation of attr and id. The whole thing is a bit slow b/c we
 -- transmogrify the whole structure.
-
--- TODO these should now be for the `DiskModel`, not `Model`.
 
 diskModelToJSONModel :: DiskModel -> ModelJSON.Model
 diskModelToJSONModel (DiskModel forest) = ModelJSON.Model forestJSON
@@ -81,24 +94,40 @@ instance ToJSON DiskModel where
 instance FromJSON DiskModel where
   parseJSON = fmap diskModelFromJSONModel . parseJSON
 
-emptyDiskModel :: DiskModel
-emptyDiskModel =
-  DiskModel
-    -- SOMEDAY this is a bad hack that points us to the fact that the "synthetic" elements should
-    -- really be different from the rest.
-    -- But I'm too attached to the nice rose trees & everything right now.
-    -- We shouldn't make a special node type b/c in almost all relevant cases, a node will be a
-    -- "normal" one. Perhaps we can restructure 'Model' so that the toplevel elements are not part
-    -- of a tree. It would be a bit cumbersome, but maybe not too much.
-    [ leaf (Inbox, unsafeAttrMinimal "INBOX"),
-      leaf (Vault, unsafeAttrMinimal "VAULT")
-    ]
+-- * Generic Forest Helpers
+
+leaf :: a -> Tree a
+leaf x = Node x []
 
 -- | The sane `fmap` instance. (the default is the list instance, which isn't normally desired.)
 --
 -- Helper.
 mapForest :: (a -> b) -> Forest a -> Forest b
 mapForest f = map (fmap f)
+
+-- | Run forest modification function on the children of a tree.
+onTreeChildren :: ([Tree a] -> [Tree a]) -> Tree a -> Tree a
+onTreeChildren f (Node x children) = Node x (f children)
+
+-- | Map forest modification function over each children of each tree. (go one level down)
+onForestChildren :: ([Tree a] -> [Tree a]) -> [Tree a] -> [Tree a]
+onForestChildren f = map (onTreeChildren f)
+
+-- | Only leaves the initial segments of the forest where the predicate all applies.
+filterForest :: (a -> Bool) -> Forest a -> Forest a
+filterForest p forest = [Node x (filterForest p children) | Node x children <- forest, p x]
+
+-- | All subtrees (with repetitions of children) with breadcrumbs (parents), in preorder.
+forestTreesWithBreadcrumbs :: Forest a -> [([a], Tree a)]
+forestTreesWithBreadcrumbs = concatMap (goTree [])
+  where
+    goTree crumbs n@(Node x children) = (crumbs, n) : concatMap (goTree (x : crumbs)) children
+
+-- | Preorder nodes with their respecive levels
+forestFlattenWithLevels :: Forest a -> [(Int, a)]
+forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
+  where
+    extr (crumbs, (Node x _)) = (length crumbs, x)
 
 -- TODO actually compute derived attrs
 diskModelToModel :: DiskModel -> Model
@@ -108,38 +137,14 @@ diskModelToModel (DiskModel forest) = Model (mapForest (\(i, attr) -> (i, (attr,
 modelToDiskModel :: Model -> DiskModel
 modelToDiskModel (Model forest) = DiskModel (mapForest (\(i, (attr, _)) -> (i, attr)) forest)
 
-splitFind :: (a -> Bool) -> [a] -> Maybe ([a], a, [a])
-splitFind p xs = case break p xs of
-  (before, x : after) -> Just (before, x, after)
-  _ -> Nothing
+-- * Subtrees
 
-treeHasID :: (Eq id) => id -> Tree (id, a) -> Bool
-treeHasID tgt (Node (i, _) _) = tgt == i
-
-onTreeChildren :: ([Tree a] -> [Tree a]) -> Tree a -> Tree a
-onTreeChildren f (Node x children) = Node x (f children)
-
-onForestChildren :: ([Tree a] -> [Tree a]) -> [Tree a] -> [Tree a]
-onForestChildren f = map (onTreeChildren f)
-
-splitLast :: [a] -> ([a], a)
-splitLast xs = case uncons (reverse xs) of
-  Just (lst, revinit) -> (reverse revinit, lst)
-  Nothing -> error "splitLast: empty list"
-
-deleteSubtree :: EID -> Model -> Model
-deleteSubtree eid (Model forest) = Model (filterForest (\(eid', _) -> eid' /= eid) forest)
-
--- | Only leaves the initial segments of the forest where the predicate all applies.
-filterForest :: (a -> Bool) -> Forest a -> Forest a
-filterForest p forest = [Node x (filterForest p children) | Node x children <- forest, p x]
-
--- TODO update derived attrs. This is the case for many many places here.
-modifyAttrByEID :: EID -> (Attr -> Attr) -> Model -> Model
-modifyAttrByEID tgt f = forestL %~ map (fmap updateContent)
-  where
-    updateContent (eid, (attr, dattr)) = (eid, (if eid == tgt then f attr else attr, dattr))
-
+-- | A subtree is an - uh - subtree of the model with info on the root and breadcrumbs. It's somewhat
+-- like a zipper but without navigation or modification.
+--
+-- This is read-only. For all operations that would modify / navigate, we use IDs.
+--
+-- SOMEDAY can be generalized to label and id types and moved to IdForest. (and called IdSubtree)
 data Subtree = Subtree
   { breadcrumbs :: [IdLabel],
     root :: EID,
@@ -152,75 +157,41 @@ suffixLenses ''Subtree
 
 data IdNotFoundError = IdNotFoundError deriving (Show)
 
-modelGetSubtreeBelow :: EID -> Model -> Either IdNotFoundError Subtree
-modelGetSubtreeBelow i (Model forest) = forestGetSubtreeBelow i forest
+stFilter :: (IdLabel -> Bool) -> Subtree -> Subtree
+stFilter p = stForestL %~ (filterForest p)
 
--- SOMEDAY some of the following could probably be further abstracted away by supplying a condition on either the tree labels or subtrees themselves.
-
--- | All subtrees (with repetitions of children) with breadcrumbs (parents), in preorder.
-forestTrees :: Forest a -> [([a], Tree a)]
-forestTrees = concatMap (goTree [])
+forestFindTreeWithBreadcrumbs :: (Eq id) => id -> IdForest id a -> Maybe ([(id, a)], Tree (id, a))
+forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt) $ treesWithIdBreadcrumbs
   where
-    goTree crumbs n@(Node x children) = (crumbs, n) : concatMap (goTree (x : crumbs)) children
-
--- | Preorder nodes with their respecive levels
-forestFlattenWithLevels :: Forest a -> [(Int, a)]
-forestFlattenWithLevels = map extr . forestTrees
-  where
-    extr (crumbs, (Node x _)) = (length crumbs, x)
-
--- TODO move these to IdForest.
-forestFindTree :: (Eq id) => id -> IdForest id a -> Maybe ([(id, a)], Tree (id, a))
-forestFindTree tgt forest = find (\(_, Node (i, _) _) -> i == tgt) $ treesWithIdBreadcrumbs
-  where
-    -- Mogrify b/c forestTrees also returns the attrs, which we don't care about here.
-    treesWithIdBreadcrumbs = forestTrees forest
+    -- Mogrify b/c forestTreesWithBreadcrumbs also returns the attrs, which we don't care about here.
+    treesWithIdBreadcrumbs = forestTreesWithBreadcrumbs forest
 
 forestGetSubtreeBelow :: EID -> MForest -> Either IdNotFoundError Subtree
-forestGetSubtreeBelow tgt forest = case forestFindTree tgt forest of
+forestGetSubtreeBelow tgt forest = case forestFindTreeWithBreadcrumbs tgt forest of
   Just (crumbs, (Node (i, attr) cs)) -> Right (Subtree crumbs i attr cs)
   Nothing -> Left IdNotFoundError
 
--- SOMEDAY kinda inefficient, but everything here is, so w/e. Could also use forestTrees but, again, w/e.
-forestGetParentsWhere :: (a -> Bool) -> Forest a -> [a]
-forestGetParentsWhere p = mapMaybe trans . forestTrees
-  where
-    trans (par : _, (Node x _)) | p x = Just par
-    trans _ = Nothing
+modelGetSubtreeBelow :: EID -> Model -> Either IdNotFoundError Subtree
+modelGetSubtreeBelow i (Model forest) = forestGetSubtreeBelow i forest
 
-listToMaybeId :: [(id, a)] -> Maybe id
-listToMaybeId [(i, _)] = Just i
-listToMaybeId _ = Nothing
+-- * Filters
 
-forestGetParentId :: (Eq id) => id -> Forest (id, a) -> Maybe id
-forestGetParentId tgt = listToMaybeId . forestGetParentsWhere (\(i, _) -> i == tgt)
-
-forestGetNextSiblingId :: (Eq id) => id -> Forest (id, a) -> Maybe id
-forestGetNextSiblingId tgt forest = case splitFind (treeHasID tgt) forest of
-  Just (_, _, (Node (ret, _) _) : _) -> Just ret
-  Just _ -> Nothing
-  Nothing -> asum [forestGetNextSiblingId tgt cs | (Node _ cs) <- forest]
-
-forestGetPrevSiblingId :: (Eq id) => id -> Forest (id, a) -> Maybe id
-forestGetPrevSiblingId tgt forest = case splitFind (treeHasID tgt) forest of
-  Just (prevs@(_ : _), _, _) -> let (Node (ret, _) _) = last prevs in Just ret
-  Just _ -> Nothing
-  Nothing -> asum [forestGetPrevSiblingId tgt cs | (Node _ cs) <- forest]
-
--- --------------------
--- Filter infra
--- --------------------
-
+-- | A Filter applies various operations like - uh - filtering, sorting, and restructuring to
+-- a subtree.
+--
 -- SOMEDAY unclear if this is the right structure. Feels too general.
 data Filter = Filter
   { filterName :: String,
     filterRun :: EID -> Model -> Subtree
   }
 
--- SOMEDAY maybe these should have a name actually. Also for display.
 instance Show Filter where
   show f = "<Filter " ++ filterName f ++ ">"
 
+-- ** Specific filters
+
+-- | The identiy filter, returning its subtree unmodified.
+--
 -- SOMEDAY decide on error handling
 f_identity :: Filter
 f_identity = Filter "all" f
@@ -229,7 +200,7 @@ f_identity = Filter "all" f
 
 -- | Hide completed tasks, top-down
 --
--- TODO This is very simplistic: A non-completed task below a completed one is not shown (even though it seems important)
+-- Note that all sub-items below a completed item are hidden. (this is usually desired)
 f_hide_completed :: Filter
 f_hide_completed =
   let (Filter _ fi) = f_identity
@@ -238,80 +209,48 @@ f_hide_completed =
   where
     p (_, (Attr {status}, _)) = status /= Just Done
 
-stFilter :: (IdLabel -> Bool) -> Subtree -> Subtree
-stFilter p = stForestL %~ (filterForest p)
+-- * Model modifications
 
--- --------------------
--- Forest modifications
--- --------------------
+-- SOMEDAY Implemente Undo. Major restructuring probably.
 
--- TODO WIP Remove everything above that we don't need (or quickly rewrite).
--- Then, make it work with the change we started to (Attr, DerivedAttr) instead of just Attr.
--- Then or while doing that, derive the DerivedAttr (dummy for now).
+-- | Update an item's attr.
+--
+-- TODO update derived attrs. This is the case for many many places here.
+modifyAttrByEID :: EID -> (Attr -> Attr) -> Model -> Model
+modifyAttrByEID tgt f = forestL %~ map (fmap updateContent)
+  where
+    updateContent (eid, (attr, dattr)) = (eid, (if eid == tgt then f attr else attr, dattr))
 
--- | *You* need to make sure that the provided uuid is actually new, probably using UUID.nextRandom.
+-- | Delete the given ID and the subtree below it.
+deleteSubtree :: EID -> Model -> Model
+deleteSubtree eid (Model forest) = Model (filterForest (\(eid', _) -> eid' /= eid) forest)
+
+-- | Insert new node relative to a target using the given 'InsertWalker'.
+--
+-- The caller needs to make sure that the provided uuid is actually new, probably using `UUID.nextRandom`.
 insertNewNormalWithNewId :: UUID -> Attr -> EID -> InsertWalker IdLabel -> Model -> Model
 insertNewNormalWithNewId uuid attr tgt go (Model forest) = Model forest'
   where
     -- TODO actually derive something (DerivedAttr is dummy): Everything needs to update (in general)
     forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, DerivedAttr) forest
 
--- Model (forestInsertAtId loc (EIDNormal uuid, attr) forest)
-
--- TODO The following was used but created problems. Rewrite calling code, then delete.
--- moveSubtreeBelow' :: EID -> EID -> MoveWalker Label -> Model -> Model
--- moveSubtreeBelow' root tgt go = forestL %~ (forestMoveSubtreeIdBelow' root tgt go)
-
--- TODO Delete
-
--- | Does nothing if the EID is not found.
--- forestMoveSubtreeId' :: (Eq id) => id -> MoveWalker (id, a) -> Forest (id, a) -> Forest (id, a)
--- forestMoveSubtreeId' tgt go forest = case zFindIdFirst tgt . Z.fromForest $ forest of
---   Nothing -> forest
---   Just loc -> zFullForest $ mzMove go loc
-
--- | Like forestMoveSubtreeId' but only consider the subtree below `root`.
--- forestMoveSubtreeIdBelow' :: (Eq id) => id -> id -> MoveWalker (id, a) -> Forest (id, a) -> Forest (id, a)
--- forestMoveSubtreeIdBelow' root tgt go forest =
---   -- SOMEDAY not really a deep reason to use zippers here other than that it's easy.
---   case zFindIdFirst root . Z.fromForest $ forest of
---     Nothing -> forest
---     Just rootLoc -> zFullForest . Z.modifyTree (onTreeChildren $ forestMoveSubtreeId' tgt go) $ rootLoc
-
--- -- SOMEDAY may be obsolete, or can be simplified (actually vaporized) using ZForestRoot.
--- class ZFullForest t where
---   zFullForest :: TreePos t a -> Forest a
-
--- instance ZFullForest Full where
---   zFullForest = Z.forest . Z.first . Z.prevSpace . Z.root
-
--- instance ZFullForest Empty where
---   zFullForest eloc = case Z.parent eloc of
---     Just loc -> zFullForest loc
---     Nothing -> Z.forest . Z.first $ eloc
-
--- TODO clean up the above manual code which should then be unused.
--- TODO also implement deletion using this infra.
-
--- | See `forestMoveSubtreeRelFromForestId`
+-- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
 -- TODO update derived values
 moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> Forest (EID, a) -> Model -> Model
 moveSubtreeRelFromForest tgt go ins haystack = forestL %~ (forestMoveSubtreeRelFromForestId tgt go ins haystack)
 
--- ------------------
--- Sorting (physical)
--- ------------------
+-- * Sorting (physical)
 
+-- | Sort the subtree below the given target ID (only one level).
 sortShallowBelow :: (Label -> Label -> Ordering) -> EID -> Model -> Model
 sortShallowBelow ord root = forestL %~ onForestBelowId root (sortBy ord')
   where
     ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2
 
+-- | Sort the subtree below the given target ID, recursive at all levels
 sortDeepBelow :: (Label -> Label -> Ordering) -> EID -> Model -> Model
 sortDeepBelow ord root = forestL %~ onForestBelowId root deepSortByOrd
   where
     -- prob kinda inefficient but I got <= 10 levels or something.
     deepSortByOrd = onForestChildren deepSortByOrd . sortBy ord'
     ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2
-
--- * Helpers

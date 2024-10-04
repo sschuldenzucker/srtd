@@ -5,6 +5,7 @@
 -- To be imported qualified.
 module Srtd.Data.IdTree where
 
+import Control.Monad ((<=<))
 import Data.List (find, sortBy, unfoldr)
 import Data.Maybe (fromMaybe)
 import Data.Tree
@@ -18,11 +19,24 @@ type IdForest id attr = Forest (id, attr)
 -- TODO WIP Move the abstract machienery from Model here, and prob also unify it.
 -- Start with the find-by-id methods
 
--- * Listing nodes
+-- * Convenience data extraction
+
+zGetId :: TreePos Full (id, a) -> id
+zGetId = fst . Z.label
+
+-- * Navigation by ID
 
 -- | Find the descendant with the given ID, or Nothing if none was found.
 zFindId :: (ZDescendants t, Eq id) => id -> TreePos t (id, b) -> Maybe (TreePos Full (id, b))
 zFindId tgt = zFindDescendantByLabel $ \(i, _) -> i == tgt
+
+zForestFindId :: (Eq id) => id -> IdForest id b -> Maybe (TreePos Full (id, b))
+zForestFindId tgt = zFindId tgt . Z.fromForest
+
+-- | Given an anchor ID and a walker, return the ID that we walk to here (if any).
+-- TODO should be in IdTree
+forestGoFromToId :: (Eq id) => id -> GoWalker (id, a) -> IdForest id a -> Maybe id
+forestGoFromToId tgt go = fmap zGetId . go <=< zForestFindId tgt
 
 -- * Modification
 

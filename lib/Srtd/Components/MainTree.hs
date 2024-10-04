@@ -141,9 +141,9 @@ rootKeymap =
       ),
       (kmSub (bind ',') sortCurKeymap),
       (kmSub (bind ';') sortRootKeymap),
-      (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur forestGetParentId))),
-      (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur forestGetNextSiblingId))),
-      (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur forestGetPrevSiblingId))),
+      (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur goParent))),
+      (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur goNextSibling))),
+      (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur goPrevSibling))),
       (kmSub (bind 't') setStatusKeymap),
       (kmSub (bind 'o') openExternallyKeymap),
       (kmLeaf (bind '.') "Next filter" cycleNextFilter),
@@ -550,13 +550,13 @@ resetListPosition old new = case L.listSelectedElement old of
     Nothing -> L.listMoveTo ix_ new
     Just ix' -> L.listMoveTo ix' new
 
-mtGoSubtreeFromCur :: (EID -> MForest -> Maybe EID) -> MainTree -> MainTree
-mtGoSubtreeFromCur f mt = fromMaybe mt mres
+mtGoSubtreeFromCur :: GoWalker IdLabel -> MainTree -> MainTree
+mtGoSubtreeFromCur go mt = fromMaybe mt mres
   where
     mres = do
       -- Maybe monad
       cur <- mtCur mt
-      par <- mt ^. mtSubtreeL . stForestL . to (f cur)
+      par <- mt ^. mtSubtreeL . stForestL . to (forestGoFromToId cur go)
       return $ mt & mtListL %~ scrollListToEID par
 
 -- | Toplevel app resource name, including all contained resources. This is a "cloning" routine.
