@@ -46,7 +46,7 @@ import System.Hclip (setClipboard)
 import System.Process (callProcess)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
 
-type MyList = L.List AppResourceName (Int, EID, Label)
+type MyList = L.List AppResourceName (Int, EID, LocalLabel)
 
 data MainTree = MainTree
   { mtRoot :: EID,
@@ -84,7 +84,7 @@ rootKeymap =
       ( kmLeaf (bind 'e') "Edit name" $ \ctx -> do
           state <- get
           case mtCurWithAttr state of
-            Just (cur, (curAttr, _)) -> do
+            Just (cur, ((curAttr, _), _)) -> do
               let oldName = name curAttr
               let cb name' (AppContext {acModelServer = acModelServer', acZonedTime = acZonedTime'}) = do
                     let f = setLastModified (zonedTimeToUTC acZonedTime') . (nameL .~ name')
@@ -188,7 +188,7 @@ editDateKeymap =
       ]
   where
     mkDateEditShortcut :: (Binding, Text, Lens' Attr (Maybe DateOrTime)) -> (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
-    mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, (attr, _)) ctx ->
+    mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ctx ->
       let tz = zonedTimeZone $ acZonedTime ctx
           cb date' ctx' = do
             let f = setLastModified (zonedTimeToUTC $ acZonedTime ctx) . (l .~ date')
@@ -238,10 +238,10 @@ openExternallyKeymap :: Keymap (AppContext -> EventM n MainTree ())
 openExternallyKeymap =
   kmMake
     "Open externally"
-    [ ( kmLeaf (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, (Attr {name}, _)) _ctx ->
+    [ ( kmLeaf (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
           whenJust (findFirstURL name) $ \url -> liftIO (openURL url)
       ),
-      ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, (Attr {name}, _)) _ctx ->
+      ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
           liftIO $ setClipboard name
       ),
       ( kmLeaf (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
@@ -338,7 +338,7 @@ makeWithFilters root filters model ztime rname =
     subtree = filterRun (fromJust $ CList.focus filters) root model
     list = forestToBrickList (MainListFor rname) $ stForest subtree
 
-forestToBrickList :: AppResourceName -> MForest -> MyList
+forestToBrickList :: AppResourceName -> STForest -> MyList
 -- TODO when we have multiple tabs, MainList should be replaced by something that will actually be unique (take as an argument)
 forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
   where
@@ -348,8 +348,8 @@ withSelAttr :: Bool -> Widget n -> Widget n
 withSelAttr True = withDefAttr selectedItemRowAttr
 withSelAttr False = id
 
-renderRow :: ZonedTime -> Bool -> (Int, a, Label) -> Widget n
-renderRow ztime sel (lvl, _, (Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}, _)) =
+renderRow :: ZonedTime -> Bool -> (Int, a, LocalLabel) -> Widget n
+renderRow ztime sel (lvl, _, ((Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}, _), _)) =
   withSelAttr sel $
     hBox $
       -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
@@ -472,7 +472,7 @@ instance BrickComponent MainTree where
 mtCur :: MainTree -> Maybe EID
 mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _)) -> i)
 
-mtCurWithAttr :: MainTree -> Maybe IdLabel
+mtCurWithAttr :: MainTree -> Maybe LocalIdLabel
 mtCurWithAttr (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, attr)) -> (i, attr))
 
 withCur :: (EID -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
@@ -482,7 +482,7 @@ withCur go ctx = do
     Just cur -> go cur ctx
     Nothing -> return ()
 
-withCurWithAttr :: (IdLabel -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
+withCurWithAttr :: (LocalIdLabel -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
 withCurWithAttr go ctx = do
   s <- get
   case mtCurWithAttr s of
@@ -506,7 +506,7 @@ withRoot go ctx = do
 --
 -- SOMEDAY this can be generalized by replacing the first Label by whatever label type we ultimately use
 -- here. The forest just has to be labeled (EID, a) for some a. See `moveSubtreeRelFromForest`.
-moveCurRelative :: GoWalker IdLabel -> InsertWalker IdLabel -> AppContext -> EventM n MainTree ()
+moveCurRelative :: GoWalker LocalIdLabel -> InsertWalker IdLabel -> AppContext -> EventM n MainTree ()
 moveCurRelative go ins = withCur $ \cur ctx -> do
   forest <- use $ mtSubtreeL . stForestL
   modifyModel (moveSubtreeRelFromForest cur go ins forest) ctx
@@ -550,7 +550,7 @@ resetListPosition old new = case L.listSelectedElement old of
     Nothing -> L.listMoveTo ix_ new
     Just ix' -> L.listMoveTo ix' new
 
-mtGoSubtreeFromCur :: GoWalker IdLabel -> MainTree -> MainTree
+mtGoSubtreeFromCur :: GoWalker LocalIdLabel -> MainTree -> MainTree
 mtGoSubtreeFromCur go mt = fromMaybe mt mres
   where
     mres = do

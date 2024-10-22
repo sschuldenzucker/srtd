@@ -134,6 +134,16 @@ modelToDiskModel (Model forest) = DiskModel (mapForest (\(i, (attr, _)) -> (i, a
 
 -- * Subtrees
 
+-- | Derived properties at the local (per-subtree / per-view) level
+data LocalDerivedAttr = LocalDerivedAttr
+  deriving (Show)
+
+type LocalLabel = (Label, LocalDerivedAttr)
+
+type LocalIdLabel = (EID, LocalLabel)
+
+type STForest = IdForest EID LocalLabel
+
 -- | A subtree is an - uh - subtree of the model with info on the root and breadcrumbs. It's somewhat
 -- like a zipper but without navigation or modification.
 --
@@ -144,7 +154,7 @@ data Subtree = Subtree
   { breadcrumbs :: [IdLabel],
     root :: EID,
     rootLabel :: Label,
-    stForest :: MForest
+    stForest :: STForest
   }
   deriving (Show)
 
@@ -152,8 +162,8 @@ suffixLenses ''Subtree
 
 data IdNotFoundError = IdNotFoundError deriving (Show)
 
-stFilter :: (IdLabel -> Bool) -> Subtree -> Subtree
-stFilter p = stForestL %~ (filterForest p)
+filterSubtree :: (LocalIdLabel -> Bool) -> Subtree -> Subtree
+filterSubtree p = stForestL %~ (filterForest p)
 
 forestFindTreeWithBreadcrumbs :: (Eq id) => id -> IdForest id a -> Maybe ([(id, a)], Tree (id, a))
 forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt) $ treesWithIdBreadcrumbs
@@ -161,9 +171,15 @@ forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt
     -- Mogrify b/c forestTreesWithBreadcrumbs also returns the attrs, which we don't care about here.
     treesWithIdBreadcrumbs = forestTreesWithBreadcrumbs forest
 
+-- | Add local derived attrs across a subtree.
+--
+-- SOMEDAY also do this for the root?
+addLocalDerivedAttrs :: MForest -> STForest
+addLocalDerivedAttrs = mapIdForest $ \l -> (l, LocalDerivedAttr)
+
 forestGetSubtreeBelow :: EID -> MForest -> Either IdNotFoundError Subtree
 forestGetSubtreeBelow tgt forest = case forestFindTreeWithBreadcrumbs tgt forest of
-  Just (crumbs, (Node (i, attr) cs)) -> Right (Subtree crumbs i attr cs)
+  Just (crumbs, (Node (i, attr) cs)) -> Right (Subtree crumbs i attr (addLocalDerivedAttrs cs))
   Nothing -> Left IdNotFoundError
 
 modelGetSubtreeBelow :: EID -> Model -> Either IdNotFoundError Subtree
@@ -199,10 +215,10 @@ f_identity = Filter "all" f
 f_hide_completed :: Filter
 f_hide_completed =
   let (Filter _ fi) = f_identity
-      fi' i m = stFilter p $ fi i m
+      fi' i m = filterSubtree p $ fi i m
    in Filter "not done" fi'
   where
-    p (_, (Attr {status}, _)) = status /= Just Done
+    p (_, ((Attr {status}, _), _)) = status /= Just Done
 
 -- * Model modifications
 
@@ -236,7 +252,6 @@ insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ 
     forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, DerivedAttr) forest
 
 -- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
--- TODO update derived values
 moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> Forest (EID, a) -> Model -> Model
 moveSubtreeRelFromForest tgt go ins haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestId tgt go ins haystack))
 
