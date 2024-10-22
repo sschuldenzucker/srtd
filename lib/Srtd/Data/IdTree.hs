@@ -13,6 +13,7 @@ import Data.Tree.Zipper (Empty, Full, TreePos)
 import Data.Tree.Zipper qualified as Z
 import Srtd.Data.TreeZipper
 import Srtd.Todo
+import Srtd.Util (mapForest)
 
 type IdForest id attr = Forest (id, attr)
 
@@ -39,6 +40,10 @@ forestGoFromToId :: (Eq id) => id -> GoWalker (id, a) -> IdForest id a -> Maybe 
 forestGoFromToId tgt go = fmap zGetId . go <=< zForestFindId tgt
 
 -- * Modification
+
+-- | Map the "data" labels, keeping the id constant
+mapIdForest :: (a -> b) -> IdForest id a -> IdForest id b
+mapIdForest f = mapForest $ \(i, x) -> (i, f x)
 
 -- | Modify the forest below the given target ID by a function. No-op if the ID is not found.
 onForestBelowId :: (Eq id) => id -> (IdForest id a -> IdForest id a) -> IdForest id a -> IdForest id a
