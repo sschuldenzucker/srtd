@@ -2,6 +2,7 @@
 module Srtd.Util where
 
 import Control.Monad ((<=<))
+import Data.Tree (Forest)
 
 maybeToEither :: a -> Maybe b -> Either a b
 maybeToEither err = maybe (Left err) Right
@@ -20,3 +21,11 @@ composeNTimes n f = foldr (.) id $ replicate n f
 -- | Monadic variant of `composeNTimes`.
 composeNTimesM :: (Monad m) => Int -> (a -> m a) -> a -> m a
 composeNTimesM n f = foldr (<=<) return $ replicate n f
+
+-- * Basic tree helpers
+
+-- | The sane `fmap` instance. (the default is the list instance, which isn't normally desired.)
+--
+-- Helper.
+mapForest :: (a -> b) -> Forest a -> Forest b
+mapForest f = map (fmap f)

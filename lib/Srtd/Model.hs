@@ -28,6 +28,7 @@ import Srtd.Data.TreeZipper
 import Srtd.Log
 import Srtd.ModelJSON qualified as ModelJSON
 import Srtd.Todo
+import Srtd.Util (mapForest)
 
 -- import Data.UUID.V4 (nextRandom)
 
@@ -98,12 +99,6 @@ instance FromJSON DiskModel where
 
 leaf :: a -> Tree a
 leaf x = Node x []
-
--- | The sane `fmap` instance. (the default is the list instance, which isn't normally desired.)
---
--- Helper.
-mapForest :: (a -> b) -> Forest a -> Forest b
-mapForest f = map (fmap f)
 
 -- | Run forest modification function on the children of a tree.
 onTreeChildren :: ([Tree a] -> [Tree a]) -> Tree a -> Tree a
