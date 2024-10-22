@@ -94,7 +94,7 @@ forestMoveSubtreeIdRelToAnchorId tgt anchor go forest = fromMaybe forest $ do
 -- This silently fails if one of the IDs cannot be found OR if one of the walkers fails.
 --
 -- SOMEDAY the former is actually an error. The latter is not.
-forestMoveSubtreeRelFromForestId :: (Eq id) => id -> GoWalker (id, a) -> InsertWalker (id, b) -> IdForest id a -> Forest (id, b) -> Forest (id, b)
+forestMoveSubtreeRelFromForestId :: (Eq id) => id -> GoWalker (id, a) -> InsertWalker (id, b) -> IdForest id a -> IdForest id b -> IdForest id b
 forestMoveSubtreeRelFromForestId tgt go ins haystack forest = fromMaybe forest $ do
   tgtLoc <- zFindId tgt haystackLoc
   anchorLoc <- go tgtLoc
