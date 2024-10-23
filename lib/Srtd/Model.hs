@@ -124,9 +124,13 @@ forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
   where
     extr (crumbs, (Node x _)) = (length crumbs, x)
 
--- TODO actually compute derived attrs
+-- For some reason, this has to be above `diskModelToModel`, otherwise it's not found.
+_forestMakeDerivedAttrs :: IdForest EID Attr -> IdForest EID Label
+_forestMakeDerivedAttrs = mapIdForest $ \attr -> (attr, todo)
+-- ^ TODO
+
 diskModelToModel :: DiskModel -> Model
-diskModelToModel (DiskModel forest) = Model (mapForest (\(i, attr) -> (i, (attr, DerivedAttr))) forest)
+diskModelToModel (DiskModel forest) = Model (_forestMakeDerivedAttrs forest)
 
 -- Forgets its derived attrs
 modelToDiskModel :: Model -> DiskModel
@@ -230,7 +234,7 @@ f_hide_completed =
 --
 -- SOMEDAY this is currently used in all modifying functions, which is quite expensive and not necessary.
 updateDerivedAttrs :: Model -> Model
-updateDerivedAttrs = forestL %~ mapForest (\(i, (attr, _)) -> (i, (attr, DerivedAttr)))
+updateDerivedAttrs = forestL %~ (_forestMakeDerivedAttrs . mapIdForest fst)
 
 -- | Update an item's attr.
 modifyAttrByEID :: EID -> (Attr -> Attr) -> Model -> Model
@@ -248,8 +252,7 @@ deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterForest (\(eid', _) ->
 insertNewNormalWithNewId :: UUID -> Attr -> EID -> InsertWalker IdLabel -> Model -> Model
 insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ Model forest'
   where
-    -- TODO actually derive something (DerivedAttr is dummy): Everything needs to update (in general)
-    forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, DerivedAttr) forest
+    forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, emptyDerivedAttr) forest
 
 -- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
 moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> Forest (EID, a) -> Model -> Model

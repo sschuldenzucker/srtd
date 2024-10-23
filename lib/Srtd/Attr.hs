@@ -105,7 +105,6 @@ unsafeDefaultAutoDates = initAutoDates (unsafePerformIO $ getCurrentTime)
 data Attr = Attr
   { name :: String,
     -- | If Nothing, this item is treated as a transparent "folder" by most analyses.
-    -- TODO should Status have a special 'None' element instead? Or just a default 'Item" or whatever?
     status :: Maybe Status,
     dates :: AttrDates,
     autoDates :: AttrAutoDates
@@ -179,4 +178,14 @@ setLastStatusModified now = autoDatesL %~ ((lastModifiedL .~ now) . (lastStatusM
 
 -- | Derived properties. These are *not* saved but recomputed live as needed.
 data DerivedAttr = DerivedAttr
+  { -- | Actionability of the most actionable child
+    daChildActionability :: Maybe Status
+  }
   deriving (Show)
+
+-- | The 'DerivedAttr' of an element without any children
+emptyDerivedAttr :: DerivedAttr
+emptyDerivedAttr =
+  DerivedAttr
+    { daChildActionability = Nothing
+    }
