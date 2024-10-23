@@ -60,16 +60,17 @@ suffixLenses ''DiskModel
 -- | Empty model with only the required toplevel entries.
 emptyDiskModel :: DiskModel
 emptyDiskModel =
-  DiskModel
+  DiskModel $
     -- SOMEDAY this is a bad hack that points us to the fact that the "synthetic" elements should
     -- really be different from the rest.
     -- But I'm too attached to the nice rose trees & everything right now.
     -- We shouldn't make a special node type b/c in almost all relevant cases, a node will be a
     -- "normal" one. Perhaps we can restructure 'Model' so that the toplevel elements are not part
     -- of a tree. It would be a bit cumbersome, but maybe not too much.
-    [ leaf (Inbox, unsafeAttrMinimal "INBOX"),
-      leaf (Vault, unsafeAttrMinimal "VAULT")
-    ]
+    IdForest $
+      [ leaf (Inbox, unsafeAttrMinimal "INBOX"),
+        leaf (Vault, unsafeAttrMinimal "VAULT")
+      ]
 
 -- We do *not* use the generic JSON instance b/c the ToJSON instance of Tree (provided by aeson)
 -- makes for kinda messy JSON. It encodes the whole thing as a list (not an object). While we're
@@ -77,13 +78,13 @@ emptyDiskModel =
 -- transmogrify the whole structure.
 
 diskModelToJSONModel :: DiskModel -> ModelJSON.Model
-diskModelToJSONModel (DiskModel forest) = ModelJSON.Model forestJSON
+diskModelToJSONModel (DiskModel (IdForest forest)) = ModelJSON.Model forestJSON
   where
     forestJSON = map treeToJSONTree forest
     treeToJSONTree = foldTree $ \(i, attr) children -> ModelJSON.Tree i attr children
 
 diskModelFromJSONModel :: ModelJSON.Model -> DiskModel
-diskModelFromJSONModel (ModelJSON.Model forestJSON) = DiskModel forest
+diskModelFromJSONModel (ModelJSON.Model forestJSON) = DiskModel $ IdForest forest
   where
     forest = jsonForestToForest forestJSON
     jsonForestToForest = unfoldForest $ \(ModelJSON.Tree i attr children) -> ((i, attr), children)
@@ -108,10 +109,6 @@ onTreeChildren f (Node x children) = Node x (f children)
 onForestChildren :: ([Tree a] -> [Tree a]) -> [Tree a] -> [Tree a]
 onForestChildren f = map (onTreeChildren f)
 
--- | Only leaves the initial segments of the forest where the predicate all applies.
-filterForest :: (a -> Bool) -> Forest a -> Forest a
-filterForest p forest = [Node x (filterForest p children) | Node x children <- forest, p x]
-
 -- | All subtrees (with repetitions of children) with breadcrumbs (parents), in preorder.
 forestTreesWithBreadcrumbs :: Forest a -> [([a], Tree a)]
 forestTreesWithBreadcrumbs = concatMap (goTree [])
@@ -126,7 +123,7 @@ forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
 
 -- For some reason, this has to be above `diskModelToModel`, otherwise it's not found.
 _forestMakeDerivedAttrs :: IdForest EID Attr -> IdForest EID Label
-_forestMakeDerivedAttrs = mapIdForest $ \attr -> (attr, todo)
+_forestMakeDerivedAttrs = fmap $ \attr -> (attr, todo)
 -- ^ TODO
 
 diskModelToModel :: DiskModel -> Model
@@ -134,7 +131,7 @@ diskModelToModel (DiskModel forest) = Model (_forestMakeDerivedAttrs forest)
 
 -- Forgets its derived attrs
 modelToDiskModel :: Model -> DiskModel
-modelToDiskModel (Model forest) = DiskModel (mapForest (\(i, (attr, _)) -> (i, attr)) forest)
+modelToDiskModel (Model (IdForest forest)) = DiskModel $ IdForest (mapForest (\(i, (attr, _)) -> (i, attr)) forest)
 
 -- * Subtrees
 
@@ -166,24 +163,24 @@ suffixLenses ''Subtree
 
 data IdNotFoundError = IdNotFoundError deriving (Show)
 
-filterSubtree :: (LocalIdLabel -> Bool) -> Subtree -> Subtree
-filterSubtree p = stForestL %~ (filterForest p)
+filterSubtree :: (LocalLabel -> Bool) -> Subtree -> Subtree
+filterSubtree p = stForestL %~ (filterIdForest p)
 
 forestFindTreeWithBreadcrumbs :: (Eq id) => id -> IdForest id a -> Maybe ([(id, a)], Tree (id, a))
 forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt) $ treesWithIdBreadcrumbs
   where
     -- Mogrify b/c forestTreesWithBreadcrumbs also returns the attrs, which we don't care about here.
-    treesWithIdBreadcrumbs = forestTreesWithBreadcrumbs forest
+    treesWithIdBreadcrumbs = forestTreesWithBreadcrumbs . idForest $ forest
 
 -- | Add local derived attrs across a subtree.
 --
 -- SOMEDAY also do this for the root?
 addLocalDerivedAttrs :: MForest -> STForest
-addLocalDerivedAttrs = mapIdForest $ \l -> (l, LocalDerivedAttr)
+addLocalDerivedAttrs = fmap $ \l -> (l, LocalDerivedAttr)
 
 forestGetSubtreeBelow :: EID -> MForest -> Either IdNotFoundError Subtree
 forestGetSubtreeBelow tgt forest = case forestFindTreeWithBreadcrumbs tgt forest of
-  Just (crumbs, (Node (i, attr) cs)) -> Right (Subtree crumbs i attr (addLocalDerivedAttrs cs))
+  Just (crumbs, (Node (i, attr) cs)) -> Right (Subtree crumbs i attr (addLocalDerivedAttrs $ IdForest cs))
   Nothing -> Left IdNotFoundError
 
 modelGetSubtreeBelow :: EID -> Model -> Either IdNotFoundError Subtree
@@ -222,7 +219,7 @@ f_hide_completed =
       fi' i m = filterSubtree p $ fi i m
    in Filter "not done" fi'
   where
-    p (_, ((Attr {status}, _), _)) = status /= Just Done
+    p ((Attr {status}, _), _) = status /= Just Done
 
 -- * Model modifications
 
@@ -234,17 +231,17 @@ f_hide_completed =
 --
 -- SOMEDAY this is currently used in all modifying functions, which is quite expensive and not necessary.
 updateDerivedAttrs :: Model -> Model
-updateDerivedAttrs = forestL %~ (_forestMakeDerivedAttrs . mapIdForest fst)
+updateDerivedAttrs = forestL %~ (_forestMakeDerivedAttrs . fmap fst)
 
 -- | Update an item's attr.
 modifyAttrByEID :: EID -> (Attr -> Attr) -> Model -> Model
-modifyAttrByEID tgt f = updateDerivedAttrs . (forestL %~ map (fmap updateContent))
+modifyAttrByEID tgt f = updateDerivedAttrs . (forestL %~ mapIdForestWithIds updateContent)
   where
-    updateContent (eid, (attr, dattr)) = (eid, (if eid == tgt then f attr else attr, dattr))
+    updateContent eid (attr, dattr) = (if eid == tgt then f attr else attr, dattr)
 
 -- | Delete the given ID and the subtree below it.
 deleteSubtree :: EID -> Model -> Model
-deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterForest (\(eid', _) -> eid' /= eid))
+deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterIdForestWithIds (\eid' _ -> eid' /= eid))
 
 -- | Insert new node relative to a target using the given 'InsertWalker'.
 --
@@ -255,7 +252,7 @@ insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ 
     forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, emptyDerivedAttr) forest
 
 -- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
-moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> Forest (EID, a) -> Model -> Model
+moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> IdForest EID a -> Model -> Model
 moveSubtreeRelFromForest tgt go ins haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestId tgt go ins haystack))
 
 -- * Sorting (physical)

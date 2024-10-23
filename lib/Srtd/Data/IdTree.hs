@@ -11,11 +11,25 @@ import Data.Maybe (fromMaybe)
 import Data.Tree
 import Data.Tree.Zipper (Empty, Full, TreePos)
 import Data.Tree.Zipper qualified as Z
+import Lens.Micro.Platform
 import Srtd.Data.TreeZipper
 import Srtd.Todo
 import Srtd.Util (mapForest)
 
-type IdForest id attr = Forest (id, attr)
+newtype IdForest id attr = IdForest {idForest :: Forest (id, attr)}
+  deriving (Show)
+
+-- The following can probably be automated using some iso construction but I tried Lens.Micro.Pro and couldn't get it to work.
+
+withIdForest :: (Forest (id, attr) -> Forest (id', attr')) -> IdForest id attr -> IdForest id' attr'
+withIdForest f = IdForest . f . idForest
+
+onIdForest :: (IdForest id attr -> IdForest id' attr') -> Forest (id, attr) -> Forest (id', attr')
+onIdForest f = idForest . f . IdForest
+
+-- | This also provides the "correct" fmap instance over forests (instead of the accidental list instance)
+instance Functor (IdForest id) where
+  fmap f = withIdForest $ mapForest $ \(i, x) -> (i, f x)
 
 -- TODO WIP Move the abstract machienery from Model here, and prob also unify it.
 -- Start with the find-by-id methods
@@ -32,7 +46,7 @@ zFindId :: (ZDescendants t, Eq id) => id -> TreePos t (id, b) -> Maybe (TreePos 
 zFindId tgt = zFindDescendantByLabel $ \(i, _) -> i == tgt
 
 zForestFindId :: (Eq id) => id -> IdForest id b -> Maybe (TreePos Full (id, b))
-zForestFindId tgt = zFindId tgt . Z.fromForest
+zForestFindId tgt = zFindId tgt . Z.fromForest . idForest
 
 -- | Given an anchor ID and a walker, return the ID that we walk to here (if any).
 -- TODO should be in IdTree
@@ -41,19 +55,32 @@ forestGoFromToId tgt go = fmap zGetId . go <=< zForestFindId tgt
 
 -- * Modification
 
--- | Map the "data" labels, keeping the id constant
-mapIdForest :: (a -> b) -> IdForest id a -> IdForest id b
-mapIdForest f = mapForest $ \(i, x) -> (i, f x)
+-- | This is like `fmap` but also allows access to the *ids* while updating labels (but doesn't allow modification of the labels)
+mapIdForestWithIds :: (id -> a -> b) -> IdForest id a -> IdForest id b
+mapIdForestWithIds f = withIdForest $ mapForest go
+  where
+    go (i, x) = (i, f i x)
+
+-- | Only leaves the initial segments of the forest where the predicate all applies.
+filterIdForest :: (a -> Bool) -> IdForest id a -> IdForest id a
+filterIdForest p = withIdForest filter'
+  where
+    filter' forest = [Node l (filter' children) | Node l@(_, x) children <- forest, p x]
+
+filterIdForestWithIds :: (id -> a -> Bool) -> IdForest id a -> IdForest id a
+filterIdForestWithIds p = withIdForest filter'
+  where
+    filter' forest = [Node l (filter' children) | Node l children <- forest, uncurry p l]
 
 -- | Modify the forest below the given target ID by a function. No-op if the ID is not found.
-onForestBelowId :: (Eq id) => id -> (IdForest id a -> IdForest id a) -> IdForest id a -> IdForest id a
+onForestBelowId :: (Eq id) => id -> (Forest (id, a) -> Forest (id, a)) -> IdForest id a -> IdForest id a
 -- This is probably a bit inefficient but it was there so w/e
 -- SOMEDAY it's actually an error if root is not found.
-onForestBelowId root f forest = case zFindId root . Z.fromForest $ forest of
-  Nothing -> forest
-  Just rootLoc -> Z.forest . zForestRoot . Z.modifyTree (onTreeChildren f) $ rootLoc
+onForestBelowId root f idforest@(IdForest forest) = case zFindId root . Z.fromForest $ forest of
+  Nothing -> idforest
+  Just rootLoc -> IdForest $ Z.forest . zForestRoot . Z.modifyTree (onTreeChildren f) $ rootLoc
   where
-    onTreeChildren f (Node x children) = Node x (f children)
+    onTreeChildren g (Node x children) = Node x (g children)
 
 -- * Inserting nodes
 
@@ -62,9 +89,9 @@ forestInsertLabelRelToId tgt go i label forest = fromMaybe forest $ do
   tgtLoc <- zFindId tgt forestLoc
   insLoc <- go tgtLoc
   let postInsLoc = Z.insert (Node (i, label) []) insLoc
-  return $ Z.forest . zForestRoot $ postInsLoc
+  return $ IdForest $ Z.forest . zForestRoot $ postInsLoc
   where
-    forestLoc = Z.fromForest forest
+    forestLoc = Z.fromForest . idForest $ forest
 
 -- * Moving nodes
 
@@ -81,9 +108,9 @@ forestMoveSubtreeIdRelToAnchorId tgt anchor go forest = fromMaybe forest $ do
   anchorLoc <- zFindId anchor forestLoc'
   insertLoc <- go anchorLoc
   let forest'' = Z.forest . zForestRoot . Z.insert tgtTree $ insertLoc
-  return forest''
+  return $ IdForest forest''
   where
-    forestLoc = Z.fromForest forest
+    forestLoc = Z.fromForest . idForest $ forest
 
 -- | When called like `forestMoveSubtreeRelFromForestId tgt go ins haystack forest`, this doesn the following:
 --
@@ -101,4 +128,4 @@ forestMoveSubtreeRelFromForestId tgt go ins haystack forest = fromMaybe forest $
   let (anchorId, _) = Z.label anchorLoc
   return $ forestMoveSubtreeIdRelToAnchorId tgt anchorId ins forest
   where
-    haystackLoc = Z.fromForest haystack
+    haystackLoc = Z.fromForest . idForest $ haystack
