@@ -14,7 +14,7 @@ import Data.Tree.Zipper qualified as Z
 import Lens.Micro.Platform
 import Srtd.Data.TreeZipper
 import Srtd.Todo
-import Srtd.Util (mapForest)
+import Srtd.Util (foldForest, mapForest)
 
 newtype IdForest id attr = IdForest {idForest :: Forest (id, attr)}
   deriving (Show)
@@ -81,6 +81,16 @@ onForestBelowId root f idforest@(IdForest forest) = case zFindId root . Z.fromFo
   Just rootLoc -> IdForest $ Z.forest . zForestRoot . Z.modifyTree (onTreeChildren f) $ rootLoc
   where
     onTreeChildren g (Node x children) = Node x (g children)
+
+-- | Constrained "scanning" version of the catamorphism, leaves the tree structure intact.
+transformIdForestBottomUp :: (a -> [b] -> b) -> IdForest id a -> IdForest id b
+transformIdForestBottomUp f = withIdForest $ foldForest _go
+  where
+    _go (i, x) cs =
+      let x' = f x [y | Node (_, y) _ <- cs]
+       in Node (i, x') cs
+
+-- go (i, x) cs = Node (i, go x [y | Node (_, y) _ <- cs]) cs
 
 -- * Inserting nodes
 

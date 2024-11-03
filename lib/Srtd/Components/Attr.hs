@@ -19,20 +19,6 @@ import Srtd.Todo
 
 -- TODO We use `withDefAttr` for selected in the context where this is rendered, therefore we *can* actually make it status.waiting.selected where .selected is optional. Do that! Makes cleaner theme files.
 
--- - Improve rendering for the rows in MainTree, see there.
-renderStatus :: Bool -> Status -> Widget n
-renderStatus sel a = case a of
-  Next -> withAttr (root <> attrName "next") (str "*")
-  Waiting -> withAttr (root <> attrName "waiting") (str "<")
-  Project -> withAttr (root <> attrName "project") (str ">")
-  Later -> withAttr (root <> attrName "later") (str "/")
-  WIP -> withAttr (root <> attrName "wip") (str "*")
-  Someday -> withAttr (root <> attrName "someday") (str "~")
-  Done -> withAttr (root <> attrName "done") (str "+")
-  Open -> withAttr (root <> attrName "open") (str "o")
-  where
-    root = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
-
 -- SOMEDAY we can prob find something more elegant using barbies or something. Or maybe not idk.
 -- NB in principle we also need different ordering for different kinds of things. E.g., remind is begin-of-day but deadline is end-of-day.
 data Labeled a = Labeled
@@ -122,5 +108,28 @@ renderDeadline now sel dt = withAttr (rootattr <> subattr <> selattr) . str . pr
 renderMaybeDeadline :: ZonedTime -> Bool -> Maybe DateOrTime -> Widget n
 renderMaybeDeadline now sel = setWidth 10 . maybe almostEmptyWidget (renderDeadline now sel)
 
-renderMaybeStatus :: Bool -> Maybe Status -> Widget n
-renderMaybeStatus sel = maybe (str "-") (renderStatus sel)
+-- | `renderMStatus selected status actionability`
+renderMStatus :: Bool -> Maybe Status -> Maybe Status -> Widget n
+renderMStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
+  where
+    rootAttr = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
+    subAttr = maybe mempty (attrName . status2subAttrName) $ act
+    status2subAttrName s = case s of
+      Next -> "next"
+      Waiting -> "waiting"
+      Project -> "project"
+      Later -> "later"
+      WIP -> "wip"
+      Someday -> "someday"
+      Done -> "done"
+      Open -> "open"
+    sym = maybe "-" status2Symbol $ a
+    status2Symbol s = case s of
+      Next -> "*"
+      Waiting -> "<"
+      Project -> ">"
+      Later -> "/"
+      WIP -> "*"
+      Someday -> "~"
+      Done -> "+"
+      Open -> "o"

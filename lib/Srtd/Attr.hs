@@ -178,7 +178,8 @@ setLastStatusModified now = autoDatesL %~ ((lastModifiedL .~ now) . (lastStatusM
 
 -- | Derived properties. These are *not* saved but recomputed live as needed.
 data DerivedAttr = DerivedAttr
-  { -- | Actionability of the most actionable child
+  { -- | Actionability of the most actionable child. Nothing can mean both 'no status' and 'no children'
+    -- TODO is this a problem? If so, maybe make a custom data structure or reorganize somehow.
     daChildActionability :: Maybe Status
   }
   deriving (Show)

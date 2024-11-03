@@ -28,17 +28,26 @@ import Srtd.Data.TreeZipper
 import Srtd.Log
 import Srtd.ModelJSON qualified as ModelJSON
 import Srtd.Todo
-import Srtd.Util (mapForest)
+import Srtd.Util (forEmptyList, mapForest)
 
 -- import Data.UUID.V4 (nextRandom)
 
 -- * Helper Types
 
+-- TODO maybe move all this stuff to Attr. Nice local abstraction I think.
 type Label = (Attr, DerivedAttr)
 
 type IdLabel = (EID, Label)
 
 type MForest = IdForest EID Label
+
+-- * Label accessors
+
+glActionability :: Label -> Maybe Status
+glActionability (attr, dattr) = case (status attr, daChildActionability dattr) of
+  (Nothing, a) -> a
+  (Just Project, a) -> a
+  (s, _) -> s
 
 -- * Fundamental Data Structures
 
@@ -123,8 +132,12 @@ forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
 
 -- For some reason, this has to be above `diskModelToModel`, otherwise it's not found.
 _forestMakeDerivedAttrs :: IdForest EID Attr -> IdForest EID Label
-_forestMakeDerivedAttrs = fmap $ \attr -> (attr, todo)
--- ^ TODO
+_forestMakeDerivedAttrs = transformIdForestBottomUp $ \attr clabels -> (attr, makeNodeDerivedAttr attr clabels)
+  where
+    makeNodeDerivedAttr _attr clabels =
+      DerivedAttr
+        { daChildActionability = forEmptyList Nothing minimum . map glActionability $ clabels
+        }
 
 diskModelToModel :: DiskModel -> Model
 diskModelToModel (DiskModel forest) = Model (_forestMakeDerivedAttrs forest)
@@ -136,10 +149,15 @@ modelToDiskModel (Model (IdForest forest)) = DiskModel $ IdForest (mapForest (\(
 -- * Subtrees
 
 -- | Derived properties at the local (per-subtree / per-view) level
+-- TODO move to Attr I think.
 data LocalDerivedAttr = LocalDerivedAttr
   deriving (Show)
 
 type LocalLabel = (Label, LocalDerivedAttr)
+
+llActionability :: LocalLabel -> Maybe Status
+-- for now
+llActionability = glActionability . fst
 
 type LocalIdLabel = (EID, LocalLabel)
 

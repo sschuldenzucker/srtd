@@ -29,7 +29,7 @@ import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
 import Srtd.Component
-import Srtd.Components.Attr (mostUrgentDateAttr, renderMaybeStatus, renderMostUrgentDate, renderMostUrgentDateMaybe, renderPastDate)
+import Srtd.Components.Attr (mostUrgentDateAttr, renderMStatus, renderMostUrgentDate, renderMostUrgentDateMaybe, renderPastDate)
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
@@ -349,7 +349,7 @@ withSelAttr True = withDefAttr selectedItemRowAttr
 withSelAttr False = id
 
 renderRow :: ZonedTime -> Bool -> (Int, a, LocalLabel) -> Widget n
-renderRow ztime sel (lvl, _, ((Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}, _), _)) =
+renderRow ztime sel (lvl, _, llabel@((Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}, _), _)) =
   withSelAttr sel $
     hBox $
       -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
@@ -363,16 +363,16 @@ renderRow ztime sel (lvl, _, ((Attr {name, status, dates, autoDates = AttrAutoDa
     indentW = str (concat (replicate (lvl + 1) "    "))
     dateW = renderMostUrgentDate ztime sel dates
     lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
-    statusW = renderMaybeStatus sel status
+    statusW = renderMStatus sel status (llActionability llabel)
     nameW = strTruncateAvailable name
 
 -- SOMEDAY also deadline for the root (if any)?
 renderRoot :: ZonedTime -> Label -> [IdLabel] -> Widget n
-renderRoot ztime (rootAttr, _) breadcrumbs =
+renderRoot ztime glabel@(rootAttr, _) breadcrumbs =
   hBox
     [statusW, str " ", pathW]
   where
-    statusW = renderMaybeStatus False (status rootAttr)
+    statusW = renderMStatus False (status rootAttr) (glActionability glabel)
     pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootAttr : map (fst . snd) breadcrumbs
     wrapBreadcrumbWidget attr w =
       let battr = mostUrgentDateAttr ztime False (dates attr)
