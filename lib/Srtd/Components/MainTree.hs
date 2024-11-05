@@ -236,6 +236,9 @@ openExternallyKeymap =
       ),
       ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
           liftIO $ setClipboard name
+      ),
+      ( kmLeaf (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
+          whenJust (findFirstHexCode name) $ \code -> liftIO (setClipboard code)
       )
     ]
 
@@ -269,6 +272,12 @@ findFirstURL s = listToMaybe $ getAllTextMatches (s =~ urlPattern :: AllTextMatc
   where
     urlPattern :: String
     urlPattern = "(\\b[a-z]+://[a-zA-Z0-9./?=&-_%]+)"
+
+findFirstHexCode :: String -> Maybe String
+findFirstHexCode s = listToMaybe $ getAllTextMatches (s =~ pat :: AllTextMatches [] String)
+  where
+    pat :: String
+    pat = "0x[0-9a-fA-F]+"
 
 openURL :: String -> IO ()
 openURL url = callProcess "open" [url]
