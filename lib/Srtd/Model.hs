@@ -13,7 +13,7 @@ import Data.Aeson
 import Data.Either (fromRight)
 import Data.IntMap (IntMap)
 import Data.IntMap qualified as IntMap
-import Data.List (find, sortBy, unfoldr)
+import Data.List (find, minimumBy, sortBy, unfoldr)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Tree
 import Data.Tree.Zipper (Empty, Full, TreePos)
@@ -43,6 +43,7 @@ type MForest = IdForest EID Label
 
 -- * Label accessors
 
+-- | Treat Nothing and Project statuses as transparent (they consider children) and everything else not (they consider the item only)
 glActionability :: Label -> Maybe Status
 glActionability (attr, dattr) = case (status attr, daChildActionability dattr) of
   (Nothing, a) -> a
@@ -136,7 +137,7 @@ _forestMakeDerivedAttrs = transformIdForestBottomUp $ \attr clabels -> (attr, ma
   where
     makeNodeDerivedAttr _attr clabels =
       DerivedAttr
-        { daChildActionability = forEmptyList Nothing minimum . map glActionability $ clabels
+        { daChildActionability = forEmptyList Nothing (minimumBy compareMStatusActionability) . map glActionability $ clabels
         }
 
 diskModelToModel :: DiskModel -> Model
