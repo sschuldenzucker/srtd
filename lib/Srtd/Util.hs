@@ -14,6 +14,17 @@ eitherToMaybe = either (const Nothing) Just
 whenJust :: (Applicative m) => Maybe a -> (a -> m ()) -> m ()
 whenJust mx f = maybe (pure ()) f mx
 
+-- | The catamorphism for a pair of 'Maybe's.
+maybe2 :: p -> (t1 -> p) -> (t2 -> p) -> (t1 -> t2 -> p) -> Maybe t1 -> Maybe t2 -> p
+maybe2 n _ _ _ Nothing Nothing = n
+maybe2 _ f _ _ (Just x) Nothing = f x
+maybe2 _ _ g _ Nothing (Just y) = g y
+maybe2 _ _ _ h (Just x) (Just y) = h x y
+
+-- | Changes the default comparison of 'Maybe' so that 'Nothing' is highest, not lowest
+compareByNothingLast :: (t1 -> t2 -> Ordering) -> Maybe t1 -> Maybe t2 -> Ordering
+compareByNothingLast cmp = maybe2 EQ (const LT) (const GT) cmp
+
 -- | Compose a function n times with itself (0 times being the identity)
 composeNTimes :: Int -> (a -> a) -> a -> a
 composeNTimes n f = foldr (.) id $ replicate n f

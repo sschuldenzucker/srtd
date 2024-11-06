@@ -17,6 +17,7 @@ import GHC.Generics
 import Lens.Micro.Platform
 import Srtd.Dates (DateOrTime)
 import Srtd.Todo
+import Srtd.Util (compareByNothingLast, maybe2)
 import System.IO.Unsafe (unsafePerformIO)
 
 data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
@@ -48,10 +49,9 @@ compareStatusActionability = compare
 
 -- | Ordering for (Maybe Status) by actionability
 --
--- NB Nothing gets the lowest (most actionable) status. This is appropriate because these are
--- usually containers for notes etc. that should be at the top.
+-- Nothing gets the highest (least actionable) value.
 compareMStatusActionability :: Maybe Status -> Maybe Status -> Ordering
-compareMStatusActionability = compare
+compareMStatusActionability = compareByNothingLast compare
 
 suffixLenses ''Status
 
