@@ -244,7 +244,7 @@ openExternallyKeymap =
       ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
           liftIO $ setClipboard name
       ),
-      ( kmLeaf (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, Attr {name}) _ctx ->
+      ( kmLeaf (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
           whenJust (findFirstHexCode name) $ \code -> liftIO (setClipboard code)
       )
     ]
