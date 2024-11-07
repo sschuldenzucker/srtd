@@ -2,7 +2,7 @@
 module Srtd.Util where
 
 import Control.Monad ((<=<))
-import Data.Tree (Forest, foldTree)
+import Data.Tree (Forest, Tree (..), foldTree)
 
 maybeToEither :: a -> Maybe b -> Either a b
 maybeToEither err = maybe (Left err) Right
@@ -52,3 +52,36 @@ mapForest f = map (fmap f)
 -- | The catamorphism but for forests
 foldForest :: (a -> [b] -> b) -> Forest a -> [b]
 foldForest f = map (foldTree f)
+
+-- | Forest variant of 'transformTreeDownUp' that maps over each tree independently. See there.
+transformForestDownUp :: ([u] -> a -> u) -> (u -> a -> [b] -> b) -> Forest a -> Forest b
+transformForestDownUp fdown gmake = map (transformTreeDownUp fdown gmake)
+
+-- | Combined top-down and bottom-up transformation function.
+--
+-- Usage: `transformTreeDownUp fdown gmake` where:
+--
+-- - `fdown` maps a list of breadcrumbs (direct parent first, if any) and the node label to a
+--   resulting breadcrumb for the "down" part. The breadcrumb type is inferred.
+-- - `gmake` maps the resulting breadcrumb, node label, and resulting child labels to the node's
+--   own label.
+--
+-- Note: In `gmake`, the child labels likely include information derived from the current node. It's
+-- the caller's responsibility to avoid any logical loops & unintended consequences resulting from
+-- this. (but this will never result in an infinite loop)
+--
+-- SOMEDAY we could have an intermediate structure for the bottom-up step and a final combining step
+-- to avoid the above issue. This could also help eliminate "helper" fields that are only required
+-- for this process but not for the result. Right now, it's less convoluted to keep it like this.
+--
+-- SOMEDAY I could also make this a general folding function (yielding `b` instead of `Tree b`)
+-- I think.
+transformTreeDownUp :: ([u] -> a -> u) -> (u -> a -> [b] -> b) -> Tree a -> Tree b
+transformTreeDownUp fdown gmake = _go []
+  where
+    _go crumbs (Node x cs) =
+      let crumb = fdown crumbs x
+          crumbs' = crumb : crumbs
+          cs' = map (_go crumbs') cs
+          clabels' = map rootLabel cs'
+       in Node (gmake crumb x clabels') cs'

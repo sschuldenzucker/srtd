@@ -14,7 +14,7 @@ import Data.Tree.Zipper qualified as Z
 import Lens.Micro.Platform
 import Srtd.Data.TreeZipper
 import Srtd.Todo
-import Srtd.Util (foldForest, mapForest)
+import Srtd.Util (foldForest, mapForest, transformForestDownUp)
 
 newtype IdForest id attr = IdForest {idForest :: Forest (id, attr)}
   deriving (Show)
@@ -83,12 +83,25 @@ onForestBelowId root f idforest@(IdForest forest) = case zFindId root . Z.fromFo
     onTreeChildren g (Node x children) = Node x (g children)
 
 -- | Constrained "scanning" version of the catamorphism, leaves the tree structure intact.
+--
+-- SOMEDAY obsolete I think
 transformIdForestBottomUp :: (a -> [b] -> b) -> IdForest id a -> IdForest id b
 transformIdForestBottomUp f = withIdForest $ foldForest _go
   where
     _go (i, x) cs =
       let x' = f x [y | Node (_, y) _ <- cs]
        in Node (i, x') cs
+
+-- | Specialization of 'transformTreeDownUp' that preserves the IDs. See there.
+transformIdForestDownUp :: ([u] -> attr -> u) -> (u -> attr -> [attr'] -> attr') -> IdForest id attr -> IdForest id attr'
+transformIdForestDownUp fdown gmake = withIdForest $ transformForestDownUp _fdown _gmake
+  where
+    _fdown crumbs (_i, x) = fdown crumbs x
+    _gmake crumb (i, x) cilabels = (i, gmake crumb x (map snd cilabels))
+
+-- | Top-down transformation. This is a specialization of 'transformIdForestDownUp'.
+transformIdForestTopDown :: ([attr'] -> attr -> attr') -> IdForest id attr -> IdForest id attr'
+transformIdForestTopDown f = transformIdForestDownUp f (\res _ _ -> res)
 
 -- go (i, x) cs = Node (i, go x [y | Node (_, y) _ <- cs]) cs
 
