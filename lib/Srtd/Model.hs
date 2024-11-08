@@ -34,21 +34,7 @@ import Srtd.Util (forEmptyList, mapForest)
 
 -- * Helper Types
 
--- TODO maybe move all this stuff to Attr. Nice local abstraction I think.
-type Label = (Attr, DerivedAttr)
-
-type IdLabel = (EID, Label)
-
 type MForest = IdForest EID Label
-
--- * Label accessors
-
--- | Treat Nothing and Project statuses as transparent (they consider children) and everything else not (they consider the item only)
-glActionability :: Label -> Maybe Status
-glActionability (attr, dattr) = case (status attr, daChildActionability dattr) of
-  (Nothing, a) -> a
-  (Just Project, a) -> a
-  (s, _) -> s
 
 -- * Fundamental Data Structures
 
@@ -148,19 +134,6 @@ modelToDiskModel :: Model -> DiskModel
 modelToDiskModel (Model (IdForest forest)) = DiskModel $ IdForest (mapForest (\(i, (attr, _)) -> (i, attr)) forest)
 
 -- * Subtrees
-
--- | Derived properties at the local (per-subtree / per-view) level
--- TODO move to Attr I think.
-data LocalDerivedAttr = LocalDerivedAttr
-  deriving (Show)
-
-type LocalLabel = (Label, LocalDerivedAttr)
-
-llActionability :: LocalLabel -> Maybe Status
--- for now
-llActionability = glActionability . fst
-
-type LocalIdLabel = (EID, LocalLabel)
 
 type STForest = IdForest EID LocalLabel
 

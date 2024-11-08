@@ -20,7 +20,13 @@ import Srtd.Todo
 import Srtd.Util (compareByNothingLast, maybe2)
 import System.IO.Unsafe (unsafePerformIO)
 
+-- * Node ID (EID)
+
 data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
+
+-- * Attr Types and helpers
+
+-- ** Status enum
 
 -- | The default Ord instance (i.e., the order of constructors) is by actionability.
 data Status
@@ -55,8 +61,7 @@ compareMStatusActionability = compareByNothingLast compare
 
 suffixLenses ''Status
 
-jsonOptionsAttr :: Options
-jsonOptionsAttr = defaultOptions {omitNothingFields = True}
+-- ** Dates
 
 data AttrDates = AttrDates
   { -- SOMEDAY consistency check: remind <= schedule <= goalline <= deadline, if any
@@ -101,7 +106,11 @@ initAutoDates now = AttrAutoDates now now now
 unsafeDefaultAutoDates :: AttrAutoDates
 unsafeDefaultAutoDates = initAutoDates (unsafePerformIO $ getCurrentTime)
 
--- SOMEDAY should be Text.
+-- ** Master Attr structure
+
+-- | Master Attr structure. These are stored persistently with each item.
+--
+-- SOMEDAY should use Text instead of String.
 data Attr = Attr
   { name :: String,
     -- | If Nothing, this item is treated as a transparent "folder" by most analyses.
@@ -113,11 +122,17 @@ data Attr = Attr
 
 suffixLenses ''Attr
 
+-- | Minimal valid attr
 attrMinimal :: UTCTime -> String -> Attr
 attrMinimal now s = Attr s Nothing noDates (initAutoDates now)
 
 unsafeAttrMinimal :: String -> Attr
 unsafeAttrMinimal = attrMinimal (unsafePerformIO getCurrentTime)
+
+-- ** JSON Instance
+
+jsonOptionsAttr :: Options
+jsonOptionsAttr = defaultOptions {omitNothingFields = True}
 
 instance ToJSON Status where
   toEncoding = genericToEncoding defaultOptions
@@ -168,13 +183,15 @@ instance FromJSON EID where
         Nothing -> fail $ "Invalid UUID: " ++ Text.unpack txt
   parseJSON val = typeMismatch "String" val
 
--- * Helpers
+-- ** Modification Helpers
 
 setLastModified :: UTCTime -> Attr -> Attr
 setLastModified now = autoDatesL . lastModifiedL .~ now
 
 setLastStatusModified :: UTCTime -> Attr -> Attr
 setLastStatusModified now = autoDatesL %~ ((lastModifiedL .~ now) . (lastStatusModifiedL .~ now))
+
+-- * Global Derived Attr
 
 -- | Derived properties. These are *not* saved but recomputed live as needed.
 data DerivedAttr = DerivedAttr
@@ -190,3 +207,33 @@ emptyDerivedAttr =
   DerivedAttr
     { daChildActionability = Nothing
     }
+
+-- | Label (i.e., content) of an element in the global tree of items in memory
+type Label = (Attr, DerivedAttr)
+
+-- | Label in the global tree of items including the item ID
+type IdLabel = (EID, Label)
+
+-- | Treat Nothing and Project statuses as transparent (they consider children) and everything else
+-- not (they consider the item only)
+glActionability :: Label -> Maybe Status
+glActionability (attr, dattr) = case (status attr, daChildActionability dattr) of
+  (Nothing, a) -> a
+  (Just Project, a) -> a
+  (s, _) -> s
+
+-- * Local Derived Attr
+
+-- | Derived properties at the local (per-subtree / per-view) level
+data LocalDerivedAttr = LocalDerivedAttr
+  deriving (Show)
+
+-- | Label (i.e., content) of an element in the local (per-view) tree of items in memory
+type LocalLabel = (Label, LocalDerivedAttr)
+
+-- | Label in the local tree of items including the item ID
+type LocalIdLabel = (EID, LocalLabel)
+
+llActionability :: LocalLabel -> Maybe Status
+-- for now
+llActionability = glActionability . fst
