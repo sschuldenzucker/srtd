@@ -123,7 +123,7 @@ _forestMakeDerivedAttrs = transformIdForestBottomUp $ \attr clabels -> (attr, ma
   where
     makeNodeDerivedAttr _attr clabels =
       DerivedAttr
-        { daChildActionability = forEmptyList Nothing (minimumBy compareMStatusActionability) . map glActionability $ clabels
+        { daChildActionability = forEmptyList None minimum . map glActionability $ clabels
         }
 
 diskModelToModel :: DiskModel -> Model
@@ -211,7 +211,7 @@ f_hide_completed =
       fi' i m = filterSubtree p $ fi i m
    in Filter "not done" fi'
   where
-    p ((Attr {status}, _), _) = status /= Just Done
+    p ((Attr {status}, _), _) = status /= Done
 
 -- * Model modifications
 

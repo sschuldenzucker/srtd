@@ -46,18 +46,11 @@ data Status
     Later
   | -- | Waiting for someone else. (or *maybe* on an event to happen, not sure)
     Someday
+  | -- | No status assigned. For notes, containers, areas of responsibility, and "stuff"
+    None
   | -- | Done. (NB there's no 'archived' tag right now)
     Done
   deriving (Eq, Ord, Show, Generic)
-
-compareStatusActionability :: Status -> Status -> Ordering
-compareStatusActionability = compare
-
--- | Ordering for (Maybe Status) by actionability
---
--- Nothing gets the highest (least actionable) value.
-compareMStatusActionability :: Maybe Status -> Maybe Status -> Ordering
-compareMStatusActionability = compareByNothingLast compare
 
 suffixLenses ''Status
 
@@ -113,8 +106,7 @@ unsafeDefaultAutoDates = initAutoDates (unsafePerformIO $ getCurrentTime)
 -- SOMEDAY should use Text instead of String.
 data Attr = Attr
   { name :: String,
-    -- | If Nothing, this item is treated as a transparent "folder" by most analyses.
-    status :: Maybe Status,
+    status :: Status,
     dates :: AttrDates,
     autoDates :: AttrAutoDates
   }
@@ -124,7 +116,7 @@ suffixLenses ''Attr
 
 -- | Minimal valid attr
 attrMinimal :: UTCTime -> String -> Attr
-attrMinimal now s = Attr s Nothing noDates (initAutoDates now)
+attrMinimal now s = Attr s None noDates (initAutoDates now)
 
 unsafeAttrMinimal :: String -> Attr
 unsafeAttrMinimal = attrMinimal (unsafePerformIO getCurrentTime)
@@ -163,7 +155,7 @@ instance FromJSON Attr where
   parseJSON = withObject "Attr" $ \v ->
     Attr
       <$> v .: "name"
-      <*> v .:? "status"
+      <*> v .:? "status" .!= None
       <*> v .:? "dates" .!= noDates
       <*> v .:? "autoDates" .!= unsafeDefaultAutoDates
 
@@ -195,9 +187,9 @@ setLastStatusModified now = autoDatesL %~ ((lastModifiedL .~ now) . (lastStatusM
 
 -- | Derived properties. These are *not* saved but recomputed live as needed.
 data DerivedAttr = DerivedAttr
-  { -- | Actionability of the most actionable child. Nothing can mean both 'no status' and 'no children'
+  { -- | Actionability of the most actionable child. None means either None or 'no children'
     -- TODO is this a problem? If so, maybe make a custom data structure or reorganize somehow.
-    daChildActionability :: Maybe Status
+    daChildActionability :: Status
   }
   deriving (Show)
 
@@ -205,7 +197,7 @@ data DerivedAttr = DerivedAttr
 emptyDerivedAttr :: DerivedAttr
 emptyDerivedAttr =
   DerivedAttr
-    { daChildActionability = Nothing
+    { daChildActionability = None
     }
 
 -- | Label (i.e., content) of an element in the global tree of items in memory
@@ -216,10 +208,10 @@ type IdLabel = (EID, Label)
 
 -- | Treat Nothing and Project statuses as transparent (they consider children) and everything else
 -- not (they consider the item only)
-glActionability :: Label -> Maybe Status
+glActionability :: Label -> Status
 glActionability (attr, dattr) = case (status attr, daChildActionability dattr) of
-  (Nothing, a) -> a
-  (Just Project, a) -> a
+  (None, a) -> a
+  (Project, a) -> a
   (s, _) -> s
 
 -- * Local Derived Attr
@@ -234,6 +226,6 @@ type LocalLabel = (Label, LocalDerivedAttr)
 -- | Label in the local tree of items including the item ID
 type LocalIdLabel = (EID, LocalLabel)
 
-llActionability :: LocalLabel -> Maybe Status
+llActionability :: LocalLabel -> Status
 -- for now
 llActionability = glActionability . fst

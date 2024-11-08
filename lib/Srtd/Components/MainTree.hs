@@ -29,7 +29,7 @@ import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
 import Srtd.Component
-import Srtd.Components.Attr (mostUrgentDateAttr, renderMStatus, renderMostUrgentDate, renderMostUrgentDateMaybe, renderPastDate)
+import Srtd.Components.Attr (mostUrgentDateAttr, renderMostUrgentDate, renderMostUrgentDateMaybe, renderPastDate, renderStatus)
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
@@ -164,15 +164,15 @@ setStatusKeymap :: Keymap (AppContext -> EventM n MainTree ())
 setStatusKeymap =
   kmMake
     "Set Status"
-    [ kmLeaf (bind ' ') "None" (setStatus Nothing),
-      kmLeaf (bind 'n') "Next" (setStatus $ Just Next),
-      kmLeaf (bind 'w') "Waiting" (setStatus $ Just Waiting),
-      kmLeaf (bind 'p') "Project" (setStatus $ Just Project),
-      kmLeaf (bind 'l') "Later" (setStatus $ Just Later),
-      kmLeaf (bind 'i') "WIP" (setStatus $ Just WIP),
-      kmLeaf (binding KEnter []) "Done" (setStatus $ Just Done),
-      kmLeaf (bind 's') "Someday" (setStatus $ Just Someday),
-      kmLeaf (bind 'o') "Open" (setStatus $ Just Open),
+    [ kmLeaf (bind ' ') "None" (setStatus None),
+      kmLeaf (bind 'n') "Next" (setStatus $ Next),
+      kmLeaf (bind 'w') "Waiting" (setStatus $ Waiting),
+      kmLeaf (bind 'p') "Project" (setStatus $ Project),
+      kmLeaf (bind 'l') "Later" (setStatus $ Later),
+      kmLeaf (bind 'i') "WIP" (setStatus $ WIP),
+      kmLeaf (binding KEnter []) "Done" (setStatus $ Done),
+      kmLeaf (bind 's') "Someday" (setStatus $ Someday),
+      kmLeaf (bind 'o') "Open" (setStatus $ Open),
       kmLeaf (bind 't') "Touch" touchLastStatusModified
     ]
 
@@ -259,7 +259,7 @@ sortRootKeymap =
       : mkItems sortShallowBelow
   where
     mkItems sorter =
-      [kmLeaf (bind 't') "Status" $ sortRootBy sorter (compareMStatusActionability `on` (view $ _1 . statusL))]
+      [kmLeaf (bind 't') "Status" $ sortRootBy sorter (compare `on` (view $ _1 . statusL))]
     sortRootBy sorter ord = withRoot $ \root -> modifyModel (sorter ord root)
 
 sortCurKeymap :: Keymap (AppContext -> EventM n MainTree ())
@@ -270,7 +270,7 @@ sortCurKeymap =
       : mkItems sortShallowBelow
   where
     mkItems sorter =
-      [kmLeaf (bind 't') "Status" $ sortCurBy sorter (compareMStatusActionability `on` (view $ _1 . statusL))]
+      [kmLeaf (bind 't') "Status" $ sortCurBy sorter (compare `on` (view $ _1 . statusL))]
     sortCurBy sorter ord = withCur $ \cur -> modifyModel (sorter ord cur)
 
 -- SOMEDAY these should be moved to another module.
@@ -302,7 +302,7 @@ pushInsertNewItemRelToCur go ctx = do
         return $ EIDNormal uuid
   liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "" "New Item")
 
-setStatus :: Maybe Status -> AppContext -> EventM n MainTree ()
+setStatus :: Status -> AppContext -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
   modifyModelWithCtx $ \ctx ->
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ctx) . (statusL .~ status')
@@ -363,7 +363,7 @@ renderRow ztime sel (lvl, _, llabel@((Attr {name, status, dates, autoDates = Att
     indentW = str (concat (replicate (lvl + 1) "    "))
     dateW = renderMostUrgentDate ztime sel dates
     lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
-    statusW = renderMStatus sel status (llActionability llabel)
+    statusW = renderStatus sel status (llActionability llabel)
     nameW = strTruncateAvailable name
 
 -- SOMEDAY also deadline for the root (if any)?
@@ -372,7 +372,7 @@ renderRoot ztime glabel@(rootAttr, _) breadcrumbs =
   hBox
     [statusW, str " ", pathW]
   where
-    statusW = renderMStatus False (status rootAttr) (glActionability glabel)
+    statusW = renderStatus False (status rootAttr) (glActionability glabel)
     pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootAttr : map (fst . snd) breadcrumbs
     wrapBreadcrumbWidget attr w =
       let battr = mostUrgentDateAttr ztime False (dates attr)

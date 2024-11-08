@@ -109,11 +109,11 @@ renderMaybeDeadline :: ZonedTime -> Bool -> Maybe DateOrTime -> Widget n
 renderMaybeDeadline now sel = setWidth 10 . maybe almostEmptyWidget (renderDeadline now sel)
 
 -- | `renderMStatus selected status actionability`
-renderMStatus :: Bool -> Maybe Status -> Maybe Status -> Widget n
-renderMStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
+renderStatus :: Bool -> Status -> Status -> Widget n
+renderStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
   where
     rootAttr = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
-    subAttr = maybe mempty (attrName . status2subAttrName) $ act
+    subAttr = attrName . status2subAttrName $ act
     status2subAttrName s = case s of
       Next -> "next"
       Waiting -> "waiting"
@@ -123,7 +123,9 @@ renderMStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
       Someday -> "someday"
       Done -> "done"
       Open -> "open"
-    sym = maybe "-" status2Symbol $ a
+      -- NB this typically isn't configured in the theme, which is fine.
+      None -> "none"
+    sym = status2Symbol a
     status2Symbol s = case s of
       Next -> "*"
       Waiting -> "<"
@@ -133,3 +135,4 @@ renderMStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
       Someday -> "~"
       Done -> "+"
       Open -> "o"
+      None -> "-"
