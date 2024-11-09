@@ -168,7 +168,26 @@ forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt
 --
 -- SOMEDAY also do this for the root?
 addLocalDerivedAttrs :: MForest -> STForest
-addLocalDerivedAttrs = fmap $ \l -> (l, LocalDerivedAttr)
+addLocalDerivedAttrs = transformIdForestTopDown _go
+  where
+    _go [] label = (label, LocalDerivedAttr {ldParentActionability = None})
+    _go (((parAttr, _parDAttr), parLDAttr) : _) label =
+      (label, LocalDerivedAttr {ldParentActionability = stepParentActionability (status parAttr) (ldParentActionability parLDAttr)})
+
+    stepParentActionability :: Status -> Status -> Status
+    stepParentActionability a pa = case (a, pa) of
+      -- SOMEDAY this is a very ad-hoc solution. Think about the structure, also re the upwards derivation.
+      -- Not super sure if this is the right way.
+      (a, None) -> a
+      (None, pa) -> pa
+      (a, Project) -> a
+      (a, ap) -> max a ap
+
+-- stepParentActionability st pst = case (st, pst) of
+--   (st, None) -> st
+-- stepParentActionability st None = st
+-- stepParentActionability None pst = pst
+-- stepParentActionability st pst = max st pst
 
 forestGetSubtreeBelow :: EID -> MForest -> Either IdNotFoundError Subtree
 forestGetSubtreeBelow tgt forest = case forestFindTreeWithBreadcrumbs tgt forest of

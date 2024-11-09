@@ -218,6 +218,9 @@ glActionability (attr, dattr) = case (status attr, daChildActionability dattr) o
 
 -- | Derived properties at the local (per-subtree / per-view) level
 data LocalDerivedAttr = LocalDerivedAttr
+  { -- | Actionability of the parent, derived downwards
+    ldParentActionability :: Status
+  }
   deriving (Show)
 
 -- | Label (i.e., content) of an element in the local (per-view) tree of items in memory
@@ -227,5 +230,10 @@ type LocalLabel = (Label, LocalDerivedAttr)
 type LocalIdLabel = (EID, LocalLabel)
 
 llActionability :: LocalLabel -> Status
--- for now
-llActionability = glActionability . fst
+llActionability (label, ldattr) = case (glActionability label, ldParentActionability ldattr) of
+  -- SOMEDAY I've seen this patterns a few times now, perhaps abstract it or restructure.
+  -- See also 'addLocalDerivedAttrs' in Model and 'glActionability' above. It's duplicated with there.
+  (a, None) -> a
+  (None, pa) -> pa
+  (a, Project) -> a
+  (a, ap) -> max a ap
