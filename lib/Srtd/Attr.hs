@@ -24,6 +24,11 @@ import System.IO.Unsafe (unsafePerformIO)
 
 data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
 
+showEIDShort :: EID -> String
+showEIDShort Inbox = "INBOX"
+showEIDShort Vault = "VAULT"
+showEIDShort (EIDNormal uuid) = show uuid
+
 -- * Attr Types and helpers
 
 -- ** Status enum

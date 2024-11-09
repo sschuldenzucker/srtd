@@ -31,6 +31,7 @@ import Srtd.BrickHelpers
 import Srtd.Component
 import Srtd.Components.Attr (mostUrgentDateAttr, renderMostUrgentDate, renderMostUrgentDateMaybe, renderPastDate, renderStatus)
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
+import Srtd.Components.DetailsViewOverlay (newDetailsViewOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
 import Srtd.Data.IdTree
@@ -148,6 +149,9 @@ rootKeymap =
       (kmSub (bind 'o') openExternallyKeymap),
       (kmLeaf (bind '.') "Next filter" cycleNextFilter),
       (kmSub (bind 'd') editDateKeymap),
+      ( kmLeaf (bind ' ') "Show Details" $ withCurWithAttr $ \lilabel ctx -> do
+          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent $ newDetailsViewOverlay lilabel)
+      ),
       (kmLeaf (bind 'q') "Quit" (const halt))
     ]
 
