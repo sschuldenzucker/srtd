@@ -133,10 +133,12 @@ main = do
   glogL INFO "App did quit normally"
 
 myAppDraw :: AppState -> [Widget AppResourceName]
-myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ [mainUI]
+myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ mainUIs
   where
     tab0 = LZ.cursor asTabs
-    mainUI = renderTabBar (componentTitle <$> asTabs) <=> renderComponent tab0
+    mainUIs =
+      let (w0, ovls0) = renderComponentWithOverlays tab0
+       in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar (componentTitle <$> asTabs) <=> w0]
     renderTabTitle :: Bool -> Text -> Widget n
     renderTabTitle sel t = withAttr theAttrName . padLeftRight 1 . hLimit 20 $ txt t
       where
@@ -150,12 +152,13 @@ myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverl
                   ++ [renderTabTitle True cur]
                   ++ map (renderTabTitle False) back
                   ++ [padLeft Max (str " ")]
-    renderOverlay o =
+    wrapOverlay title w =
       centerLayer
         . Brick.hLimitPercent 80
         . Brick.vLimitPercent 75
-        . borderWithLabel (padLeftRight 1 . txt $ componentTitle o)
-        $ renderComponent o
+        . borderWithLabel (padLeftRight 1 . txt $ title)
+        $ w
+    renderOverlay o = wrapOverlay (componentTitle o) (renderComponent o)
     renderKeyHelp keymapName pairs =
       let configTable = surroundingBorder False . rowBorders False . columnBorders False
           inner = configTable $ table [[padRight (Pad 1) (txt keydesc), txt actdesc] | (keydesc, actdesc) <- pairs]

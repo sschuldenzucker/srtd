@@ -70,11 +70,20 @@ acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 
 -- | A class of components. All Brick components (hopefully,,,) satisfy this.
 --
+-- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented.
+--
 -- TODO rename to AppComponent b/c it's really specific to *this* app by now.
 -- TODO maybe generalize over types if only to avoid circularities grrr
 class BrickComponent s where
   -- | Render this component to a widget. Like `appRender` for apps, or the many render functions.
   renderComponent :: s -> Widget AppResourceName
+  renderComponent = fst . renderComponentWithOverlays
+
+  -- | Variant of `renderComponent` that lets us provide a list over overlays that should also be rendered.
+  -- Overlays behave like Brick's 'appDraw', i.e. the first overlay is rendered at the top. Of form
+  -- `(Title, Widget)`.
+  renderComponentWithOverlays :: s -> (Widget AppResourceName, [(Text, Widget AppResourceName)])
+  renderComponentWithOverlays = (,[]) . renderComponent
 
   -- | Handle an event. Like the `handleEvent` functions.
   handleEvent :: AppContext -> BrickEvent AppResourceName AppMsg -> EventM AppResourceName s ()
@@ -89,6 +98,7 @@ data SomeBrickComponent = forall s. (BrickComponent s) => SomeBrickComponent s
 
 instance BrickComponent SomeBrickComponent where
   renderComponent (SomeBrickComponent s) = renderComponent s
+  renderComponentWithOverlays (SomeBrickComponent s) = renderComponentWithOverlays s
 
   -- This is a somewhat unhinged construction to deal with the existential quantification while
   -- using the `zoom` machinery. Wondering if there's a library function that just does what I want
