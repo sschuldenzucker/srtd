@@ -12,6 +12,7 @@ import Brick.BChan (writeBChan)
 import Brick.Keybindings (Binding, bind, ctrl)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
+import Brick.Widgets.Table
 import Control.Monad.IO.Class (liftIO)
 import Data.CircularList qualified as CList
 import Data.Function (on)
@@ -31,7 +32,6 @@ import Srtd.BrickHelpers
 import Srtd.Component
 import Srtd.Components.Attr (mostUrgentDateAttr, renderMostUrgentDate, renderMostUrgentDateMaybe, renderPastDate, renderStatus)
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
-import Srtd.Components.DetailsViewOverlay (newDetailsViewOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
 import Srtd.Data.IdTree
@@ -57,7 +57,10 @@ data MainTree = MainTree
     -- | Top-level resource name for this component. We can assign anything nested below (or "above") it.
     mtResourceName :: AppResourceName,
     mtZonedTime :: ZonedTime,
-    mtKeymap :: KeymapZipper (AppContext -> EventM AppResourceName MainTree ())
+    mtKeymap :: KeymapZipper (AppContext -> EventM AppResourceName MainTree ()),
+    -- | Whether or not to show the details view. This is not implemented as a full overlay
+    -- component for simplicity.
+    mtShowDetails :: Bool
   }
   deriving (Show)
 
@@ -149,8 +152,7 @@ rootKeymap =
       (kmSub (bind 'o') openExternallyKeymap),
       (kmLeaf (bind '.') "Next filter" cycleNextFilter),
       (kmSub (bind 'd') editDateKeymap),
-      ( kmLeaf (bind ' ') "Show Details" $ withCurWithAttr $ \lilabel ctx -> do
-          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent $ newDetailsViewOverlay lilabel)
+      ( kmLeaf (bind ' ') "Toggle Details Overlay" (const $ mtShowDetailsL %= not)
       ),
       (kmLeaf (bind 'q') "Quit" (const halt))
     ]
@@ -336,7 +338,8 @@ makeWithFilters root filters model ztime rname =
       mtList = list,
       mtResourceName = rname,
       mtZonedTime = ztime,
-      mtKeymap = keymapToZipper rootKeymap
+      mtKeymap = keymapToZipper rootKeymap,
+      mtShowDetails = False
     }
   where
     subtree = filterRun (fromJust $ CList.focus filters) root model
@@ -393,12 +396,53 @@ renderFilters fs = maybe emptyWidget go (CList.focus fs)
   where
     go f = withDefAttr filterLabelAttr $ str (filterName f)
 
+renderItemDetails :: ZonedTime -> LocalIdLabel -> Widget n
+renderItemDetails ztime (eid, llabel) =
+  vBox
+    [ padBottom (Pad 1) topBox,
+      -- TODO try a vertical line instead of padding. There should be some example in brick
+      hBox [padRight (Pad 5) leftBox, rightBox]
+    ]
+  where
+    (label@(attr, dattr), ldattr) = llabel
+    topBox =
+      tbl
+        [ [str "Title", str (name attr)],
+          [str "EID", str (showEIDShort eid)]
+        ]
+    leftBox =
+      tbl
+        [ [str "Status", str (show $ status attr)],
+          [str "Actionability", str (show $ llActionability llabel)],
+          [str "Global Actionability", str (show $ glActionability label)],
+          [str "Child Actionability", str (show $ daChildActionability dattr)],
+          [str "Parent Actionability", str (show $ ldParentActionability ldattr)]
+        ]
+    rightBox =
+      tbl
+        -- TODO dates. needs the current time zone to render correctly
+        [[str "Deadline", str ("todo")]]
+    tbl =
+      renderTable
+        . surroundingBorder False
+        . columnBorders False
+        . rowBorders False
+        . setDefaultColAlignment AlignLeft
+        . table
+        . map padFirstCell
+    padFirstCell [] = []
+    padFirstCell (h : t) = padRight (Pad 2) h : t
+
 instance BrickComponent MainTree where
-  renderComponent MainTree {mtList, mtSubtree = Subtree {rootLabel, breadcrumbs}, mtFilters, mtZonedTime} = box
+  renderComponentWithOverlays s@MainTree {mtList, mtSubtree = Subtree {rootLabel, breadcrumbs}, mtFilters, mtZonedTime, mtShowDetails} =
+    (box, ovls)
     where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
       headrow = renderRoot mtZonedTime rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
       box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
+      ovls = case (mtShowDetails, mtCurWithAttr s) of
+        (True, Just illabel) -> [("Item Details", renderItemDetails mtZonedTime illabel)]
+        _ -> []
 
   handleEvent ctx ev =
     -- LATER when filters become more fancy and filter something wrt. the current time, this *may*
