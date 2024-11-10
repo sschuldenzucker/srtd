@@ -105,7 +105,6 @@ library
         Srtd.Component,
         Srtd.Components.Attr,
         Srtd.Components.DateSelectOverlay,
-        Srtd.Components.DetailsViewOverlay,
         Srtd.Components.MainTree,
         Srtd.Components.NewNodeOverlay,
         Srtd.Components.TestOverlay,
