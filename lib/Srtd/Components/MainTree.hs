@@ -398,38 +398,45 @@ renderFilters fs = maybe emptyWidget go (CList.focus fs)
 
 renderItemDetails :: ZonedTime -> LocalIdLabel -> Widget n
 renderItemDetails ztime (eid, llabel) =
-  vBox
-    [ padBottom (Pad 1) topBox,
-      -- TODO try a vertical line instead of padding. There should be some example in brick
-      hBox [padRight (Pad 5) leftBox, rightBox]
-    ]
+  padAll 1 $
+    withDefAttr (attrName "item_details") $
+      vBox
+        [ padBottom (Pad 1) topBox,
+          -- TODO try a vertical line instead of padding. There should be some example in brick
+          hBox [padRight (Pad 5) leftBox, rightBox]
+        ]
   where
     (label@(attr, dattr), ldattr) = llabel
     topBox =
       tbl
-        [ [str "Title", str (name attr)],
-          [str "EID", str (showEIDShort eid)]
+        [ [str "EID", str (showEIDShort eid)],
+          [str "Title", str (name attr)]
         ]
     leftBox =
       tbl
-        [ [str "Status", str (show $ status attr)],
+        [ [withAttr sectionHeaderAttr (str "Status"), emptyWidget],
+          [str "Status", str (show $ status attr)],
           [str "Actionability", str (show $ llActionability llabel)],
           [str "Global Actionability", str (show $ glActionability label)],
           [str "Child Actionability", str (show $ daChildActionability dattr)],
           [str "Parent Actionability", str (show $ ldParentActionability ldattr)],
+          [str " ", emptyWidget],
+          [withAttr sectionHeaderAttr (str "Metadata"), emptyWidget],
           [str "Created", renderUTCTime (created . autoDates)],
           [str "Modified", renderUTCTime (lastModified . autoDates)],
           [str "Status Modified", renderUTCTime (lastStatusModified . autoDates)]
         ]
     rightBox =
       tbl
-        [ [str "Deadline", renderMDate (deadline . dates)],
+        [ [withAttr sectionHeaderAttr (str "Dates"), emptyWidget],
+          [str "Deadline", renderMDate (deadline . dates)],
           [str "Goalline", renderMDate (goalline . dates)],
           [str "Scheduled", renderMDate (scheduled . dates)],
           [str "Remind", renderMDate (remind . dates)]
         ]
     renderMDate :: (Attr -> Maybe DateOrTime) -> Widget n
-    renderMDate f = maybe emptyWidget (str . prettyAbsolute (zonedTimeZone ztime)) (f attr)
+    -- For some reason, emptyWidget doesn't work with `setWidth`.
+    renderMDate f = setWidth 21 . maybe (str " ") (str . prettyAbsolute (zonedTimeZone ztime)) $ f attr
     renderUTCTime :: (Attr -> UTCTime) -> Widget n
     renderUTCTime f = renderMDate (Just . DateAndTime . f)
     tbl =
@@ -442,6 +449,7 @@ renderItemDetails ztime (eid, llabel) =
         . map padFirstCell
     padFirstCell [] = []
     padFirstCell (h : t) = padRight (Pad 2) h : t
+    sectionHeaderAttr = attrName "section_header"
 
 instance BrickComponent MainTree where
   renderComponentWithOverlays s@MainTree {mtList, mtSubtree = Subtree {rootLabel, breadcrumbs}, mtFilters, mtZonedTime, mtShowDetails} =

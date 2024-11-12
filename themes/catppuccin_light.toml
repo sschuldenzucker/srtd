@@ -52,6 +52,8 @@ fg = "text"
 # "tab_bar.tab_title" = {}  # Unused
 "tab_bar.selected.tab_title" = {fg = "mauve", bg = "base", style = "underline"}
 
+"section_header" = {style = "underline"}
+
 # SOMEDAY some background would be nice
 "filter_label" = {fg = "blue"}
 
