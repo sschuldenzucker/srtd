@@ -46,6 +46,7 @@ import Srtd.Util
 import System.Hclip (setClipboard)
 import System.Process (callProcess)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
+import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 
 type MyList = L.List AppResourceName (Int, EID, LocalLabel)
 
@@ -398,22 +399,38 @@ renderFilters fs = maybe emptyWidget go (CList.focus fs)
 
 renderItemDetails :: ZonedTime -> LocalIdLabel -> Widget n
 renderItemDetails ztime (eid, llabel) =
-  padAll 1 $
+  padLeftRight 1 $
     withDefAttr (attrName "item_details") $
       vBox
         [ padBottom (Pad 1) topBox,
           -- TODO try a vertical line instead of padding. There should be some example in brick
-          hBox [padRight (Pad 5) leftBox, rightBox]
+          padBottom (Pad 1) $ hBox [padRight (Pad 5) leftBox, rightBox],
+          botBox
         ]
   where
     (label@(attr, dattr), ldattr) = llabel
     topBox =
-      tbl
-        [ [str "EID", str (showEIDShort eid)],
-          [str "Title", str (name attr)]
+      -- We cannot make this a table b/c `strWrap` has greedy growth and tables don't support that.
+      -- NB in principle, we also don't *need* a table here but sth less general would be fine.
+      vBox
+        [ -- hBox [str "EID    ", str (showEIDShort eid)],
+          -- hBox [str "Title  ", strWrapWith nameWrapSettings (name attr)]
+          hBox [strWrapWith nameWrapSettings (name attr)]
         ]
+    botBox =
+      vBox
+        [hBox [str "EID  ", str (showEIDShort eid)]]
+    nameWrapSettings = defaultWrapSettings {breakLongWords = True}
+    -- tbl
+    --   [ [str "EID", str (showEIDShort eid)],
+    --     -- TODO strWrap doesn't work here. I'm getting TEInvalidCellSizePolicy
+    --     -- I think I can't have greedy (not fixed) growth policy in a table.
+    --     [str "Title", strWrap (name attr)]
+    --   ]
     leftBox =
       tbl
+        -- SOMEDAY we may wanna make this not one big table but separate the bottom part out into
+        -- another vBox element below the rest. Looks a bit strange re reserved space rn.
         [ [withAttr sectionHeaderAttr (str "Status"), emptyWidget],
           [str "Status", str (show $ status attr)],
           [str "Actionability", str (show $ llActionability llabel)],
