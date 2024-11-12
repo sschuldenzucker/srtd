@@ -20,7 +20,7 @@ import Data.List (intercalate, intersperse)
 import Data.Maybe (fromJust, fromMaybe, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Time (ZonedTime, zonedTimeToUTC, zonedTimeZone)
+import Data.Time (UTCTime, ZonedTime, zonedTimeToUTC, zonedTimeZone)
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -36,7 +36,7 @@ import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
 import Srtd.Data.IdTree
 import Srtd.Data.TreeZipper
-import Srtd.Dates (DateOrTime (..), cropDate)
+import Srtd.Dates (DateOrTime (..), cropDate, prettyAbsolute)
 import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
@@ -416,12 +416,22 @@ renderItemDetails ztime (eid, llabel) =
           [str "Actionability", str (show $ llActionability llabel)],
           [str "Global Actionability", str (show $ glActionability label)],
           [str "Child Actionability", str (show $ daChildActionability dattr)],
-          [str "Parent Actionability", str (show $ ldParentActionability ldattr)]
+          [str "Parent Actionability", str (show $ ldParentActionability ldattr)],
+          [str "Created", renderUTCTime (created . autoDates)],
+          [str "Modified", renderUTCTime (lastModified . autoDates)],
+          [str "Status Modified", renderUTCTime (lastStatusModified . autoDates)]
         ]
     rightBox =
       tbl
-        -- TODO dates. needs the current time zone to render correctly
-        [[str "Deadline", str ("todo")]]
+        [ [str "Deadline", renderMDate (deadline . dates)],
+          [str "Goalline", renderMDate (goalline . dates)],
+          [str "Scheduled", renderMDate (scheduled . dates)],
+          [str "Remind", renderMDate (remind . dates)]
+        ]
+    renderMDate :: (Attr -> Maybe DateOrTime) -> Widget n
+    renderMDate f = maybe emptyWidget (str . prettyAbsolute (zonedTimeZone ztime)) (f attr)
+    renderUTCTime :: (Attr -> UTCTime) -> Widget n
+    renderUTCTime f = renderMDate (Just . DateAndTime . f)
     tbl =
       renderTable
         . surroundingBorder False
