@@ -223,6 +223,10 @@ moveSubtreeModeKeymap =
         --     --   modifyModel (moveSubtreeBelow' root cur toAfterPrevPreorder)
         --     moveCurRelative goPrevPreorder insAfter
         -- ),
+        ( kmLeaf (bind 'j') "Down" $ moveCurRelativeDynamic dtoNextPreorder
+        ),
+        ( kmLeaf (bind 'k') "Up" $ moveCurRelativeDynamic dtoPrevPreorder
+        ),
         ( kmLeaf (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter
         ),
         ( kmLeaf (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore
@@ -593,6 +597,12 @@ moveCurRelative :: GoWalker LocalIdLabel -> InsertWalker IdLabel -> AppContext -
 moveCurRelative go ins = withCur $ \cur ctx -> do
   forest <- use $ mtSubtreeL . stForestL
   modifyModel (moveSubtreeRelFromForest cur go ins forest) ctx
+
+-- SOMEDAY ^^ Same applies. Also, these could all be unified.
+moveCurRelativeDynamic :: DynamicMoveWalker LocalIdLabel IdLabel -> AppContext -> EventM n MainTree ()
+moveCurRelativeDynamic dgo = withCur $ \cur ctx -> do
+  forest <- use $ mtSubtreeL . stForestL
+  modifyModel (moveSubtreeRelFromForestDynamic cur dgo forest) ctx
 
 modifyModel :: (Model -> Model) -> AppContext -> EventM n MainTree ()
 modifyModel f = modifyModelWithCtx (const f)

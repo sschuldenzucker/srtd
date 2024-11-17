@@ -2,10 +2,12 @@
 module Srtd.Data.TreeZipper where
 
 import Control.Applicative (asum, (<|>))
+import Control.Monad ((<=<))
 import Data.List (find, sortBy, unfoldr)
 import Data.Maybe (listToMaybe)
 import Data.Tree.Zipper (Empty, Full, TreePos)
 import Data.Tree.Zipper qualified as Z
+import Srtd.Todo
 
 -- * Walker types
 
@@ -15,7 +17,7 @@ import Data.Tree.Zipper qualified as Z
 
 -- | Walks from an empty position (of a just-removed node) to a new empty position (where the node is to be moved), and may fail at that.
 --
--- SOMEDAY Delete this? Looks like this always gets us in trouble.
+-- SOMEDAY Delete this? Looks like this always gets us in trouble. And I don't think we're using it.
 type MoveWalker a = TreePos Empty a -> Maybe (TreePos Empty a)
 
 toNextSibling, toPrevSibling, toBeforeParent, toAfterParent, toFirstChildOfNext, toFirstChildOfPrev, toLastChildOfNext, toLastChildOfPrev :: MoveWalker a
@@ -61,10 +63,13 @@ type GoWalker a = TreePos Full a -> Maybe (TreePos Full a)
 
 -- The following are a trivial abstraction and could be eliminated, but we keep them for now to
 -- abstract the tree implementation away.
-goNextSibling, goPrevSibling, goParent :: GoWalker a
+goNextSibling, goPrevSibling, goParent, goFirstChild, goFirstChildOfNext, goLastChildOfPrev :: GoWalker a
 goNextSibling = Z.next
 goPrevSibling = Z.prev
 goParent = Z.parent
+goFirstChild = Z.firstChild
+goFirstChildOfNext = Z.firstChild <=< Z.next
+goLastChildOfPrev = Z.lastChild <=< Z.prev
 
 -- ** Insert Walker
 
@@ -80,6 +85,27 @@ insBefore = Just . Z.prevSpace
 insAfter = Just . Z.nextSpace
 insFirstChild = Just . Z.children
 insLastChild = Just . Z.last . Z.children
+
+-- ** Dynamic Move Walker
+
+-- This is combined 'GoWalker' and 'InsertWalker' where the walker that chooses the
+-- insert location can be chosen dynamically based on the content/structure. See
+-- 'forestMoveSubtreeRelFromForestIdDynamic'.
+
+type DynamicMoveWalker a b = TreePos Full a -> Maybe (TreePos Full a, InsertWalker b)
+
+-- NB there are some details in here re (1) which potential positions are skipped and (2) which
+-- position the moved node ends up in the unfiltered tree when it's moved in a filtered tree. E.g., 'go
+-- to next, insert as first child' is different from 'go to first child as next, insert before'
+dtoNextPreorder, dtoPrevPreorder :: DynamicMoveWalker a b
+dtoNextPreorder loc =
+  ((,insBefore) <$> goFirstChildOfNext loc)
+    <|> ((,insAfter) <$> goNextSibling loc)
+    <|> ((,insAfter) <$> goParent loc)
+dtoPrevPreorder loc =
+  ((,insAfter) <$> goLastChildOfPrev loc)
+    <|> ((,insBefore) <$> goPrevSibling loc)
+    <|> ((,insBefore) <$> goParent loc)
 
 -- * Operations
 

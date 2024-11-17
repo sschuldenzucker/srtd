@@ -144,10 +144,22 @@ forestMoveSubtreeIdRelToAnchorId tgt anchor go forest = fromMaybe forest $ do
 -- This silently fails if one of the IDs cannot be found OR if one of the walkers fails.
 --
 -- SOMEDAY the former is actually an error. The latter is not.
+--
+-- SOMEDAY can be refactored as a special case of the Dynamic variant below.
 forestMoveSubtreeRelFromForestId :: (Eq id) => id -> GoWalker (id, a) -> InsertWalker (id, b) -> IdForest id a -> IdForest id b -> IdForest id b
 forestMoveSubtreeRelFromForestId tgt go ins haystack forest = fromMaybe forest $ do
   tgtLoc <- zFindId tgt haystackLoc
   anchorLoc <- go tgtLoc
+  let (anchorId, _) = Z.label anchorLoc
+  return $ forestMoveSubtreeIdRelToAnchorId tgt anchorId ins forest
+  where
+    haystackLoc = Z.fromForest . idForest $ haystack
+
+-- | Version of 'forestMoveSubtreeRelFromForestId' where the 'InsertWalker' can be provided dynamically as part of the 'GoWalker'. This is required for more complex move operations like preorder move.
+forestMoveSubtreeRelFromForestIdDynamic :: (Eq id) => id -> DynamicMoveWalker (id, a) (id, b) -> IdForest id a -> IdForest id b -> IdForest id b
+forestMoveSubtreeRelFromForestIdDynamic tgt dto haystack forest = fromMaybe forest $ do
+  tgtLoc <- zFindId tgt haystackLoc
+  (anchorLoc, ins) <- dto tgtLoc
   let (anchorId, _) = Z.label anchorLoc
   return $ forestMoveSubtreeIdRelToAnchorId tgt anchorId ins forest
   where

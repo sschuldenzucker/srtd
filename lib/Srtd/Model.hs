@@ -266,6 +266,10 @@ insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ 
 moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> IdForest EID a -> Model -> Model
 moveSubtreeRelFromForest tgt go ins haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestId tgt go ins haystack))
 
+-- | Dynamic variant of 'moveSubtreeRelFromForest'.
+moveSubtreeRelFromForestDynamic :: EID -> DynamicMoveWalker (EID, a) IdLabel -> IdForest EID a -> Model -> Model
+moveSubtreeRelFromForestDynamic tgt dto haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestIdDynamic tgt dto haystack))
+
 -- * Sorting (physical)
 
 -- | Sort the subtree below the given target ID (only one level).
