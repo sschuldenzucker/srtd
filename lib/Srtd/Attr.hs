@@ -239,6 +239,5 @@ llActionability (label, ldattr) = case (glActionability label, ldParentActionabi
   -- SOMEDAY I've seen this patterns a few times now, perhaps abstract it or restructure.
   -- See also 'addLocalDerivedAttrs' in Model and 'glActionability' above. It's duplicated with there.
   (a, None) -> a
-  (None, pa) -> pa
   (a, Project) -> a
   (a, ap) -> max a ap
