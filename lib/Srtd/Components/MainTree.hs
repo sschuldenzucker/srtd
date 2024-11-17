@@ -432,7 +432,7 @@ renderItemDetails ztime (eid, llabel) =
     --     [str "Title", strWrap (name attr)]
     --   ]
     leftBox =
-      tbl
+      tbl $
         -- SOMEDAY we may wanna make this not one big table but separate the bottom part out into
         -- another vBox element below the rest. Looks a bit strange re reserved space rn.
         [ [withAttr sectionHeaderAttr (str "Status"), emptyWidget],
@@ -442,24 +442,31 @@ renderItemDetails ztime (eid, llabel) =
           [str "Child Actionability", str (show $ daChildActionability dattr)],
           [str "Parent Actionability", str (show $ ldParentActionability ldattr)],
           [str " ", emptyWidget],
-          [withAttr sectionHeaderAttr (str "Metadata"), emptyWidget],
-          [str "Created", renderUTCTime (created . autoDates)],
-          [str "Modified", renderUTCTime (lastModified . autoDates)],
-          [str "Status Modified", renderUTCTime (lastStatusModified . autoDates)]
+          [withAttr sectionHeaderAttr (str "Metadata"), emptyWidget]
         ]
+          ++ mkAutodatesCells "" (autoDates attr)
+          ++ [[str " ", emptyWidget]]
+          ++ mkAutodatesCells "Latest " (daLatestAutodates dattr)
+          ++ [[str " ", emptyWidget]]
+          ++ mkAutodatesCells "Earliest " (daEarliestAutodates dattr)
     rightBox =
       tbl
         [ [withAttr sectionHeaderAttr (str "Dates"), emptyWidget],
-          [str "Deadline", renderMDate (deadline . dates)],
-          [str "Goalline", renderMDate (goalline . dates)],
-          [str "Scheduled", renderMDate (scheduled . dates)],
-          [str "Remind", renderMDate (remind . dates)]
+          [str "Deadline", renderMDate (deadline . dates $ attr)],
+          [str "Goalline", renderMDate (goalline . dates $ attr)],
+          [str "Scheduled", renderMDate (scheduled . dates $ attr)],
+          [str "Remind", renderMDate (remind . dates $ attr)]
         ]
-    renderMDate :: (Attr -> Maybe DateOrTime) -> Widget n
+    mkAutodatesCells prefix ad =
+      [ [str (prefix ++ "Created"), renderUTCTime (created ad)],
+        [str (prefix ++ "Modified"), renderUTCTime (lastModified ad)],
+        [str (prefix ++ "Status Modified"), renderUTCTime (lastStatusModified ad)]
+      ]
+    renderMDate :: Maybe DateOrTime -> Widget n
     -- For some reason, emptyWidget doesn't work with `setWidth`.
-    renderMDate f = setWidth 21 . maybe (str " ") (str . prettyAbsolute (zonedTimeZone ztime)) $ f attr
-    renderUTCTime :: (Attr -> UTCTime) -> Widget n
-    renderUTCTime f = renderMDate (Just . DateAndTime . f)
+    renderMDate d = setWidth 21 . maybe (str " ") (str . prettyAbsolute (zonedTimeZone ztime)) $ d
+    renderUTCTime :: UTCTime -> Widget n
+    renderUTCTime d = renderMDate (Just . DateAndTime $ d)
     tbl =
       renderTable
         . surroundingBorder False

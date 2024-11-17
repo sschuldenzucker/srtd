@@ -13,7 +13,7 @@ import Data.Aeson
 import Data.Either (fromRight)
 import Data.IntMap (IntMap)
 import Data.IntMap qualified as IntMap
-import Data.List (find, minimumBy, sortBy, unfoldr)
+import Data.List (find, foldl', minimumBy, sortBy, unfoldr)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Tree
 import Data.Tree.Zipper (Empty, Full, TreePos)
@@ -121,9 +121,11 @@ forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
 _forestMakeDerivedAttrs :: IdForest EID Attr -> IdForest EID Label
 _forestMakeDerivedAttrs = transformIdForestBottomUp $ \attr clabels -> (attr, makeNodeDerivedAttr attr clabels)
   where
-    makeNodeDerivedAttr _attr clabels =
+    makeNodeDerivedAttr attr clabels =
       DerivedAttr
-        { daChildActionability = forEmptyList None minimum . map glActionability $ clabels
+        { daChildActionability = forEmptyList None minimum . map glActionability $ clabels,
+          daEarliestAutodates = foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels,
+          daLatestAutodates = foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
         }
 
 diskModelToModel :: DiskModel -> Model
@@ -260,7 +262,7 @@ deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterIdForestWithIds (\eid
 insertNewNormalWithNewId :: UUID -> Attr -> EID -> InsertWalker IdLabel -> Model -> Model
 insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ Model forest'
   where
-    forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, emptyDerivedAttr) forest
+    forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, emptyDerivedAttr attr) forest
 
 -- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
 moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> IdForest EID a -> Model -> Model

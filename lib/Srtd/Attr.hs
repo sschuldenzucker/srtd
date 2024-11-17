@@ -9,6 +9,7 @@ module Srtd.Attr where
 import Brick (suffixLenses)
 import Data.Aeson
 import Data.Aeson.Types (typeMismatch)
+import Data.Function (on)
 import Data.Text qualified as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.UUID (UUID)
@@ -75,6 +76,15 @@ suffixLenses ''AttrDates
 noDates :: AttrDates
 noDates = AttrDates Nothing Nothing Nothing Nothing
 
+mapAttrDates2 :: (Maybe DateOrTime -> Maybe DateOrTime -> Maybe DateOrTime) -> AttrDates -> AttrDates -> AttrDates
+mapAttrDates2 f ad1 ad2 =
+  AttrDates
+    { deadline = (f `on` deadline) ad1 ad2,
+      goalline = (f `on` goalline) ad1 ad2,
+      scheduled = (f `on` scheduled) ad1 ad2,
+      remind = (f `on` remind) ad1 ad2
+    }
+
 data AttrAutoDates = AttrAutoDates
   { -- | Time of creation of this item.
     created :: UTCTime,
@@ -103,6 +113,15 @@ initAutoDates now = AttrAutoDates now now now
 -- where we really don't care much what the time is.
 unsafeDefaultAutoDates :: AttrAutoDates
 unsafeDefaultAutoDates = initAutoDates (unsafePerformIO $ getCurrentTime)
+
+-- SOMEDAY I'm sure there's some smart anti-boilerplate thing that would do this for us. (uniplate or so?!)
+mapAttrAutoDates2 :: (UTCTime -> UTCTime -> UTCTime) -> AttrAutoDates -> AttrAutoDates -> AttrAutoDates
+mapAttrAutoDates2 f ad1 ad2 =
+  AttrAutoDates
+    { created = (f `on` created) ad1 ad2,
+      lastModified = (f `on` lastModified) ad1 ad2,
+      lastStatusModified = (f `on` lastStatusModified) ad1 ad2
+    }
 
 -- ** Master Attr structure
 
@@ -194,15 +213,24 @@ setLastStatusModified now = autoDatesL %~ ((lastModifiedL .~ now) . (lastStatusM
 data DerivedAttr = DerivedAttr
   { -- | Actionability of the most actionable child. None means either None or 'no children'
     -- TODO is this a problem? If so, maybe make a custom data structure or reorganize somehow.
-    daChildActionability :: Status
+    -- SOMEDAY include this node so daChildActionability ~ glActionability, unless we need this for some reason. (e.g. to isolate blockers??)
+    daChildActionability :: Status,
+    -- | Point-wise earliest autodates of the children and including this node.
+    --
+    -- SOMEDAY Inconsistent with daChildActionability, this *includes* the current node.
+    daEarliestAutodates :: AttrAutoDates,
+    -- | Point-wise latest autodates of the children and including this node.
+    daLatestAutodates :: AttrAutoDates
   }
   deriving (Show)
 
 -- | The 'DerivedAttr' of an element without any children
-emptyDerivedAttr :: DerivedAttr
-emptyDerivedAttr =
+emptyDerivedAttr :: Attr -> DerivedAttr
+emptyDerivedAttr attr =
   DerivedAttr
-    { daChildActionability = None
+    { daChildActionability = None,
+      daEarliestAutodates = autoDates attr,
+      daLatestAutodates = autoDates attr
     }
 
 -- | Label (i.e., content) of an element in the global tree of items in memory
@@ -241,3 +269,9 @@ llActionability (label, ldattr) = case (glActionability label, ldParentActionabi
   (a, None) -> a
   (a, Project) -> a
   (a, ap) -> max a ap
+
+llEarliestChildAutodates :: LocalLabel -> AttrAutoDates
+llEarliestChildAutodates ((_attr, dattr), _ldattr) = daEarliestAutodates dattr
+
+llLatestChildAutodates :: LocalLabel -> AttrAutoDates
+llLatestChildAutodates ((_attr, dattr), _ldattr) = daLatestAutodates dattr
