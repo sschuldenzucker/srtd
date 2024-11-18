@@ -44,14 +44,16 @@ labeledDateLenses =
 
 -- NB this only uses the time zone component rn, but this may change.
 mostUrgentDateLabeled :: ZonedTime -> AttrDates -> Maybe (Labeled DateOrTime)
--- TODO I think this sorting is kinda broken? Sign error?
-mostUrgentDateLabeled (ZonedTime _ tz) = listToMaybe . sortBy (ordBefore tz `on` lblValue) . catMaybeVals . applyDates
+-- TODO I think this sorting is kinda broken? Sign error? Also, it should be either beginning or end
+-- of day depending on what it is.
+mostUrgentDateLabeled (ZonedTime _ tz) =
+  listToMaybe
+    . sortBy (compareDateOrTime EndOfDay tz `on` lblValue)
+    . catMaybeVals
+    . applyDates
   where
     applyDates dates = map (lblValueL %~ ($ dates)) labeledDateLenses
     catMaybeVals = catMaybes . map (traverse id)
-
--- TODO WIP Now use `mostUrgentDateLabeled` to render the most urgent date. Replace `renderDeadline` prob.
--- (this can be subsumed later)
 
 renderLabeledDate :: ZonedTime -> Bool -> Labeled DateOrTime -> Widget n
 renderLabeledDate now sel ldt = withAttr (dateAttrForLabeled now sel ldt) (str label)

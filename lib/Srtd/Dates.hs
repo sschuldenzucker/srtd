@@ -87,17 +87,23 @@ parseInterpretHumanDateOrTime s now = do
 -- Convenience Accessors
 -------------------------------------------------------------------------------
 
+data DateRule
+  = -- | 'DateOnly' values refer to the *beginning* of the respective day.
+    BeginningOfDay
+  | -- | 'DateOnly' values refer to the *end* of the respective day.
+    EndOfDay
+
+interpretDateRule :: DateRule -> Day -> LocalTime
+interpretDateRule BeginningOfDay = beginningOfDay
+interpretDateRule EndOfDay = endOfDay
+
 -- | 'compare'-like function. We don't provide an Ord instance for DateOrTime b/c it's subjective
--- which is the right one in any given situation.
---
--- This assumes end-of-day for date-only values.
---
--- TODO not really quite right. E.g., `remind` usually refers to beginning-of-day while `deadline` refers to end-of-day.
-ordBefore :: TimeZone -> DateOrTime -> DateOrTime -> Ordering
-ordBefore _tz (DateAndTime t1) (DateAndTime t2) = compare t1 t2
-ordBefore _tz (DateOnly d1) (DateOnly d2) = compare d1 d2
-ordBefore tz (DateOnly d1) (DateAndTime t2) = compare (endOfDay d1) (utcToLocalTime tz t2)
-ordBefore tz (DateAndTime t1) (DateOnly d2) = compare (utcToLocalTime tz t1) (endOfDay d2)
+-- which is the right one in any given situation, and it also depends on the time zone.
+compareDateOrTime :: DateRule -> TimeZone -> DateOrTime -> DateOrTime -> Ordering
+compareDateOrTime _dr _tz (DateAndTime t1) (DateAndTime t2) = compare t1 t2
+compareDateOrTime _dr _tz (DateOnly d1) (DateOnly d2) = compare d1 d2
+compareDateOrTime dr tz (DateOnly d1) (DateAndTime t2) = compare (interpretDateRule dr d1) (utcToLocalTime tz t2)
+compareDateOrTime dr tz (DateAndTime t1) (DateOnly d2) = compare (utcToLocalTime tz t1) (interpretDateRule dr d2)
 
 -- SOMEDAY these can prob be simplified.
 
@@ -141,6 +147,9 @@ nextDay = addDays 1
 endOfDay :: Day -> LocalTime
 endOfDay d = LocalTime (addDays 1 d) midnight
 
+beginningOfDay :: Day -> LocalTime
+beginningOfDay d = LocalTime d midnight
+
 -------------------------------------------------------------------------------
 -- Interpreting
 -------------------------------------------------------------------------------
@@ -153,7 +162,7 @@ interpretHumanDateOrTime hdt now = case hdt of
   HDateMaybeTime hd Nothing -> DateOnly <$> interpretHumanDate hd
   HDateMaybeTime hd (Just tod) -> do
     day <- interpretHumanDate hd
-    let beginOfDay = ZonedTime (LocalTime day midnight) (zonedTimeZone now)
+    let beginOfDay = ZonedTime (beginningOfDay day) (zonedTimeZone now)
     let deltaTOD = daysAndTimeOfDayToTime 0 tod
     return $ DateAndTime . zonedTimeToUTC $ mapZonedTime (addLocalTime deltaTOD) beginOfDay
   HDiffTime dt -> Right $ DateAndTime . zonedTimeToUTC $ mapZonedTime (addLocalTime dt) now
@@ -169,7 +178,7 @@ interpretHumanDateOrTime hdt now = case hdt of
 
     -- Beginning (i.e. 00:00) of the current day in *local* time.
     beginOfToday :: ZonedTime
-    beginOfToday = ZonedTime (LocalTime today midnight) (zonedTimeZone now)
+    beginOfToday = ZonedTime (beginningOfDay today) (zonedTimeZone now)
 
     interpretHumanDate :: HumanDate -> Either String Day
     interpretHumanDate (HDAbs day) = return $ day
