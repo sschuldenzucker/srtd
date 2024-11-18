@@ -435,32 +435,42 @@ renderItemDetails ztime (eid, llabel) =
       tbl $
         -- SOMEDAY we may wanna make this not one big table but separate the bottom part out into
         -- another vBox element below the rest. Looks a bit strange re reserved space rn.
-        [ [withAttr sectionHeaderAttr (str "Status"), emptyWidget],
+        [ sectionHeaderRow "Status",
           [str "Status", str (show $ status attr)],
           [str "Actionability", str (show $ llActionability llabel)],
           [str "Global Actionability", str (show $ glActionability label)],
           [str "Child Actionability", str (show $ daChildActionability dattr)],
           [str "Parent Actionability", str (show $ ldParentActionability ldattr)],
-          [str " ", emptyWidget],
-          [withAttr sectionHeaderAttr (str "Metadata"), emptyWidget]
+          spacerRow,
+          sectionHeaderRow "Metadata"
         ]
           ++ mkAutodatesCells "" (autoDates attr)
-          ++ [[str " ", emptyWidget]]
+          ++ [spacerRow]
           ++ mkAutodatesCells "Latest " (daLatestAutodates dattr)
-          ++ [[str " ", emptyWidget]]
+          ++ [spacerRow]
           ++ mkAutodatesCells "Earliest " (daEarliestAutodates dattr)
     rightBox =
-      tbl
-        [ [withAttr sectionHeaderAttr (str "Dates"), emptyWidget],
-          [str "Deadline", renderMDate (deadline . dates $ attr)],
-          [str "Goalline", renderMDate (goalline . dates $ attr)],
-          [str "Scheduled", renderMDate (scheduled . dates $ attr)],
-          [str "Remind", renderMDate (remind . dates $ attr)]
-        ]
+      tbl $
+        [sectionHeaderRow "Dates"]
+          ++ mkDatesCells "" (dates attr)
+          ++ [ spacerRow,
+               sectionHeaderRow "Descendant Dates"
+             ]
+          ++ mkDatesCells "Earliest " (daEarliestDates dattr)
+          ++ [spacerRow]
+          ++ mkDatesCells "Latest" (daLatestDates dattr)
+    sectionHeaderRow s = [withAttr sectionHeaderAttr (str s), emptyWidget]
+    spacerRow = [str " ", emptyWidget]
     mkAutodatesCells prefix ad =
       [ [str (prefix ++ "Created"), renderUTCTime (created ad)],
         [str (prefix ++ "Modified"), renderUTCTime (lastModified ad)],
         [str (prefix ++ "Status Modified"), renderUTCTime (lastStatusModified ad)]
+      ]
+    mkDatesCells prefix ds =
+      [ [str (prefix ++ "Deadline"), renderMDate (deadline ds)],
+        [str (prefix ++ "Goalline"), renderMDate (goalline ds)],
+        [str (prefix ++ "Scheduled"), renderMDate (scheduled ds)],
+        [str (prefix ++ "Remind"), renderMDate (remind ds)]
       ]
     renderMDate :: Maybe DateOrTime -> Widget n
     -- For some reason, emptyWidget doesn't work with `setWidth`.

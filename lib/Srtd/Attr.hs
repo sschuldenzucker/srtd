@@ -11,14 +11,14 @@ import Data.Aeson
 import Data.Aeson.Types (typeMismatch)
 import Data.Function (on)
 import Data.Text qualified as Text
-import Data.Time (UTCTime, getCurrentTime)
+import Data.Time (TimeZone, UTCTime, getCurrentTime)
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
 import GHC.Generics
 import Lens.Micro.Platform
-import Srtd.Dates (DateOrTime)
+import Srtd.Dates (DateOrTime, DateRule (..), compareDateOrTime)
 import Srtd.Todo
-import Srtd.Util (compareByNothingLast, maybe2)
+import Srtd.Util (compareByNothingLast, maybe2, unionMaybeWith)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- * Node ID (EID)
@@ -76,6 +76,9 @@ suffixLenses ''AttrDates
 noDates :: AttrDates
 noDates = AttrDates Nothing Nothing Nothing Nothing
 
+-- | Map a function over each element of 'AttrDates'
+--
+-- SOMEDAY Unused. Also, there's probably some generics trick to get this.
 mapAttrDates2 :: (Maybe DateOrTime -> Maybe DateOrTime -> Maybe DateOrTime) -> AttrDates -> AttrDates -> AttrDates
 mapAttrDates2 f ad1 ad2 =
   AttrDates
@@ -84,6 +87,21 @@ mapAttrDates2 f ad1 ad2 =
       scheduled = (f `on` scheduled) ad1 ad2,
       remind = (f `on` remind) ad1 ad2
     }
+
+-- | Given a choice function, apply the correct beginning/end-of-day rule to each element to choose.
+-- (beginning for remind, end for everything else)
+pointwiseChooseAttrDates :: (Ordering -> DateOrTime -> DateOrTime -> DateOrTime) -> TimeZone -> AttrDates -> AttrDates -> AttrDates
+pointwiseChooseAttrDates ch tz ad1 ad2 =
+  AttrDates
+    { deadline = chooseWith EndOfDay deadline,
+      goalline = chooseWith EndOfDay goalline,
+      scheduled = chooseWith EndOfDay scheduled,
+      remind = chooseWith BeginningOfDay remind
+    }
+  where
+    -- 'Just' values are always dominant! (doesn't matter what 'ch' does)
+    chooseWith dr f = (unionMaybeWith (chooseWith' dr) `on` f) ad1 ad2
+    chooseWith' dr d1 d2 = ch (compareDateOrTime dr tz d1 d2) d1 d2
 
 data AttrAutoDates = AttrAutoDates
   { -- | Time of creation of this item.
@@ -217,10 +235,18 @@ data DerivedAttr = DerivedAttr
     daChildActionability :: Status,
     -- | Point-wise earliest autodates of the children and including this node.
     --
+    -- NB This is probably not very useful, except for "age" metrics, maybe.
+    --
     -- SOMEDAY Inconsistent with daChildActionability, this *includes* the current node.
     daEarliestAutodates :: AttrAutoDates,
     -- | Point-wise latest autodates of the children and including this node.
-    daLatestAutodates :: AttrAutoDates
+    daLatestAutodates :: AttrAutoDates,
+    -- | Point-wise earliest dates of the children and including this node.
+    daEarliestDates :: AttrDates,
+    -- | Point-wise latest dates of the children and including this node.
+    --
+    -- NB This is probably not very useful.
+    daLatestDates :: AttrDates
   }
   deriving (Show)
 
@@ -230,7 +256,9 @@ emptyDerivedAttr attr =
   DerivedAttr
     { daChildActionability = None,
       daEarliestAutodates = autoDates attr,
-      daLatestAutodates = autoDates attr
+      daLatestAutodates = autoDates attr,
+      daEarliestDates = dates attr,
+      daLatestDates = dates attr
     }
 
 -- | Label (i.e., content) of an element in the global tree of items in memory

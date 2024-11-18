@@ -1,6 +1,7 @@
 -- | Collected simple utilities. Most of them are prob in extra but w/e.
 module Srtd.Util where
 
+import Control.Applicative (liftA2, (<|>))
 import Control.Monad ((<=<))
 import Data.Tree (Forest, Tree (..), foldTree)
 
@@ -21,6 +22,10 @@ maybe2 _ f _ _ (Just x) Nothing = f x
 maybe2 _ _ g _ Nothing (Just y) = g y
 maybe2 _ _ _ h (Just x) (Just y) = h x y
 
+-- | Take whichever of the two arguments is 'Just' or, if given two, combine them using the given function.
+unionMaybeWith :: (t -> t -> t) -> Maybe t -> Maybe t -> Maybe t
+unionMaybeWith f a b = liftA2 f a b <|> a <|> b
+
 -- | Changes the default comparison of 'Maybe' so that 'Nothing' is highest, not lowest
 compareByNothingLast :: (t1 -> t2 -> Ordering) -> Maybe t1 -> Maybe t2 -> Ordering
 compareByNothingLast cmp = maybe2 EQ (const LT) (const GT) cmp
@@ -32,6 +37,11 @@ composeNTimes n f = foldr (.) id $ replicate n f
 -- | Monadic variant of `composeNTimes`.
 composeNTimesM :: (Monad m) => Int -> (a -> m a) -> a -> m a
 composeNTimesM n f = foldr (<=<) return $ replicate n f
+
+-- | Choice functions based on ordering. Useful with nonstandard comparisons.
+chooseMin, chooseMax :: Ordering -> a -> a -> a
+chooseMin c x y = if c == GT then y else x
+chooseMax c x y = if c == LT then y else x
 
 -- * List helpers
 

@@ -15,6 +15,7 @@ import Data.IntMap (IntMap)
 import Data.IntMap qualified as IntMap
 import Data.List (find, foldl', minimumBy, sortBy, unfoldr)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
+import Data.Time (getCurrentTimeZone)
 import Data.Tree
 import Data.Tree.Zipper (Empty, Full, TreePos)
 import Data.Tree.Zipper qualified as Z
@@ -28,7 +29,8 @@ import Srtd.Data.TreeZipper
 import Srtd.Log
 import Srtd.ModelJSON qualified as ModelJSON
 import Srtd.Todo
-import Srtd.Util (forEmptyList, mapForest)
+import Srtd.Util (chooseMax, chooseMin, forEmptyList, mapForest)
+import System.IO.Unsafe (unsafePerformIO)
 
 -- import Data.UUID.V4 (nextRandom)
 
@@ -125,8 +127,12 @@ _forestMakeDerivedAttrs = transformIdForestBottomUp $ \attr clabels -> (attr, ma
       DerivedAttr
         { daChildActionability = forEmptyList None minimum . map glActionability $ clabels,
           daEarliestAutodates = foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels,
-          daLatestAutodates = foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
+          daLatestAutodates = foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels,
+          daEarliestDates = foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . map (daEarliestDates . snd) $ clabels,
+          daLatestDates = foldl' (pointwiseChooseAttrDates chooseMax tz) (dates attr) . map (daLatestDates . snd) $ clabels
         }
+    -- TODO no, bad!
+    tz = unsafePerformIO getCurrentTimeZone
 
 diskModelToModel :: DiskModel -> Model
 diskModelToModel (DiskModel forest) = Model (_forestMakeDerivedAttrs forest)
