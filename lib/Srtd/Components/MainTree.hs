@@ -261,33 +261,34 @@ openExternallyKeymap =
       )
     ]
 
--- SOMEDAY The following two only differ by what is used, `withRoot` or `withCur`. Could easily be unified.
-
 sortRootKeymap :: Keymap (AppContext -> EventM n MainTree ())
-sortRootKeymap =
-  kmMake
-    "Sort root by"
-    $ (kmSub (bind 'D') $ kmMake "Deep" (mkItems sortDeepBelow))
-      : mkItems sortShallowBelow
-  where
-    -- For some reason, I have to explicitly state that 'sorter' has a `?mue` context. Otherwise, it
-    -- forgets about it and the code doesn't type check. Have to do this in both places.
-    mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
-      [kmLeaf (bind 't') "Status" $ sortRootBy sorter (compare `on` (status . fst))]
-    sortRootBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withRoot $ \root -> modifyModel (sorter ord root)
+sortRootKeymap = _mkSortKeymap withRoot "Sort root by"
 
 sortCurKeymap :: Keymap (AppContext -> EventM n MainTree ())
-sortCurKeymap =
+sortCurKeymap = _mkSortKeymap withCur "Sort selected by"
+
+-- | Either `withCur` or `withRoot`. Used to unify sorting.
+type WithFunc n = (EID -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
+
+_mkSortKeymap :: WithFunc n -> Text -> Keymap (AppContext -> EventM n MainTree ())
+_mkSortKeymap withFunc name =
   kmMake
-    "Sort selected by"
+    name
     $ (kmSub (bind 'D') $ kmMake "Deep" (mkItems sortDeepBelow))
       : mkItems sortShallowBelow
   where
     -- For some reason, I have to explicitly state that 'sorter' has a `?mue` context. Otherwise, it
     -- forgets about it and the code doesn't type check. Have to do this in both places.
     mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
-      [kmLeaf (bind 't') "Status" $ sortCurBy sorter (compare `on` (status . fst))]
-    sortCurBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withCur $ \cur -> modifyModel (sorter ord cur)
+      [kmLeaf (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
+    sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModel (sorter ord root)
+    -- comparison function that puts notes first (which is what we usually want)
+    compareActionabilityForSort :: Label -> Label -> Ordering
+    compareActionabilityForSort l1 l2 = case (isNote l1, isNote l2) of
+      (True, False) -> LT
+      (True, True) -> EQ
+      _ -> compare (glActionability l1) (glActionability l2)
+    isNote l = (status . fst $ l) == None && glActionability l == None
 
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String
