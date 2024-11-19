@@ -1,3 +1,4 @@
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -269,9 +270,11 @@ sortRootKeymap =
     $ (kmSub (bind 'D') $ kmMake "Deep" (mkItems sortDeepBelow))
       : mkItems sortShallowBelow
   where
-    mkItems sorter =
-      [kmLeaf (bind 't') "Status" $ sortRootBy sorter (compare `on` (view $ _1 . statusL))]
-    sortRootBy sorter ord = withRoot $ \root -> modifyModel (sorter ord root)
+    -- For some reason, I have to explicitly state that 'sorter' has a `?mue` context. Otherwise, it
+    -- forgets about it and the code doesn't type check. Have to do this in both places.
+    mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
+      [kmLeaf (bind 't') "Status" $ sortRootBy sorter (compare `on` (status . fst))]
+    sortRootBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withRoot $ \root -> modifyModel (sorter ord root)
 
 sortCurKeymap :: Keymap (AppContext -> EventM n MainTree ())
 sortCurKeymap =
@@ -280,9 +283,11 @@ sortCurKeymap =
     $ (kmSub (bind 'D') $ kmMake "Deep" (mkItems sortDeepBelow))
       : mkItems sortShallowBelow
   where
-    mkItems sorter =
-      [kmLeaf (bind 't') "Status" $ sortCurBy sorter (compare `on` (view $ _1 . statusL))]
-    sortCurBy sorter ord = withCur $ \cur -> modifyModel (sorter ord cur)
+    -- For some reason, I have to explicitly state that 'sorter' has a `?mue` context. Otherwise, it
+    -- forgets about it and the code doesn't type check. Have to do this in both places.
+    mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
+      [kmLeaf (bind 't') "Status" $ sortCurBy sorter (compare `on` (status . fst))]
+    sortCurBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withCur $ \cur -> modifyModel (sorter ord cur)
 
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String
@@ -621,10 +626,10 @@ moveCurRelativeDynamic dgo = withCur $ \cur ctx -> do
   forest <- use $ mtSubtreeL . stForestL
   modifyModel (moveSubtreeRelFromForestDynamic cur dgo forest) ctx
 
-modifyModel :: (Model -> Model) -> AppContext -> EventM n MainTree ()
+modifyModel :: ((?mue :: ModelUpdateEnv) => Model -> Model) -> AppContext -> EventM n MainTree ()
 modifyModel f = modifyModelWithCtx (const f)
 
-modifyModelWithCtx :: (AppContext -> Model -> Model) -> AppContext -> EventM n MainTree ()
+modifyModelWithCtx :: ((?mue :: ModelUpdateEnv) => AppContext -> Model -> Model) -> AppContext -> EventM n MainTree ()
 modifyModelWithCtx f ctx@(AppContext {acModelServer}) = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s

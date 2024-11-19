@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -15,7 +16,7 @@ import Data.IntMap (IntMap)
 import Data.IntMap qualified as IntMap
 import Data.List (find, foldl', minimumBy, sortBy, unfoldr)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
-import Data.Time (getCurrentTimeZone)
+import Data.Time (TimeZone)
 import Data.Tree
 import Data.Tree.Zipper (Empty, Full, TreePos)
 import Data.Tree.Zipper qualified as Z
@@ -119,8 +120,12 @@ forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
   where
     extr (crumbs, (Node x _)) = (length crumbs, x)
 
+-- | Environment for updating the model, specifically for computing derived params. We pass this
+-- around as an implicit parameter.
+data ModelUpdateEnv = ModelUpdateEnv {mueTimeZone :: TimeZone}
+
 -- For some reason, this has to be above `diskModelToModel`, otherwise it's not found.
-_forestMakeDerivedAttrs :: IdForest EID Attr -> IdForest EID Label
+_forestMakeDerivedAttrs :: (?mue :: ModelUpdateEnv) => IdForest EID Attr -> IdForest EID Label
 _forestMakeDerivedAttrs = transformIdForestBottomUp $ \attr clabels -> (attr, makeNodeDerivedAttr attr clabels)
   where
     makeNodeDerivedAttr attr clabels =
@@ -131,10 +136,9 @@ _forestMakeDerivedAttrs = transformIdForestBottomUp $ \attr clabels -> (attr, ma
           daEarliestDates = foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . map (daEarliestDates . snd) $ clabels,
           daLatestDates = foldl' (pointwiseChooseAttrDates chooseMax tz) (dates attr) . map (daLatestDates . snd) $ clabels
         }
-    -- TODO no, bad!
-    tz = unsafePerformIO getCurrentTimeZone
+    tz = mueTimeZone ?mue
 
-diskModelToModel :: DiskModel -> Model
+diskModelToModel :: (?mue :: ModelUpdateEnv) => DiskModel -> Model
 diskModelToModel (DiskModel forest) = Model (_forestMakeDerivedAttrs forest)
 
 -- Forgets its derived attrs
@@ -249,45 +253,45 @@ f_hide_completed =
 -- Currently a dummy.
 --
 -- SOMEDAY this is currently used in all modifying functions, which is quite expensive and not necessary.
-updateDerivedAttrs :: Model -> Model
+updateDerivedAttrs :: (?mue :: ModelUpdateEnv) => Model -> Model
 updateDerivedAttrs = forestL %~ (_forestMakeDerivedAttrs . fmap fst)
 
 -- | Update an item's attr.
-modifyAttrByEID :: EID -> (Attr -> Attr) -> Model -> Model
+modifyAttrByEID :: (?mue :: ModelUpdateEnv) => EID -> (Attr -> Attr) -> Model -> Model
 modifyAttrByEID tgt f = updateDerivedAttrs . (forestL %~ mapIdForestWithIds updateContent)
   where
     updateContent eid (attr, dattr) = (if eid == tgt then f attr else attr, dattr)
 
 -- | Delete the given ID and the subtree below it.
-deleteSubtree :: EID -> Model -> Model
+deleteSubtree :: (?mue :: ModelUpdateEnv) => EID -> Model -> Model
 deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterIdForestWithIds (\eid' _ -> eid' /= eid))
 
 -- | Insert new node relative to a target using the given 'InsertWalker'.
 --
 -- The caller needs to make sure that the provided uuid is actually new, probably using `UUID.nextRandom`.
-insertNewNormalWithNewId :: UUID -> Attr -> EID -> InsertWalker IdLabel -> Model -> Model
+insertNewNormalWithNewId :: (?mue :: ModelUpdateEnv) => UUID -> Attr -> EID -> InsertWalker IdLabel -> Model -> Model
 insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ Model forest'
   where
     forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, emptyDerivedAttr attr) forest
 
 -- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
-moveSubtreeRelFromForest :: EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> IdForest EID a -> Model -> Model
+moveSubtreeRelFromForest :: (?mue :: ModelUpdateEnv) => EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> IdForest EID a -> Model -> Model
 moveSubtreeRelFromForest tgt go ins haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestId tgt go ins haystack))
 
 -- | Dynamic variant of 'moveSubtreeRelFromForest'.
-moveSubtreeRelFromForestDynamic :: EID -> DynamicMoveWalker (EID, a) IdLabel -> IdForest EID a -> Model -> Model
+moveSubtreeRelFromForestDynamic :: (?mue :: ModelUpdateEnv) => EID -> DynamicMoveWalker (EID, a) IdLabel -> IdForest EID a -> Model -> Model
 moveSubtreeRelFromForestDynamic tgt dto haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestIdDynamic tgt dto haystack))
 
 -- * Sorting (physical)
 
 -- | Sort the subtree below the given target ID (only one level).
-sortShallowBelow :: (Label -> Label -> Ordering) -> EID -> Model -> Model
+sortShallowBelow :: (?mue :: ModelUpdateEnv) => (Label -> Label -> Ordering) -> EID -> Model -> Model
 sortShallowBelow ord root = updateDerivedAttrs . (forestL %~ onForestBelowId root (sortBy ord'))
   where
     ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2
 
 -- | Sort the subtree below the given target ID, recursive at all levels
-sortDeepBelow :: (Label -> Label -> Ordering) -> EID -> Model -> Model
+sortDeepBelow :: (?mue :: ModelUpdateEnv) => (Label -> Label -> Ordering) -> EID -> Model -> Model
 sortDeepBelow ord root = updateDerivedAttrs . (forestL %~ onForestBelowId root deepSortByOrd)
   where
     -- prob kinda inefficient but I got <= 10 levels or something.

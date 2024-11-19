@@ -1,3 +1,5 @@
+{-# LANGUAGE ImplicitParams #-}
+
 -- | Synchronization framework for concurrent model access.
 --
 -- There's not actually a server here but we *may* want to make it one later.
@@ -8,6 +10,7 @@ import Control.Exception
 import Control.Monad (forM_)
 import Data.Aeson
 import Data.Maybe
+import Data.Time (getCurrentTimeZone)
 import Srtd.Config
 import Srtd.Log
 import Srtd.Model
@@ -32,9 +35,12 @@ getModel (ModelServer mv _) = readTVarIO mv
 -- The main issue seems to be that the caller currently assumes that the model is updated immediately after calling this.
 -- This needs to change if becomes an actual server (or this has to be a "call"-type transaction.).
 -- NB There are quite a few function rn that assume that this is synchronous, including notifications.
-modifyModelOnServer :: ModelServer -> (Model -> Model) -> IO ()
+modifyModelOnServer :: ModelServer -> ((?mue :: ModelUpdateEnv) => Model -> Model) -> IO ()
 modifyModelOnServer server@(ModelServer mv _) f = do
-  atomically $ modifyTVar' mv f
+  -- SOMEDAY it mayy be a problem that we pull the timezone each time we update the model but it's probably fine.
+  tz <- getCurrentTimeZone
+  let f1 = let ?mue = ModelUpdateEnv {mueTimeZone = tz} in f
+  atomically $ modifyTVar' mv f1
   notifyAll msg server
   where
     -- Dummy right now but might do something later when we accept more structured updates.
@@ -42,13 +48,15 @@ modifyModelOnServer server@(ModelServer mv _) f = do
 
 startModelServer :: IO ModelServer
 startModelServer = do
+  tz <- getCurrentTimeZone
+  let ?mue = ModelUpdateEnv {mueTimeZone = tz}
   mmodel <- readModelFromFile
   let model = fromMaybe (diskModelToModel $ emptyDiskModel) mmodel
   mv <- newTVarIO model
   subs <- newTVarIO []
   return (ModelServer mv subs)
 
-readModelFromFile :: IO (Maybe Model)
+readModelFromFile :: (?mue :: ModelUpdateEnv) => IO (Maybe Model)
 readModelFromFile = run `catch` handleFileNotFound
   where
     handleFileNotFound e
