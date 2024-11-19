@@ -63,7 +63,11 @@ fg = "text"
 "status.wip" = {fg = "yellow"}
 "status.done" = {fg = "overlay1"}
 "status.someday" = {fg = "mauve"}
-"status.open" = {fg = "yellow"}
+# SOMEDAY quite sure yet what's most readable.
+# "status.open" = {fg = "maroon"}
+"status.open" = {fg = "maroon"}
+# "status.open" = {fg = "sapphire"}
+# "status.open" = {fg = "lavender"}
 
 # SOMEDAY a bit annoying that we don't have the right kind of inheritance, so we have to duplicate this.
 # (it's the same as without selected)
