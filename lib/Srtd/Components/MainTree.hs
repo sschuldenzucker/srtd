@@ -154,7 +154,7 @@ rootKeymap =
       (kmSub (bind 'o') openExternallyKeymap),
       (kmLeaf (bind '.') "Next filter" cycleNextFilter),
       (kmSub (bind 'd') editDateKeymap),
-      ( kmLeaf (bind ' ') "Toggle Details Overlay" (const $ mtShowDetailsL %= not)
+      ( kmLeaf (bind ' ') "Toggle details overlay" (const $ mtShowDetailsL %= not)
       ),
       (kmLeaf (bind 'q') "Quit" (const halt))
     ]
@@ -171,7 +171,7 @@ deleteKeymap =
 setStatusKeymap :: Keymap (AppContext -> EventM n MainTree ())
 setStatusKeymap =
   kmMake
-    "Set Status"
+    "Set status"
     [ kmLeaf (bind ' ') "None" (setStatus None),
       kmLeaf (bind 'n') "Next" (setStatus $ Next),
       kmLeaf (bind 'w') "Waiting" (setStatus $ Waiting),
@@ -187,7 +187,7 @@ setStatusKeymap =
 editDateKeymap :: Keymap (AppContext -> EventM n MainTree ())
 editDateKeymap =
   kmMake
-    "Edit Date"
+    "Edit date"
     $ map mkDateEditShortcut
     $ [ (bind 'd', "Deadline", datesL . deadlineL),
         (bind 'g', "Goalline", datesL . goallineL),
@@ -209,7 +209,7 @@ moveSubtreeModeKeymap :: Keymap (AppContext -> EventM n MainTree ())
 moveSubtreeModeKeymap =
   sticky $
     kmMake
-      "Move Subtree Mode"
+      "Move subtree mode"
       -- SOMEDAY clean up repetition
       -- TODO WIP I think these moveSubtree (and moveSingle) things can take a cleanup with their destinations.
       -- Can we reduce the number of different options? E.g., ("next based on preorder relative to self", "next based on siblings relative to parent") - Prob think about indicating the *target* relative to sth.
