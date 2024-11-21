@@ -1,10 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- SOMEDAY split these tests into separate modules
+
 module Main (main) where
 
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Time
+import Data.Tree (Tree (..))
+import Srtd.Data.IdTree (IdForest (..), transformIdForestDownUpRec)
 import Srtd.Dates
+import Srtd.Util
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Megaparsec as Parsec
@@ -129,8 +135,89 @@ interpretHumanDateOrTimeTests =
     cet = hoursToTimeZone 1
     hours n = n * 60 * 60
 
+treeTests =
+  testGroup
+    "Test tree transformations"
+    [testTransformTreeDownUpRec, testTransformIdForestDownUpRec]
+
+-- These are *mainly* tests to make sure these things don't hang.
+testTransformTreeDownUpRec =
+  testGroup
+    "Test transformTreeDownUpRec"
+    [ testCase "Down-up sum" $
+        -- Computes (sum top-down, sum bottom-up)
+        let go :: Maybe (Int, Int) -> [(Int, Int)] -> Int -> (Int, Int)
+            go mpar cps x = (maybe 0 fst mpar + x, sum (map snd cps) + x)
+            res = transformTreeDownUpRec go tree1
+            expd =
+              Node
+                (1, 227)
+                [ Node
+                    (12, 214)
+                    [ Node (113, 101) [],
+                      Node (114, 102) []
+                    ],
+                  Node (13, 12) []
+                ]
+         in res @?= expd
+    ]
+  where
+    tree1 :: Tree Int
+    tree1 =
+      Node
+        1
+        [ Node
+            11
+            [ Node 101 [],
+              Node 102 []
+            ],
+          Node 12 []
+        ]
+
+testTransformIdForestDownUpRec =
+  testGroup
+    "Test transformIdForestDownUpRec"
+    [ testCase "Downsum, upsum, and down-up-sum" $
+        -- like above but with IDs
+        let go :: Maybe (Int, Int, Int) -> [(Int, Int, Int)] -> Int -> (Int, Int, Int)
+            go mpar cps x =
+              let downsum = maybe 0 fst3 mpar + x
+                  upsum = sum (map snd3 cps) + x
+               in (downsum, upsum, downsum + upsum - x)
+            res = transformIdForestDownUpRec go forest1
+            expd =
+              IdForest $
+                [ Node
+                    ("A", (1, 227, 227))
+                    [ Node
+                        ("B", (12, 214, 215))
+                        [ Node ("C", (113, 101, 113)) [],
+                          Node ("D", (114, 102, 114)) []
+                        ],
+                      Node ("E", (13, 12, 13)) []
+                    ]
+                ]
+         in res @?= expd
+    ]
+  where
+    forest1 :: IdForest String Int
+    forest1 =
+      IdForest $
+        [ Node
+            ("A", 1)
+            [ Node
+                ("B", 11)
+                [ Node ("C", 101) [],
+                  Node ("D", 102) []
+                ],
+              Node ("E", 12) []
+            ]
+        ]
+    fst3 (x, _, _) = x
+    snd3 (_, x, _) = x
+
 tests :: TestTree
-tests = testGroup "Tests" [testTests, dateTests]
+tests = testGroup "Tests" [testTests, dateTests, treeTests]
 
 main :: IO ()
 main = defaultMain tests

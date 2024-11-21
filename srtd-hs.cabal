@@ -149,6 +149,7 @@ test-suite srtd-test
     hs-source-dirs: test
     build-depends:
         base ^>=4.17.2.1,
+        containers ^>= 0.7,
         srtd,
         text ^>= 2.1.1,
         time ^>= 1.12,

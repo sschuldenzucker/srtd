@@ -14,7 +14,7 @@ import Data.Tree.Zipper qualified as Z
 import Lens.Micro.Platform
 import Srtd.Data.TreeZipper
 import Srtd.Todo
-import Srtd.Util (foldForest, mapForest, transformForestDownUp)
+import Srtd.Util (foldForest, mapForest, transformForestDownUp, transformForestDownUpRec)
 
 newtype IdForest id attr = IdForest {idForest :: Forest (id, attr)}
   deriving (Show, Eq)
@@ -82,6 +82,8 @@ onForestBelowId root f idforest@(IdForest forest) = case zFindId root . Z.fromFo
   where
     onTreeChildren g (Node x children) = Node x (g children)
 
+-- SOMEDAY the non-Rec functions can be replaced by the Rec variant.
+
 -- | Constrained "scanning" version of the catamorphism, leaves the tree structure intact.
 --
 -- SOMEDAY obsolete I think
@@ -102,6 +104,12 @@ transformIdForestDownUp fdown gmake = withIdForest $ transformForestDownUp _fdow
 -- | Top-down transformation. This is a specialization of 'transformIdForestDownUp'.
 transformIdForestTopDown :: (Maybe attr' -> attr -> attr') -> IdForest id attr -> IdForest id attr'
 transformIdForestTopDown f = transformIdForestDownUp f (\res _ _ -> res)
+
+-- | Specialization of 'transformForestDownUpRec' that preserves the IDs. See there.
+transformIdForestDownUpRec :: (Maybe b -> [b] -> a -> b) -> IdForest id a -> IdForest id b
+transformIdForestDownUpRec f = withIdForest $ transformForestDownUpRec _f
+  where
+    _f mipar cirs (i, x) = (i, f (fmap snd mipar) (fmap snd cirs) x)
 
 -- go (i, x) cs = Node (i, go x [y | Node (_, y) _ <- cs]) cs
 

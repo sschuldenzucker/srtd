@@ -4,6 +4,7 @@ module Srtd.Util where
 import Control.Applicative (liftA2, (<|>))
 import Control.Monad ((<=<))
 import Data.Tree (Forest, Tree (..), foldTree)
+import Srtd.Todo (todo)
 
 maybeToEither :: a -> Maybe b -> Either a b
 maybeToEither err = maybe (Left err) Right
@@ -95,3 +96,29 @@ transformTreeDownUp fdown gmake = _go Nothing
           cs' = map (_go crumbs') cs
           clabels' = map rootLabel cs'
        in Node (gmake crumb x clabels') cs'
+
+-- | Combined top-down and bottom-up transformation function. Mutually recursive.
+--
+-- The given transformation function accepts the result at the parent, the result at the children,
+-- and the value at the current node to produce the result at the current node.
+--
+-- NOTE: It's *very easy* to produce circular dependencies here if you're not being careful, which
+-- will lead to hangups. You typically wanna use this with a lazy data structure where one component
+-- is inherited downwards (from the parent) and one is inherited upwards (from children), and then
+-- maybe you have elements that depend on both results.
+--
+-- The main benefit of this structure is that you don't need separate data structures for
+-- things-inherited-upwards and things-inherited-downwards.
+transformTreeDownUpRec :: (Maybe b -> [b] -> a -> b) -> Tree a -> Tree b
+transformTreeDownUpRec f = _go Nothing
+  where
+    _go mpar (Node x cs) =
+      -- Mutually recursive group!
+      let reslabel = f mpar clabels' x
+          cs' = map (_go (Just reslabel)) cs
+          clabels' = map rootLabel cs'
+       in Node reslabel cs'
+
+-- | See 'transformTreeDownUpRec'.
+transformForestDownUpRec :: (Maybe b -> [b] -> a -> b) -> [Tree a] -> [Tree b]
+transformForestDownUpRec f = map (transformTreeDownUpRec f)
