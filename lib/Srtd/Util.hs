@@ -64,14 +64,14 @@ foldForest :: (a -> [b] -> b) -> Forest a -> [b]
 foldForest f = map (foldTree f)
 
 -- | Forest variant of 'transformTreeDownUp' that maps over each tree independently. See there.
-transformForestDownUp :: ([u] -> a -> u) -> (u -> a -> [b] -> b) -> Forest a -> Forest b
+transformForestDownUp :: (Maybe u -> a -> u) -> (u -> a -> [b] -> b) -> Forest a -> Forest b
 transformForestDownUp fdown gmake = map (transformTreeDownUp fdown gmake)
 
 -- | Combined top-down and bottom-up transformation function.
 --
 -- Usage: `transformTreeDownUp fdown gmake` where:
 --
--- - `fdown` maps a list of breadcrumbs (direct parent first, if any) and the node label to a
+-- - `fdown` maps the parent breadcrumb (if any) and the node label to a
 --   resulting breadcrumb for the "down" part. The breadcrumb type is inferred.
 -- - `gmake` maps the resulting breadcrumb, node label, and resulting child labels to the node's
 --   own label.
@@ -86,12 +86,12 @@ transformForestDownUp fdown gmake = map (transformTreeDownUp fdown gmake)
 --
 -- SOMEDAY I could also make this a general folding function (yielding `b` instead of `Tree b`)
 -- I think.
-transformTreeDownUp :: ([u] -> a -> u) -> (u -> a -> [b] -> b) -> Tree a -> Tree b
-transformTreeDownUp fdown gmake = _go []
+transformTreeDownUp :: (Maybe u -> a -> u) -> (u -> a -> [b] -> b) -> Tree a -> Tree b
+transformTreeDownUp fdown gmake = _go Nothing
   where
     _go crumbs (Node x cs) =
       let crumb = fdown crumbs x
-          crumbs' = crumb : crumbs
+          crumbs' = Just crumb
           cs' = map (_go crumbs') cs
           clabels' = map rootLabel cs'
        in Node (gmake crumb x clabels') cs'

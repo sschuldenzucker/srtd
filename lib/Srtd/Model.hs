@@ -182,8 +182,8 @@ forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt
 addLocalDerivedAttrs :: MForest -> STForest
 addLocalDerivedAttrs = transformIdForestTopDown _go
   where
-    _go [] label = (label, LocalDerivedAttr {ldParentActionability = None})
-    _go (((parAttr, _parDAttr), parLDAttr) : _) label =
+    _go Nothing label = (label, LocalDerivedAttr {ldParentActionability = None})
+    _go (Just ((parAttr, _parDAttr), parLDAttr)) label =
       (label, LocalDerivedAttr {ldParentActionability = stepParentActionability (status parAttr) (ldParentActionability parLDAttr)})
 
     stepParentActionability :: Status -> Status -> Status

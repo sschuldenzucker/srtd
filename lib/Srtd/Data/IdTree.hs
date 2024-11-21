@@ -93,7 +93,7 @@ transformIdForestBottomUp f = withIdForest $ foldForest _go
        in Node (i, x') cs
 
 -- | Specialization of 'transformTreeDownUp' that preserves the IDs. See there.
-transformIdForestDownUp :: ([u] -> attr -> u) -> (u -> attr -> [attr'] -> attr') -> IdForest id attr -> IdForest id attr'
+transformIdForestDownUp :: (Maybe u -> attr -> u) -> (u -> attr -> [attr'] -> attr') -> IdForest id attr -> IdForest id attr'
 transformIdForestDownUp fdown gmake = withIdForest $ transformForestDownUp _fdown _gmake
   where
     _fdown crumbs (_i, x) = fdown crumbs x
