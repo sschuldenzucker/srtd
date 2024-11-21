@@ -100,7 +100,7 @@ transformIdForestDownUp fdown gmake = withIdForest $ transformForestDownUp _fdow
     _gmake crumb (i, x) cilabels = (i, gmake crumb x (map snd cilabels))
 
 -- | Top-down transformation. This is a specialization of 'transformIdForestDownUp'.
-transformIdForestTopDown :: ([attr'] -> attr -> attr') -> IdForest id attr -> IdForest id attr'
+transformIdForestTopDown :: (Maybe attr' -> attr -> attr') -> IdForest id attr -> IdForest id attr'
 transformIdForestTopDown f = transformIdForestDownUp f (\res _ _ -> res)
 
 -- go (i, x) cs = Node (i, go x [y | Node (_, y) _ <- cs]) cs
