@@ -126,15 +126,21 @@ data ModelUpdateEnv = ModelUpdateEnv {mueTimeZone :: TimeZone}
 
 -- For some reason, this has to be above `diskModelToModel`, otherwise it's not found.
 _forestMakeDerivedAttrs :: (?mue :: ModelUpdateEnv) => IdForest EID Attr -> IdForest EID Label
-_forestMakeDerivedAttrs = transformIdForestBottomUp $ \attr clabels -> (attr, makeNodeDerivedAttr attr clabels)
+_forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> (attr, makeNodeDerivedAttr mplabel clabels attr)
   where
-    makeNodeDerivedAttr attr clabels =
+    -- TODO WIP re-write to use 'transformIdForestDownUp' and the "down" step is for updating 'daImpliedDates'.
+    -- Requires some thought how exactly these should be implied from the parent (always inherit or base on status/actionability?)
+    -- Also make this a test case for the structure of transformIdForestDownUp. Should it be more symmetic? Or can we hack it by making 'u' a closure? Or use a final mapping step? Add this to transformIdForestDownUp or separate fmap? Or mutual recursion after all?
+    makeNodeDerivedAttr mplabel clabels attr =
       DerivedAttr
         { daChildActionability = forEmptyList None minimum . map glActionability $ clabels,
           daEarliestAutodates = foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels,
           daLatestAutodates = foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels,
           daEarliestDates = foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . map (daEarliestDates . snd) $ clabels,
-          daLatestDates = foldl' (pointwiseChooseAttrDates chooseMax tz) (dates attr) . map (daLatestDates . snd) $ clabels
+          daLatestDates = foldl' (pointwiseChooseAttrDates chooseMax tz) (dates attr) . map (daLatestDates . snd) $ clabels,
+          -- TODO should this actually *always* inherit from the parent? Or depend on status?
+          -- Writing this as fold to match the above, but `mplabel` is just a Maybe, not a list.
+          daImpliedDates = foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . fmap (daImpliedDates . snd) $ mplabel
         }
     tz = mueTimeZone ?mue
 

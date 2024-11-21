@@ -460,6 +460,10 @@ renderItemDetails ztime (eid, llabel) =
         [sectionHeaderRow "Dates"]
           ++ mkDatesCells "" (dates attr)
           ++ [ spacerRow,
+               sectionHeaderRow "Implied Dates"
+             ]
+          ++ mkDatesCells "" (daImpliedDates dattr)
+          ++ [ spacerRow,
                sectionHeaderRow "Descendant Dates"
              ]
           ++ mkDatesCells "Earliest " (daEarliestDates dattr)

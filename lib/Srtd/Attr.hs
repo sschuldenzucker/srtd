@@ -246,11 +246,14 @@ data DerivedAttr = DerivedAttr
     -- | Point-wise latest dates of the children and including this node.
     --
     -- NB This is probably not very useful.
-    daLatestDates :: AttrDates
+    daLatestDates :: AttrDates,
+    -- | Point-wise earliest dates coming from the *parent* and including this node. This is the
+    -- correct thing if you want to know, e.g., the deadline of this node if it's under a project.
+    daImpliedDates :: AttrDates
   }
   deriving (Show)
 
--- | The 'DerivedAttr' of an element without any children
+-- | The 'DerivedAttr' of an element without any children or parent
 emptyDerivedAttr :: Attr -> DerivedAttr
 emptyDerivedAttr attr =
   DerivedAttr
@@ -258,7 +261,8 @@ emptyDerivedAttr attr =
       daEarliestAutodates = autoDates attr,
       daLatestAutodates = autoDates attr,
       daEarliestDates = dates attr,
-      daLatestDates = dates attr
+      daLatestDates = dates attr,
+      daImpliedDates = dates attr
     }
 
 -- | Label (i.e., content) of an element in the global tree of items in memory
