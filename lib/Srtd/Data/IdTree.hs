@@ -17,7 +17,7 @@ import Srtd.Todo
 import Srtd.Util (foldForest, mapForest, transformForestDownUp)
 
 newtype IdForest id attr = IdForest {idForest :: Forest (id, attr)}
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- The following can probably be automated using some iso construction but I tried Lens.Micro.Pro and couldn't get it to work.
 
