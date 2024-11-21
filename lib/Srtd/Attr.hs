@@ -280,6 +280,8 @@ glActionability (attr, dattr) = case (status attr, daChildActionability dattr) o
 -- | Derived properties at the local (per-subtree / per-view) level
 data LocalDerivedAttr = LocalDerivedAttr
   { -- | Actionability of the parent, derived downwards
+    --
+    -- SOMEDAY Replace this by what's llActionability right now.
     ldParentActionability :: Status
   }
   deriving (Show)
@@ -297,6 +299,8 @@ llActionability (label, ldattr) = case (glActionability label, ldParentActionabi
   (a, None) -> a
   (a, Project) -> a
   (a, ap) -> max a ap
+
+-- SOMEDAY these unused?
 
 llEarliestChildAutodates :: LocalLabel -> AttrAutoDates
 llEarliestChildAutodates ((_attr, dattr), _ldattr) = daEarliestAutodates dattr

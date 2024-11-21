@@ -272,6 +272,8 @@ deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterIdForestWithIds (\eid
 insertNewNormalWithNewId :: (?mue :: ModelUpdateEnv) => UUID -> Attr -> EID -> InsertWalker IdLabel -> Model -> Model
 insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ Model forest'
   where
+    -- NB 'emptyDerivedAttr' is immediately overwritten by 'updateDerivedAttrs'. It's just here so
+    -- we can re-use code.
     forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, emptyDerivedAttr attr) forest
 
 -- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
