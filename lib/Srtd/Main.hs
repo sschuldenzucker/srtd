@@ -49,7 +49,10 @@ data AppState = AppState
     -- SOMEDAY we may wanna keep these as MainTree so we can clone. Or 'new tab' should be a shortcut of MainTree, not sure.
 
     -- | We make sure that `asTabs` is never after the end and in particular that it's nonempty.
-    asTabs :: LZ.Zipper SomeBrickComponent,
+    -- We store the resource name of the tab title (!) so we can find it again for mouse clicks.
+    -- SOMEDAY I don't think we even have to store the resource name as state. We can just use the
+    -- index in the list.
+    asTabs :: LZ.Zipper (AppResourceName, SomeBrickComponent),
     -- | "Unique ID" for the next tab being opened, for resource names.
     asNextTabID :: Int,
     asOverlays :: [SomeBrickComponent],
@@ -113,7 +116,9 @@ main = do
   let appState =
         AppState
           { asContext = AppContext modelServer appChan ztime,
-            asTabs = LZ.fromList [SomeBrickComponent $ MainTree.make Vault model ztime (Tab 0)],
+            asTabs =
+              let rname = Tab 0
+               in LZ.fromList [(TabTitleFor rname, SomeBrickComponent $ MainTree.make Vault model ztime rname)],
             asNextTabID = 1,
             asOverlays = [],
             asHelpAlways = False,
@@ -135,22 +140,22 @@ main = do
 myAppDraw :: AppState -> [Widget AppResourceName]
 myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ mainUIs
   where
-    tab0 = LZ.cursor asTabs
+    tab0 = snd $ LZ.cursor asTabs
     mainUIs =
       let (w0, ovls0) = renderComponentWithOverlays tab0
-       in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar (componentTitle <$> asTabs) <=> w0]
-    renderTabTitle :: Bool -> Text -> Widget n
-    renderTabTitle sel t = withAttr theAttrName . padLeftRight 1 . hLimit 20 $ txt t
+       in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar asTabs <=> w0]
+    renderTabTitle :: (BrickComponent c, Ord n) => Bool -> n -> c -> Widget n
+    renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 20 $ txt (componentTitle c)
       where
         theAttrName = (if sel then tabBarAttr <> attrName "selected" else tabBarAttr) <> attrName "tab_title"
-    renderTabBar titlez =
+    renderTabBar pairs =
       withDefAttr tabBarAttr $
-        let (front, cur, back) = lzSplit3 titlez
+        let (front, cur, back) = lzSplit3 pairs
          in hBox $
               intersperse (txt "|") $
-                map (renderTabTitle False) front
-                  ++ [renderTabTitle True cur]
-                  ++ map (renderTabTitle False) back
+                map (uncurry (renderTabTitle False)) front
+                  ++ [uncurry (renderTabTitle True) cur]
+                  ++ map (uncurry (renderTabTitle False)) back
                   ++ [padLeft Max (str " ")]
     wrapOverlay title w =
       centerLayer
@@ -194,6 +199,7 @@ myHandleEvent ev =
     (AppEvent PopTab) -> modify popTab
     (AppEvent NextTab) -> asTabsL %= lzCircRight
     (AppEvent PrevTab) -> asTabsL %= lzCircLeft
+    (MouseDown rname@(TabTitleFor _) Vty.BLeft [] _location) -> asTabsL %= lzFindBegin ((rname ==) . fst)
     (AppEvent (ModelUpdated _)) -> do
       AppState {asContext} <- get
       forComponentsM $ handleEvent asContext ev
@@ -211,7 +217,8 @@ forComponentsM :: EventM AppResourceName SomeBrickComponent () -> EventM AppReso
 forComponentsM act = do
   state@(AppState {asOverlays, asTabs}) <- get
   asOverlays' <- forM asOverlays $ \t -> nestEventM' t act
-  asTabs' <- forMLZ asTabs $ \t -> nestEventM' t act
+  -- SOMEDAY make a function for this
+  asTabs' <- forMLZ asTabs $ \(rname, t) -> (rname,) <$> nestEventM' t act
   put $ state {asOverlays = asOverlays', asTabs = asTabs'}
   return ()
 
@@ -220,9 +227,9 @@ activeComponentL :: Lens' AppState SomeBrickComponent
 activeComponentL = lens getter setter
   where
     getter AppState {asOverlays = o : _} = o
-    getter AppState {asTabs} = LZ.cursor asTabs
+    getter AppState {asTabs} = snd $ LZ.cursor asTabs
     setter state@(AppState {asOverlays = _ : os}) t' = state {asOverlays = t' : os}
-    setter state@(AppState {asTabs}) t' = state {asTabs = LZ.replace t' asTabs}
+    setter state@(AppState {asTabs}) t' = state {asTabs = lzModify (second $ const t') asTabs}
 
 pushOverlay :: (AppResourceName -> SomeBrickComponent) -> AppState -> AppState
 pushOverlay mk state@(AppState {asOverlays}) = state {asOverlays = mk ovlResourceName : asOverlays}
@@ -237,7 +244,8 @@ popOverlay _ = error "No overlays"
 pushTab :: (AppResourceName -> SomeBrickComponent) -> AppState -> AppState
 pushTab mk state@(AppState {asTabs, asNextTabID}) = state {asTabs = asTabs', asNextTabID = asNextTabID + 1}
   where
-    asTabs' = LZ.insert (mk $ Tab asNextTabID) . LZ.right $ asTabs
+    rname = Tab asNextTabID
+    asTabs' = LZ.insert (TabTitleFor rname, mk rname) . LZ.right $ asTabs
 
 -- | Remove active tab and go to next or else previous.
 popTab :: AppState -> AppState
@@ -263,6 +271,7 @@ myChooseAttrMap state = case CList.focus $ asAttrMapRing state of
   -- Only relevant when there are no themes. This shouldn't really happen.
   Nothing -> error "No themes?!?"
 
+myAppStartEvent :: EventM n s ()
 myAppStartEvent = do
   -- Set up mouse support. For some reason we have to do this here, not in 'main'.
   -- See Brick's `MouseDemo.hs`
@@ -315,3 +324,21 @@ lzCircRight z =
   let nxt = LZ.right z
    in if LZ.endp nxt then LZ.start z else nxt
 lzCircLeft z = if LZ.beginp z then LZ.left (LZ.end z) else LZ.left z
+
+-- | Modify the current element by a function. Error if zipper is at its end.
+lzModify :: (a -> a) -> LZ.Zipper a -> LZ.Zipper a
+lzModify f z = LZ.replace (f $ LZ.cursor z) z
+
+-- | Find the first position in the *list* where the predicate is true, or return the original
+-- zipper unchanged if none.
+lzFindBegin :: (a -> Bool) -> LZ.Zipper a -> LZ.Zipper a
+lzFindBegin p z =
+  let res = lzFind p (LZ.start z)
+   in if LZ.endp res then z else res
+  where
+    -- Find the first following position where the predicate is true, or return the end position
+    -- if none.
+    lzFind p z
+      | LZ.endp z = z
+      | p (LZ.cursor z) = z
+      | otherwise = lzFind p (LZ.right z)
