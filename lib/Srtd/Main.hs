@@ -145,7 +145,7 @@ myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverl
     let (w0, ovls0) = renderComponentWithOverlays tab0
      in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar asTabs <=> w0]
   renderTabTitle :: (BrickComponent c, Ord n) => Bool -> n -> c -> Widget n
-  renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 20 $ txt (componentTitle c)
+  renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 25 $ txt (componentTitle c)
    where
     theAttrName = (if sel then tabBarAttr <> attrName "selected" else tabBarAttr) <> attrName "tab_title"
   renderTabBar pairs =
