@@ -436,7 +436,11 @@ renderItemDetails ztime (eid, llabel) =
     vBox
       [ -- hBox [str "EID    ", str (showEIDShort eid)],
         -- hBox [str "Title  ", strWrapWith nameWrapSettings (name attr)]
-        hBox [strWrapWith nameWrapSettings (name attr)]
+        hBox
+          [ renderStatus False (status attr) (llActionability llabel)
+          , str " "
+          , strWrapWith nameWrapSettings (name attr)
+          ]
       ]
   botBox =
     vBox
