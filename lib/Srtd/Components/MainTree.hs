@@ -133,7 +133,8 @@ rootKeymap =
           moveCurRelative goPrevSibling insBefore
       )
     , (kmLeaf (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter)
-    , (kmLeaf (bind '>') "Move subtree last child of previous" $ moveCurRelative goPrevSibling insLastChild)
+    , ( kmLeaf (bind '>') "Move subtree last child of previous" $ moveCurRelative goPrevSibling insLastChild
+      )
     , -- (kmSub (bind 'm') moveSingleModeKeymap),
       (kmSub (bind 'M') moveSubtreeModeKeymap)
     , (kmSub (bind 'D') deleteKeymap)
