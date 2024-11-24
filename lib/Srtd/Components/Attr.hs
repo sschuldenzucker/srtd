@@ -79,7 +79,7 @@ mostUrgentDateAttr :: ZonedTime -> Bool -> AttrDates -> AttrName
 mostUrgentDateAttr now sel dates = maybe mempty (dateAttrForLabeled now sel) (mostUrgentDateLabeled now dates)
 
 renderMostUrgentDate :: ZonedTime -> Bool -> AttrDates -> Widget n
-renderMostUrgentDate now sel dates = setWidth 12 . maybe almostEmptyWidget (renderLabeledDate now sel) . mostUrgentDateLabeled now $ dates
+renderMostUrgentDate now sel dates = setWidth 13 . maybe almostEmptyWidget (renderLabeledDate now sel) . mostUrgentDateLabeled now $ dates
 
 -- | Variant of 'renderMostUrgentDate' that does not have a fixed width, but minimal, and returns
 -- 'Nothing' if there's nothing to display.
