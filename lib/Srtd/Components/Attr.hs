@@ -92,24 +92,6 @@ renderPastDate now _sel dt = setWidth 10 $ str label
   where
     label = prettyRelativeMed now dt
 
--- SOMEDAY remove, is dead
-renderDeadline :: ZonedTime -> Bool -> DateOrTime -> Widget n
-renderDeadline now sel dt = withAttr (rootattr <> subattr <> selattr) . str . prettyRelativeMed now $ dt
-  where
-    rootattr = attrName "date" <> attrName "deadline"
-    subattr
-      | dt `isBefore` now = attrName "overdue"
-      | dt `isTodayOf` now = attrName "today"
-      | dt `isTomorrowOf` now = attrName "tomorrow"
-      | otherwise = mempty
-    selattr = if sel then attrName "selected" else mempty
-
--- SOMEDAY this is a bit wide and also too narrow for all dates. Can be fixed by implementing a
--- display variant that loses information the further out, e.g., ignore time unless today, ignore
--- year unless after this year, etc. We're semi doing this rn.
-renderMaybeDeadline :: ZonedTime -> Bool -> Maybe DateOrTime -> Widget n
-renderMaybeDeadline now sel = setWidth 10 . maybe almostEmptyWidget (renderDeadline now sel)
-
 -- | `renderMStatus selected status actionability`
 renderStatus :: Bool -> Status -> Status -> Widget n
 renderStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
