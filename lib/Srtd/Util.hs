@@ -3,6 +3,7 @@ module Srtd.Util where
 
 import Control.Applicative (liftA2, (<|>))
 import Control.Monad ((<=<))
+import Data.List (isPrefixOf)
 import Data.Tree (Forest, Tree (..), foldTree)
 import Srtd.Todo (todo)
 
@@ -45,6 +46,12 @@ chooseMin c x y = if c == GT then y else x
 chooseMax c x y = if c == LT then y else x
 
 -- * List helpers
+
+-- | If you use this for String, that's a good indicator you should probably be using Text instead.
+replacePrefix :: (Eq a) => [a] -> [a] -> [a] -> [a]
+replacePrefix needle repl haystack
+  | needle `isPrefixOf` haystack = repl ++ drop (length needle) haystack
+  | otherwise = haystack
 
 -- | Transform a function partial on the empty list (like 'minimum') to a complete one by providing
 -- a default.

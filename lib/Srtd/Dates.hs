@@ -17,7 +17,7 @@ import Data.Time.Calendar.WeekDate (toWeekDate)
 import Data.Void
 import GHC.Generics
 import Srtd.Todo
-import Srtd.Util (eitherToMaybe, maybeToEither)
+import Srtd.Util (eitherToMaybe, maybeToEither, replacePrefix)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 
@@ -30,6 +30,10 @@ import Text.Megaparsec.Char
 -- Not sure if it's a non-issue or wat do. (maybe the caller has to deal with that)
 -- Currently, Day is *determined* in a local fashion when setting, but that's also fine.
 data DateOrTime = DateOnly Day | DateAndTime UTCTime deriving (Eq, Show, Generic)
+
+hasTime :: DateOrTime -> Bool
+hasTime (DateOnly _) = False
+hasTime (DateAndTime _) = True
 
 jsonOptionsDateOrTime :: Options
 jsonOptionsDateOrTime = defaultOptions {sumEncoding = UntaggedValue}
@@ -245,7 +249,12 @@ prettyAbsolute tz (DateAndTime time) = formatTime defaultTimeLocale "%a, %Y-%m-%
 prettyRelativeMed :: ZonedTime -> DateOrTime -> String
 prettyRelativeMed (ZonedTime lnow tz) dot = dayS <> maybe mempty (" " <>) mtimeS
   where
-    dayS = prettyDayRelativeMed (localDay lnow) (dotDay tz dot)
+    -- SOMEDAY all of this should really use Text, not String. Really nothing should use String.
+    dayS = fixTomorrow $ prettyDayRelativeMed (localDay lnow) (dotDay tz dot)
+    -- HACK to make 'tomorrow 18:00' occupy less space.
+    fixTomorrow
+      | hasTime dot = replacePrefix "tomorrow" "tom"
+      | otherwise = id
     mtimeS = prettyTimeOfDay <$> dotmLocalTimeOfDay tz dot
 
 prettyDayRelativeMed :: Day -> Day -> String
