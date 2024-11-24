@@ -29,26 +29,27 @@ import Srtd.Todo
 type Callback = Maybe DateOrTime -> AppContext -> IO EID
 
 data DateSelectOverlay = DateSelectOverlay
-  { dsEditor :: Editor Text AppResourceName,
-    dsValue :: Maybe DateOrTime,
-    dsCallback :: Callback,
-    dsTimeZone :: TimeZone,
-    dsOrigValue :: Maybe DateOrTime,
-    dsTitle :: Text
+  { dsEditor :: Editor Text AppResourceName
+  , dsValue :: Maybe DateOrTime
+  , dsCallback :: Callback
+  , dsTimeZone :: TimeZone
+  , dsOrigValue :: Maybe DateOrTime
+  , dsTitle :: Text
   }
 
 suffixLenses ''DateSelectOverlay
 
 -- | NB the TimeZone is only required to render the *first* time before we receive an event (which is where it's updated).
-dateSelectOverlay :: Callback -> Maybe DateOrTime -> TimeZone -> Text -> AppResourceName -> DateSelectOverlay
+dateSelectOverlay ::
+  Callback -> Maybe DateOrTime -> TimeZone -> Text -> AppResourceName -> DateSelectOverlay
 dateSelectOverlay cb origValue tz title rname =
   DateSelectOverlay
-    { dsEditor = theEditor,
-      dsValue = Nothing,
-      dsCallback = cb,
-      dsOrigValue = origValue,
-      dsTimeZone = tz,
-      dsTitle = title
+    { dsEditor = theEditor
+    , dsValue = Nothing
+    , dsCallback = cb
+    , dsOrigValue = origValue
+    , dsTimeZone = tz
+    , dsTitle = title
     }
   where
     theEditor = editor (EditorFor rname) (Just 1) ""
@@ -60,11 +61,11 @@ keymap =
   kmMake
     "Select Date"
     [ kmLeaf (binding KEsc []) "Cancel" $ \ctx ->
-        liftIO $ writeBChan (acAppChan ctx) (PopOverlay $ ORNone),
-      kmLeaf (binding KEnter []) "Confirm" $ \ctx -> do
+        liftIO $ writeBChan (acAppChan ctx) (PopOverlay $ ORNone)
+    , kmLeaf (binding KEnter []) "Confirm" $ \ctx -> do
         mv <- use dsValueL
-        when (isJust mv) $ submitAndClose ctx,
-      kmLeaf (ctrl 'd') "Delete" submitAndClose
+        when (isJust mv) $ submitAndClose ctx
+    , kmLeaf (ctrl 'd') "Delete" submitAndClose
     ]
   where
     submitAndClose ctx = do

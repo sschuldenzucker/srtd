@@ -372,20 +372,20 @@ pDateAnchor = try pDADayOfWeek <|> try pDADayOfMonth <|> pDAMonthDay
 
 dayOfWeekPairs :: [([Text], DayOfWeek)]
 dayOfWeekPairs =
-  [ (["mon"], Monday),
-    (["tue"], Tuesday),
-    (["wed"], Wednesday),
-    (["thu"], Thursday),
-    (["fri"], Friday),
-    (["sat"], Saturday),
-    (["sun"], Sunday)
+  [ (["mon"], Monday)
+  , (["tue"], Tuesday)
+  , (["wed"], Wednesday)
+  , (["thu"], Thursday)
+  , (["fri"], Friday)
+  , (["sat"], Saturday)
+  , (["sun"], Sunday)
   ]
 
 namedOffsetPairs :: [([Text], CalendarDiffDays)]
 namedOffsetPairs =
-  [ (["yesterday", "yest"], CalendarDiffDays 0 (-1)),
-    (["tomorrow", "tom"], CalendarDiffDays 0 1),
-    (["today", "tod"], CalendarDiffDays 0 0)
+  [ (["yesterday", "yest"], CalendarDiffDays 0 (-1))
+  , (["tomorrow", "tom"], CalendarDiffDays 0 1)
+  , (["today", "tod"], CalendarDiffDays 0 0)
   ]
 
 pDADayOfWeek :: Parser DateAnchor
@@ -427,9 +427,9 @@ pHDDiff = HDDiff <$> (try pNamedOffset <|> pProperOffset)
       -- (disabled for now b/c it's a bit too ambiguous for my taste)
       -- <|> (return $ CalendarDiffDays 0 1)
       keywords
-        [ (["days", "day", "d"], CalendarDiffDays 0 1),
-          (["weeks", "week", "w"], CalendarDiffDays 0 7),
-          (["months", "month", "m"], CalendarDiffDays 1 0)
+        [ (["days", "day", "d"], CalendarDiffDays 0 1)
+        , (["weeks", "week", "w"], CalendarDiffDays 0 7)
+        , (["months", "month", "m"], CalendarDiffDays 1 0)
         ]
 
 pHTimeOnly :: Parser HumanDateOrTime
@@ -449,10 +449,10 @@ pHDiffTime = HDiffTime <$> properTimeOffset
     pStep :: Parser NominalDiffTime
     pStep =
       keywords
-        [ (["hours", "hour", "h"], fromInteger (60 * 60)),
-          -- We do *not* use 'm' as a short form for "minute" b/c it's already used by month. Prob fine, we don't use this really anyways.
-          (["minutes", "minute", "mins", "min"], fromInteger 60),
-          (["seconds", "second", "secs", "sec", "s"], fromInteger 1)
+        [ (["hours", "hour", "h"], fromInteger (60 * 60))
+        , -- We do *not* use 'm' as a short form for "minute" b/c it's already used by month. Prob fine, we don't use this really anyways.
+          (["minutes", "minute", "mins", "min"], fromInteger 60)
+        , (["seconds", "second", "secs", "sec", "s"], fromInteger 1)
         ]
 
 keywords :: [([Text], a)] -> Parser a

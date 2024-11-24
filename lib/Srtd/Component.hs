@@ -47,16 +47,22 @@ instance Show AppMsg where
 
 -- Not super clean but I don't think I'll need a lot here. These nest to be unique across different tabs / overlays.
 -- SOMEDAY maybe our resource names should just be lists of strings, aka. Brick attr names.
-data AppResourceName = MainListFor AppResourceName | Overlay Int | Tab Int | TabTitleFor AppResourceName | EditorFor AppResourceName deriving (Eq, Ord, Show)
+data AppResourceName
+  = MainListFor AppResourceName
+  | Overlay Int
+  | Tab Int
+  | TabTitleFor AppResourceName
+  | EditorFor AppResourceName
+  deriving (Eq, Ord, Show)
 
 -- SOMEDAY consider passing this as an implicit parameter. Especially if we include "normal" app config in here.
 -- (not sure if this would *actually* be cleaner: We then have to carry the type annotation around.)
 data AppContext = AppContext
-  { acModelServer :: ModelServer,
-    acAppChan :: BChan AppMsg,
-    -- | Current time and time zone at the time of processing this event. ONLY for user-facing
-    -- interactions, NOT for internal process coordination!
-    acZonedTime :: ZonedTime
+  { acModelServer :: ModelServer
+  , acAppChan :: BChan AppMsg
+  , acZonedTime :: ZonedTime
+  -- ^ Current time and time zone at the time of processing this event. ONLY for user-facing
+  -- interactions, NOT for internal process coordination!
   }
 
 -- Somehow TemplateHaskell breaks everything here. Perhaps b/c of the circularity.

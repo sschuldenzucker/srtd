@@ -16,20 +16,20 @@ import Data.Text (Text)
 import Graphics.Vty (Key, Modifier)
 
 data Keymap a = Keymap
-  { kmName :: Text,
-    -- | If True, we don't go back to the toplevel when a leaf action in the submap was triggered.
-    -- Only relevant for submaps.
-    kmSticky :: Bool,
-    kmMap :: (Map Binding (KeymapItem a)),
-    -- | Additional descriptions for hidden items.
-    kmAddlDesc :: [(Text, Text)]
+  { kmName :: Text
+  , kmSticky :: Bool
+  -- ^ If True, we don't go back to the toplevel when a leaf action in the submap was triggered.
+  -- Only relevant for submaps.
+  , kmMap :: (Map Binding (KeymapItem a))
+  , kmAddlDesc :: [(Text, Text)]
+  -- ^ Additional descriptions for hidden items.
   }
 
 data KeymapItem a = KeymapItem
-  { kmiItem :: KeymapItemItem a,
-    -- | If True, this won't show up by default in `kmDesc`. Use `kmaAddlDesc` to describe these
-    -- manually. Useful for pairs/groups of keys (e.g., hjkl or cursor keys.)
-    kmiHidden :: Bool
+  { kmiItem :: KeymapItemItem a
+  , kmiHidden :: Bool
+  -- ^ If True, this won't show up by default in `kmDesc`. Use `kmaAddlDesc` to describe these
+  -- manually. Useful for pairs/groups of keys (e.g., hjkl or cursor keys.)
   }
 
 data KeymapItemItem a
@@ -41,8 +41,8 @@ data KeymapItemItem a
   | SubmapItem (Keymap a)
 
 data KeymapZipper a = KeymapZipper
-  { parents :: [Keymap a],
-    cur :: Keymap a
+  { parents :: [Keymap a]
+  , cur :: Keymap a
   }
 
 -- | We only provide a trivial-ish show instance here b/c you usually don't care and a isn't showable.
@@ -108,9 +108,9 @@ kmDesc (Keymap {kmMap, kmAddlDesc}) =
     describeItem (KeymapItem {kmiItem = SubmapItem (Keymap {kmName})}) = kmName <> "..."
 
 data KeyDesc = KeyDesc
-  { kdName :: Text,
-    kdIsToplevel :: Bool,
-    kdPairs :: [(Text, Text)]
+  { kdName :: Text
+  , kdIsToplevel :: Bool
+  , kdPairs :: [(Text, Text)]
   }
 
 suffixLenses ''KeyDesc
@@ -118,9 +118,9 @@ suffixLenses ''KeyDesc
 kmzDesc :: KeymapZipper a -> KeyDesc
 kmzDesc (KeymapZipper ps cur) =
   KeyDesc
-    { kdName = kmName cur,
-      kdIsToplevel = null ps,
-      kdPairs = kmDesc cur
+    { kdName = kmName cur
+    , kdIsToplevel = null ps
+    , kdPairs = kmDesc cur
     }
 
 data KeymapResult a = NotFound | SubmapResult (KeymapZipper a) | LeafResult a (KeymapZipper a)

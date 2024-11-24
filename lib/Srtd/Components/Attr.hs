@@ -22,9 +22,9 @@ import Srtd.Todo
 -- SOMEDAY we can prob find something more elegant using barbies or something. Or maybe not idk.
 -- NB in principle we also need different ordering for different kinds of things. E.g., remind is begin-of-day but deadline is end-of-day.
 data Labeled a = Labeled
-  { lblValue :: a,
-    lblAttrName :: String,
-    lblShortLabel :: String
+  { lblValue :: a
+  , lblAttrName :: String
+  , lblShortLabel :: String
   }
   deriving (Show, Functor, Foldable, Traversable)
 
@@ -36,10 +36,10 @@ lbl = Labeled
 -- Order matters. First have highest priority if equally urgent
 labeledDateLenses :: [Labeled (AttrDates -> Maybe DateOrTime)]
 labeledDateLenses =
-  [ lbl deadline "deadline" "D",
-    lbl goalline "goalline" "G",
-    lbl scheduled "scheduled" "S",
-    lbl remind "remind" "R"
+  [ lbl deadline "deadline" "D"
+  , lbl goalline "goalline" "G"
+  , lbl scheduled "scheduled" "S"
+  , lbl remind "remind" "R"
   ]
 
 -- NB this only uses the time zone component rn, but this may change.
@@ -79,7 +79,9 @@ mostUrgentDateAttr :: ZonedTime -> Bool -> AttrDates -> AttrName
 mostUrgentDateAttr now sel dates = maybe mempty (dateAttrForLabeled now sel) (mostUrgentDateLabeled now dates)
 
 renderMostUrgentDate :: ZonedTime -> Bool -> AttrDates -> Widget n
-renderMostUrgentDate now sel dates = setWidth 13 . maybe almostEmptyWidget (renderLabeledDate now sel) . mostUrgentDateLabeled now $ dates
+renderMostUrgentDate now sel dates =
+  setWidth 13 . maybe almostEmptyWidget (renderLabeledDate now sel) . mostUrgentDateLabeled now $
+    dates
 
 -- | Variant of 'renderMostUrgentDate' that does not have a fixed width, but minimal, and returns
 -- 'Nothing' if there's nothing to display.

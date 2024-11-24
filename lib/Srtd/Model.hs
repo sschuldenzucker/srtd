@@ -67,8 +67,8 @@ emptyDiskModel =
     -- "normal" one. Perhaps we can restructure 'Model' so that the toplevel elements are not part
     -- of a tree. It would be a bit cumbersome, but maybe not too much.
     IdForest $
-      [ leaf (Inbox, unsafeAttrMinimal "INBOX"),
-        leaf (Vault, unsafeAttrMinimal "VAULT")
+      [ leaf (Inbox, unsafeAttrMinimal "INBOX")
+      , leaf (Vault, unsafeAttrMinimal "VAULT")
       ]
 
 -- We do *not* use the generic JSON instance b/c the ToJSON instance of Tree (provided by aeson)
@@ -133,14 +133,19 @@ _forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> 
     -- Also make this a test case for the structure of transformIdForestDownUp. Should it be more symmetic? Or can we hack it by making 'u' a closure? Or use a final mapping step? Add this to transformIdForestDownUp or separate fmap? Or mutual recursion after all?
     makeNodeDerivedAttr mplabel clabels attr =
       DerivedAttr
-        { daChildActionability = forEmptyList None minimum . map glActionability $ clabels,
-          daEarliestAutodates = foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels,
-          daLatestAutodates = foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels,
-          daEarliestDates = foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . map (daEarliestDates . snd) $ clabels,
-          daLatestDates = foldl' (pointwiseChooseAttrDates chooseMax tz) (dates attr) . map (daLatestDates . snd) $ clabels,
-          -- TODO should this actually *always* inherit from the parent? Or depend on status?
+        { daChildActionability = forEmptyList None minimum . map glActionability $ clabels
+        , daEarliestAutodates =
+            foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
+        , daLatestAutodates =
+            foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
+        , daEarliestDates =
+            foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . map (daEarliestDates . snd) $ clabels
+        , daLatestDates =
+            foldl' (pointwiseChooseAttrDates chooseMax tz) (dates attr) . map (daLatestDates . snd) $ clabels
+        , -- TODO should this actually *always* inherit from the parent? Or depend on status?
           -- Writing this as fold to match the above, but `mplabel` is just a Maybe, not a list.
-          daImpliedDates = foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . fmap (daImpliedDates . snd) $ mplabel
+          daImpliedDates =
+            foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . fmap (daImpliedDates . snd) $ mplabel
         }
     tz = mueTimeZone ?mue
 
@@ -162,10 +167,10 @@ type STForest = IdForest EID LocalLabel
 --
 -- SOMEDAY can be generalized to label and id types and moved to IdForest. (and called IdSubtree)
 data Subtree = Subtree
-  { breadcrumbs :: [IdLabel],
-    root :: EID,
-    rootLabel :: Label,
-    stForest :: STForest
+  { breadcrumbs :: [IdLabel]
+  , root :: EID
+  , rootLabel :: Label
+  , stForest :: STForest
   }
   deriving (Show)
 
@@ -190,7 +195,11 @@ addLocalDerivedAttrs = transformIdForestTopDown _go
   where
     _go Nothing label = (label, LocalDerivedAttr {ldParentActionability = None})
     _go (Just ((parAttr, _parDAttr), parLDAttr)) label =
-      (label, LocalDerivedAttr {ldParentActionability = stepParentActionability (status parAttr) (ldParentActionability parLDAttr)})
+      ( label
+      , LocalDerivedAttr
+          { ldParentActionability = stepParentActionability (status parAttr) (ldParentActionability parLDAttr)
+          }
+      )
 
     stepParentActionability :: Status -> Status -> Status
     stepParentActionability a pa = case (a, pa) of
@@ -222,8 +231,8 @@ modelGetSubtreeBelow i (Model forest) = forestGetSubtreeBelow i forest
 --
 -- SOMEDAY unclear if this is the right structure. Feels too general.
 data Filter = Filter
-  { filterName :: String,
-    filterRun :: EID -> Model -> Subtree
+  { filterName :: String
+  , filterRun :: EID -> Model -> Subtree
   }
 
 instance Show Filter where
@@ -275,7 +284,8 @@ deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterIdForestWithIds (\eid
 -- | Insert new node relative to a target using the given 'InsertWalker'.
 --
 -- The caller needs to make sure that the provided uuid is actually new, probably using `UUID.nextRandom`.
-insertNewNormalWithNewId :: (?mue :: ModelUpdateEnv) => UUID -> Attr -> EID -> InsertWalker IdLabel -> Model -> Model
+insertNewNormalWithNewId ::
+  (?mue :: ModelUpdateEnv) => UUID -> Attr -> EID -> InsertWalker IdLabel -> Model -> Model
 insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ Model forest'
   where
     -- NB 'emptyDerivedAttr' is immediately overwritten by 'updateDerivedAttrs'. It's just here so
@@ -283,17 +293,22 @@ insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ 
     forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, emptyDerivedAttr attr) forest
 
 -- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
-moveSubtreeRelFromForest :: (?mue :: ModelUpdateEnv) => EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> IdForest EID a -> Model -> Model
+moveSubtreeRelFromForest ::
+  (?mue :: ModelUpdateEnv) =>
+  EID -> GoWalker (EID, a) -> InsertWalker IdLabel -> IdForest EID a -> Model -> Model
 moveSubtreeRelFromForest tgt go ins haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestId tgt go ins haystack))
 
 -- | Dynamic variant of 'moveSubtreeRelFromForest'.
-moveSubtreeRelFromForestDynamic :: (?mue :: ModelUpdateEnv) => EID -> DynamicMoveWalker (EID, a) IdLabel -> IdForest EID a -> Model -> Model
+moveSubtreeRelFromForestDynamic ::
+  (?mue :: ModelUpdateEnv) =>
+  EID -> DynamicMoveWalker (EID, a) IdLabel -> IdForest EID a -> Model -> Model
 moveSubtreeRelFromForestDynamic tgt dto haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestIdDynamic tgt dto haystack))
 
 -- * Sorting (physical)
 
 -- | Sort the subtree below the given target ID (only one level).
-sortShallowBelow :: (?mue :: ModelUpdateEnv) => (Label -> Label -> Ordering) -> EID -> Model -> Model
+sortShallowBelow ::
+  (?mue :: ModelUpdateEnv) => (Label -> Label -> Ordering) -> EID -> Model -> Model
 sortShallowBelow ord root = updateDerivedAttrs . (forestL %~ onForestBelowId root (sortBy ord'))
   where
     ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2

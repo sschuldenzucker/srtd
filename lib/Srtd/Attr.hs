@@ -64,10 +64,10 @@ suffixLenses ''Status
 
 data AttrDates = AttrDates
   { -- SOMEDAY consistency check: remind <= schedule <= goalline <= deadline, if any
-    deadline :: Maybe DateOrTime,
-    goalline :: Maybe DateOrTime,
-    scheduled :: Maybe DateOrTime,
-    remind :: Maybe DateOrTime
+    deadline :: Maybe DateOrTime
+  , goalline :: Maybe DateOrTime
+  , scheduled :: Maybe DateOrTime
+  , remind :: Maybe DateOrTime
   }
   deriving (Show, Generic)
 
@@ -79,24 +79,30 @@ noDates = AttrDates Nothing Nothing Nothing Nothing
 -- | Map a function over each element of 'AttrDates'
 --
 -- SOMEDAY Unused. Also, there's probably some generics trick to get this.
-mapAttrDates2 :: (Maybe DateOrTime -> Maybe DateOrTime -> Maybe DateOrTime) -> AttrDates -> AttrDates -> AttrDates
+mapAttrDates2 ::
+  (Maybe DateOrTime -> Maybe DateOrTime -> Maybe DateOrTime) -> AttrDates -> AttrDates -> AttrDates
 mapAttrDates2 f ad1 ad2 =
   AttrDates
-    { deadline = (f `on` deadline) ad1 ad2,
-      goalline = (f `on` goalline) ad1 ad2,
-      scheduled = (f `on` scheduled) ad1 ad2,
-      remind = (f `on` remind) ad1 ad2
+    { deadline = (f `on` deadline) ad1 ad2
+    , goalline = (f `on` goalline) ad1 ad2
+    , scheduled = (f `on` scheduled) ad1 ad2
+    , remind = (f `on` remind) ad1 ad2
     }
 
 -- | Given a choice function, apply the correct beginning/end-of-day rule to each element to choose.
 -- (beginning for remind, end for everything else)
-pointwiseChooseAttrDates :: (Ordering -> DateOrTime -> DateOrTime -> DateOrTime) -> TimeZone -> AttrDates -> AttrDates -> AttrDates
+pointwiseChooseAttrDates ::
+  (Ordering -> DateOrTime -> DateOrTime -> DateOrTime) ->
+  TimeZone ->
+  AttrDates ->
+  AttrDates ->
+  AttrDates
 pointwiseChooseAttrDates ch tz ad1 ad2 =
   AttrDates
-    { deadline = chooseWith EndOfDay deadline,
-      goalline = chooseWith EndOfDay goalline,
-      scheduled = chooseWith EndOfDay scheduled,
-      remind = chooseWith BeginningOfDay remind
+    { deadline = chooseWith EndOfDay deadline
+    , goalline = chooseWith EndOfDay goalline
+    , scheduled = chooseWith EndOfDay scheduled
+    , remind = chooseWith BeginningOfDay remind
     }
   where
     -- 'Just' values are always dominant! (doesn't matter what 'ch' does)
@@ -104,18 +110,18 @@ pointwiseChooseAttrDates ch tz ad1 ad2 =
     chooseWith' dr d1 d2 = ch (compareDateOrTime dr tz d1 d2) d1 d2
 
 data AttrAutoDates = AttrAutoDates
-  { -- | Time of creation of this item.
-    created :: UTCTime,
-    -- | Only tracks change to the attrs, *not* to hierarchy (e.g. moves)!
-    --
-    -- This ultimately seems like the better of two things to do, but note that we lose actual
-    -- information doing this: we can't reconstruct it hierarchically.
-    lastModified :: UTCTime,
-    -- | Time of last update to the 'status' attribute, ignoring all other changes.
-    -- Useful to track how long we've been waiting for how long a task has been next.
-    --
-    -- SOMEDAY if we ever wanna track more, we probably have to use barbies or something.
-    lastStatusModified :: UTCTime
+  { created :: UTCTime
+  -- ^ Time of creation of this item.
+  , lastModified :: UTCTime
+  -- ^ Only tracks change to the attrs, *not* to hierarchy (e.g. moves)!
+  --
+  -- This ultimately seems like the better of two things to do, but note that we lose actual
+  -- information doing this: we can't reconstruct it hierarchically.
+  , lastStatusModified :: UTCTime
+  -- ^ Time of last update to the 'status' attribute, ignoring all other changes.
+  -- Useful to track how long we've been waiting for how long a task has been next.
+  --
+  -- SOMEDAY if we ever wanna track more, we probably have to use barbies or something.
   }
   deriving (Show, Generic)
 
@@ -133,12 +139,13 @@ unsafeDefaultAutoDates :: AttrAutoDates
 unsafeDefaultAutoDates = initAutoDates (unsafePerformIO $ getCurrentTime)
 
 -- SOMEDAY I'm sure there's some smart anti-boilerplate thing that would do this for us. (uniplate or so?!)
-mapAttrAutoDates2 :: (UTCTime -> UTCTime -> UTCTime) -> AttrAutoDates -> AttrAutoDates -> AttrAutoDates
+mapAttrAutoDates2 ::
+  (UTCTime -> UTCTime -> UTCTime) -> AttrAutoDates -> AttrAutoDates -> AttrAutoDates
 mapAttrAutoDates2 f ad1 ad2 =
   AttrAutoDates
-    { created = (f `on` created) ad1 ad2,
-      lastModified = (f `on` lastModified) ad1 ad2,
-      lastStatusModified = (f `on` lastStatusModified) ad1 ad2
+    { created = (f `on` created) ad1 ad2
+    , lastModified = (f `on` lastModified) ad1 ad2
+    , lastStatusModified = (f `on` lastStatusModified) ad1 ad2
     }
 
 -- ** Master Attr structure
@@ -147,10 +154,10 @@ mapAttrAutoDates2 f ad1 ad2 =
 --
 -- SOMEDAY should use Text instead of String.
 data Attr = Attr
-  { name :: String,
-    status :: Status,
-    dates :: AttrDates,
-    autoDates :: AttrAutoDates
+  { name :: String
+  , status :: Status
+  , dates :: AttrDates
+  , autoDates :: AttrAutoDates
   }
   deriving (Show, Generic)
 
@@ -229,27 +236,27 @@ setLastStatusModified now = autoDatesL %~ ((lastModifiedL .~ now) . (lastStatusM
 
 -- | Derived properties. These are *not* saved but recomputed live as needed.
 data DerivedAttr = DerivedAttr
-  { -- | Actionability of the most actionable child. None means either None or 'no children'
-    -- TODO is this a problem? If so, maybe make a custom data structure or reorganize somehow.
-    -- SOMEDAY include this node so daChildActionability ~ glActionability, unless we need this for some reason. (e.g. to isolate blockers??)
-    daChildActionability :: Status,
-    -- | Point-wise earliest autodates of the children and including this node.
-    --
-    -- NB This is probably not very useful, except for "age" metrics, maybe.
-    --
-    -- SOMEDAY Inconsistent with daChildActionability, this *includes* the current node.
-    daEarliestAutodates :: AttrAutoDates,
-    -- | Point-wise latest autodates of the children and including this node.
-    daLatestAutodates :: AttrAutoDates,
-    -- | Point-wise earliest dates of the children and including this node.
-    daEarliestDates :: AttrDates,
-    -- | Point-wise latest dates of the children and including this node.
-    --
-    -- NB This is probably not very useful.
-    daLatestDates :: AttrDates,
-    -- | Point-wise earliest dates coming from the *parent* and including this node. This is the
-    -- correct thing if you want to know, e.g., the deadline of this node if it's under a project.
-    daImpliedDates :: AttrDates
+  { daChildActionability :: Status
+  -- ^ Actionability of the most actionable child. None means either None or 'no children'
+  -- TODO is this a problem? If so, maybe make a custom data structure or reorganize somehow.
+  -- SOMEDAY include this node so daChildActionability ~ glActionability, unless we need this for some reason. (e.g. to isolate blockers??)
+  , daEarliestAutodates :: AttrAutoDates
+  -- ^ Point-wise earliest autodates of the children and including this node.
+  --
+  -- NB This is probably not very useful, except for "age" metrics, maybe.
+  --
+  -- SOMEDAY Inconsistent with daChildActionability, this *includes* the current node.
+  , daLatestAutodates :: AttrAutoDates
+  -- ^ Point-wise latest autodates of the children and including this node.
+  , daEarliestDates :: AttrDates
+  -- ^ Point-wise earliest dates of the children and including this node.
+  , daLatestDates :: AttrDates
+  -- ^ Point-wise latest dates of the children and including this node.
+  --
+  -- NB This is probably not very useful.
+  , daImpliedDates :: AttrDates
+  -- ^ Point-wise earliest dates coming from the *parent* and including this node. This is the
+  -- correct thing if you want to know, e.g., the deadline of this node if it's under a project.
   }
   deriving (Show)
 
@@ -257,12 +264,12 @@ data DerivedAttr = DerivedAttr
 emptyDerivedAttr :: Attr -> DerivedAttr
 emptyDerivedAttr attr =
   DerivedAttr
-    { daChildActionability = None,
-      daEarliestAutodates = autoDates attr,
-      daLatestAutodates = autoDates attr,
-      daEarliestDates = dates attr,
-      daLatestDates = dates attr,
-      daImpliedDates = dates attr
+    { daChildActionability = None
+    , daEarliestAutodates = autoDates attr
+    , daLatestAutodates = autoDates attr
+    , daEarliestDates = dates attr
+    , daLatestDates = dates attr
+    , daImpliedDates = dates attr
     }
 
 -- | Label (i.e., content) of an element in the global tree of items in memory
@@ -283,10 +290,10 @@ glActionability (attr, dattr) = case (status attr, daChildActionability dattr) o
 
 -- | Derived properties at the local (per-subtree / per-view) level
 data LocalDerivedAttr = LocalDerivedAttr
-  { -- | Actionability of the parent, derived downwards
-    --
-    -- SOMEDAY Replace this by what's llActionability right now.
-    ldParentActionability :: Status
+  { ldParentActionability :: Status
+  -- ^ Actionability of the parent, derived downwards
+  --
+  -- SOMEDAY Replace this by what's llActionability right now.
   }
   deriving (Show)
 

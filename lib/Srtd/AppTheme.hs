@@ -23,18 +23,18 @@ import Toml.Schema
 -- format that can be understood by Brick.
 
 data ThemeFile = ThemeFile
-  { palette :: Map Text Text,
-    theme :: Map Text MyAttr,
-    defaultAttr :: MyAttr
+  { palette :: Map Text Text
+  , theme :: Map Text MyAttr
+  , defaultAttr :: MyAttr
   }
   deriving (Show, Generic)
   deriving (FromValue) via GenericTomlTable ThemeFile
 
 data MyAttr = MyAttr
   -- SOMEDAY currently, one can only set one style, though multiple would in principle be supported (e.g. bold-italic)
-  { style :: Maybe Text,
-    fg :: Maybe Text,
-    bg :: Maybe Text
+  { style :: Maybe Text
+  , fg :: Maybe Text
+  , bg :: Maybe Text
   }
   deriving (Show, Generic)
   deriving (FromValue) via GenericTomlTable MyAttr
@@ -60,14 +60,14 @@ type Palette = Map Text Color
 -- Copied from Brick.Themes
 allStyles :: [(Text, Style)]
 allStyles =
-  [ ("standout", standout),
-    ("underline", underline),
-    ("strikethrough", strikethrough),
-    ("reversevideo", reverseVideo),
-    ("blink", blink),
-    ("dim", dim),
-    ("bold", bold),
-    ("italic", italic)
+  [ ("standout", standout)
+  , ("underline", underline)
+  , ("strikethrough", strikethrough)
+  , ("reversevideo", reverseVideo)
+  , ("blink", blink)
+  , ("dim", dim)
+  , ("bold", bold)
+  , ("italic", italic)
   ]
 
 parseStyle :: Text -> Either Text Style

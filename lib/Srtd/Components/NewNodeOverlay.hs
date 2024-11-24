@@ -29,10 +29,10 @@ import Srtd.Keymap (KeyDesc (..))
 type Callback = String -> AppContext -> IO EID
 
 data NewNodeOverlay = NewNodeOverlay
-  { _nnEditor :: Editor String AppResourceName,
-    -- TODO looks way too general tbh.
-    _nnCallback :: Callback,
-    _nnTitle :: Text
+  { _nnEditor :: Editor String AppResourceName
+  , -- TODO looks way too general tbh.
+    _nnCallback :: Callback
+  , _nnTitle :: Text
   }
 
 makeLenses ''NewNodeOverlay

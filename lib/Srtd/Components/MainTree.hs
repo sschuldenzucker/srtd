@@ -31,7 +31,13 @@ import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
 import Srtd.Component
-import Srtd.Components.Attr (mostUrgentDateAttr, renderMostUrgentDate, renderMostUrgentDateMaybe, renderPastDate, renderStatus)
+import Srtd.Components.Attr (
+  mostUrgentDateAttr,
+  renderMostUrgentDate,
+  renderMostUrgentDateMaybe,
+  renderPastDate,
+  renderStatus,
+ )
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.TestOverlay (newTestOverlay)
@@ -52,17 +58,17 @@ import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 type MyList = L.List AppResourceName (Int, EID, LocalLabel)
 
 data MainTree = MainTree
-  { mtRoot :: EID,
-    mtFilters :: CList.CList Filter,
-    mtSubtree :: Subtree,
-    mtList :: MyList,
-    -- | Top-level resource name for this component. We can assign anything nested below (or "above") it.
-    mtResourceName :: AppResourceName,
-    mtZonedTime :: ZonedTime,
-    mtKeymap :: KeymapZipper (AppContext -> EventM AppResourceName MainTree ()),
-    -- | Whether or not to show the details view. This is not implemented as a full overlay
-    -- component for simplicity.
-    mtShowDetails :: Bool
+  { mtRoot :: EID
+  , mtFilters :: CList.CList Filter
+  , mtSubtree :: Subtree
+  , mtList :: MyList
+  , mtResourceName :: AppResourceName
+  -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
+  , mtZonedTime :: ZonedTime
+  , mtKeymap :: KeymapZipper (AppContext -> EventM AppResourceName MainTree ())
+  , mtShowDetails :: Bool
+  -- ^ Whether or not to show the details view. This is not implemented as a full overlay
+  -- component for simplicity.
   }
   deriving (Show)
 
@@ -75,19 +81,19 @@ mtFilter = fromJust . CList.focus . mtFilters
 -- The first one is default selected.
 defaultFilters :: [Filter]
 defaultFilters =
-  [ f_hide_completed,
-    f_identity
+  [ f_hide_completed
+  , f_identity
   ]
 
 rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
 rootKeymap =
   kmMake
     "Tree View"
-    [ kmLeaf (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur insAfter,
-      kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore,
-      kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild,
-      kmLeaf (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild,
-      ( kmLeaf (bind 'e') "Edit name" $ \ctx -> do
+    [ kmLeaf (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur insAfter
+    , kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore
+    , kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild
+    , kmLeaf (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild
+    , ( kmLeaf (bind 'e') "Edit name" $ \ctx -> do
           state <- get
           case mtCurWithAttr state of
             Just (cur, ((curAttr, _), _)) -> do
@@ -97,44 +103,48 @@ rootKeymap =
                     modifyModelOnServer acModelServer' (modifyAttrByEID cur f)
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
                     return cur
-              liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName "Edit Item")
+              liftIO $
+                writeBChan (acAppChan ctx) $
+                  PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName "Edit Item")
             Nothing -> return ()
-      ),
-      ( kmLeaf (ctrl 't') "Open test overlay" $ \ctx -> do
+      )
+    , ( kmLeaf (ctrl 't') "Open test overlay" $ \ctx -> do
           liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent newTestOverlay)
-      ),
-      ( kmLeaf (bind 'T') "New tab" $ \ctx -> do
+      )
+    , ( kmLeaf (bind 'T') "New tab" $ \ctx -> do
           state <- get
-          liftIO $ writeBChan (acAppChan ctx) $ PushTab (\rname -> SomeBrickComponent $ setResourceName rname state)
-      ),
-      ( kmLeaf (bind 'Q') "Close tab" $ \ctx ->
+          liftIO $
+            writeBChan (acAppChan ctx) $
+              PushTab (\rname -> SomeBrickComponent $ setResourceName rname state)
+      )
+    , ( kmLeaf (bind 'Q') "Close tab" $ \ctx ->
           liftIO $ writeBChan (acAppChan ctx) $ PopTab
-      ),
-      ( kmLeaf (bind ']') "Next tab" $ \ctx ->
+      )
+    , ( kmLeaf (bind ']') "Next tab" $ \ctx ->
           liftIO $ writeBChan (acAppChan ctx) $ NextTab
-      ),
-      ( kmLeaf (bind '[') "Prev tab" $ \ctx ->
+      )
+    , ( kmLeaf (bind '[') "Prev tab" $ \ctx ->
           liftIO $ writeBChan (acAppChan ctx) $ PrevTab
-      ),
-      ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $ moveCurRelative goNextSibling insAfter
-      ),
-      ( kmLeaf (binding (KChar 'k') [MMeta]) "Move subtree up same level" $ moveCurRelative goPrevSibling insBefore
-      ),
-      ( kmLeaf (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter
-      ),
-      ( kmLeaf (bind '>') "Move subtree last child of previous" $ moveCurRelative goPrevSibling insLastChild
-      ),
-      -- (kmSub (bind 'm') moveSingleModeKeymap),
-      (kmSub (bind 'M') moveSubtreeModeKeymap),
-      (kmSub (bind 'D') deleteKeymap),
-      ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
+      )
+    , ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $
+          moveCurRelative goNextSibling insAfter
+      )
+    , ( kmLeaf (binding (KChar 'k') [MMeta]) "Move subtree up same level" $
+          moveCurRelative goPrevSibling insBefore
+      )
+    , (kmLeaf (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter)
+    , (kmLeaf (bind '>') "Move subtree last child of previous" $ moveCurRelative goPrevSibling insLastChild)
+    , -- (kmSub (bind 'm') moveSingleModeKeymap),
+      (kmSub (bind 'M') moveSubtreeModeKeymap)
+    , (kmSub (bind 'D') deleteKeymap)
+    , ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
           rname <- mtResourceName <$> get
           model <- liftIO $ getModel (acModelServer ctx)
           ztime <- use mtZonedTimeL
           filters <- mtFilters <$> get
           put $ makeWithFilters cur filters model ztime rname
-      ),
-      ( kmLeaf (binding KBS []) "De-hoist" $ \ctx -> do
+      )
+    , ( kmLeaf (binding KBS []) "De-hoist" $ \ctx -> do
           s <- get
           case s ^. mtSubtreeL . breadcrumbsL of
             [] -> return ()
@@ -144,19 +154,18 @@ rootKeymap =
               ztime <- use mtZonedTimeL
               filters <- mtFilters <$> get
               put $ makeWithFilters parent filters model ztime rname & mtListL %~ scrollListToEID (mtRoot s)
-      ),
-      (kmSub (bind ',') sortCurKeymap),
-      (kmSub (bind ';') sortRootKeymap),
-      (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur goParent))),
-      (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur goNextSibling))),
-      (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur goPrevSibling))),
-      (kmSub (bind 't') setStatusKeymap),
-      (kmSub (bind 'o') openExternallyKeymap),
-      (kmLeaf (bind '.') "Next filter" cycleNextFilter),
-      (kmSub (bind 'd') editDateKeymap),
-      ( kmLeaf (bind ' ') "Toggle details overlay" (const $ mtShowDetailsL %= not)
-      ),
-      (kmLeaf (bind 'q') "Quit" (const halt))
+      )
+    , (kmSub (bind ',') sortCurKeymap)
+    , (kmSub (bind ';') sortRootKeymap)
+    , (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur goParent)))
+    , (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur goNextSibling)))
+    , (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur goPrevSibling)))
+    , (kmSub (bind 't') setStatusKeymap)
+    , (kmSub (bind 'o') openExternallyKeymap)
+    , (kmLeaf (bind '.') "Next filter" cycleNextFilter)
+    , (kmSub (bind 'd') editDateKeymap)
+    , (kmLeaf (bind ' ') "Toggle details overlay" (const $ mtShowDetailsL %= not))
+    , (kmLeaf (bind 'q') "Quit" (const halt))
     ]
 
 deleteKeymap :: Keymap (AppContext -> EventM n MainTree ())
@@ -172,16 +181,16 @@ setStatusKeymap :: Keymap (AppContext -> EventM n MainTree ())
 setStatusKeymap =
   kmMake
     "Set status"
-    [ kmLeaf (bind ' ') "None" (setStatus None),
-      kmLeaf (bind 'n') "Next" (setStatus $ Next),
-      kmLeaf (bind 'w') "Waiting" (setStatus $ Waiting),
-      kmLeaf (bind 'p') "Project" (setStatus $ Project),
-      kmLeaf (bind 'l') "Later" (setStatus $ Later),
-      kmLeaf (bind 'i') "WIP" (setStatus $ WIP),
-      kmLeaf (binding KEnter []) "Done" (setStatus $ Done),
-      kmLeaf (bind 's') "Someday" (setStatus $ Someday),
-      kmLeaf (bind 'o') "Open" (setStatus $ Open),
-      kmLeaf (bind 't') "Touch" touchLastStatusModified
+    [ kmLeaf (bind ' ') "None" (setStatus None)
+    , kmLeaf (bind 'n') "Next" (setStatus $ Next)
+    , kmLeaf (bind 'w') "Waiting" (setStatus $ Waiting)
+    , kmLeaf (bind 'p') "Project" (setStatus $ Project)
+    , kmLeaf (bind 'l') "Later" (setStatus $ Later)
+    , kmLeaf (bind 'i') "WIP" (setStatus $ WIP)
+    , kmLeaf (binding KEnter []) "Done" (setStatus $ Done)
+    , kmLeaf (bind 's') "Someday" (setStatus $ Someday)
+    , kmLeaf (bind 'o') "Open" (setStatus $ Open)
+    , kmLeaf (bind 't') "Touch" touchLastStatusModified
     ]
 
 editDateKeymap :: Keymap (AppContext -> EventM n MainTree ())
@@ -189,13 +198,15 @@ editDateKeymap =
   kmMake
     "Edit date"
     $ map mkDateEditShortcut
-    $ [ (bind 'd', "Deadline", datesL . deadlineL),
-        (bind 'g', "Goalline", datesL . goallineL),
-        (bind 's', "Scheduled", datesL . scheduledL),
-        (bind 'r', "Remind", datesL . remindL)
+    $ [ (bind 'd', "Deadline", datesL . deadlineL)
+      , (bind 'g', "Goalline", datesL . goallineL)
+      , (bind 's', "Scheduled", datesL . scheduledL)
+      , (bind 'r', "Remind", datesL . remindL)
       ]
   where
-    mkDateEditShortcut :: (Binding, Text, Lens' Attr (Maybe DateOrTime)) -> (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
+    mkDateEditShortcut ::
+      (Binding, Text, Lens' Attr (Maybe DateOrTime)) ->
+      (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
     mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ctx ->
       let tz = zonedTimeZone $ acZonedTime ctx
           cb date' ctx' = do
@@ -224,26 +235,17 @@ moveSubtreeModeKeymap =
         --     --   modifyModel (moveSubtreeBelow' root cur toAfterPrevPreorder)
         --     moveCurRelative goPrevPreorder insAfter
         -- ),
-        ( kmLeaf (bind 'j') "Down" $ moveCurRelativeDynamic dtoNextPreorder
-        ),
-        ( kmLeaf (bind 'k') "Up" $ moveCurRelativeDynamic dtoPrevPreorder
-        ),
-        ( kmLeaf (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter
-        ),
-        ( kmLeaf (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore
-        ),
-        ( kmLeaf (bind 'h') "Before parent" $ moveCurRelative goParent insBefore
-        ),
-        ( kmLeaf (bind '<') "After parent" $ moveCurRelative goParent insAfter
-        ),
-        ( kmLeaf (bind 'L') "Last child of next" $ moveCurRelative goNextSibling insLastChild
-        ),
-        ( kmLeaf (bind 'l') "First child of next" $ moveCurRelative goNextSibling insFirstChild
-        ),
-        ( kmLeaf (bind '>') "Last child of previous" $ moveCurRelative goPrevSibling insLastChild
-        )
-        -- NB 'H' is not used and that's fine IMHO. I'm not sure why but these bindings were the most intuitive.
-        -- SOMEDAY hierarchy-breaking '<' (dedent)
+        (kmLeaf (bind 'j') "Down" $ moveCurRelativeDynamic dtoNextPreorder)
+      , (kmLeaf (bind 'k') "Up" $ moveCurRelativeDynamic dtoPrevPreorder)
+      , (kmLeaf (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter)
+      , (kmLeaf (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore)
+      , (kmLeaf (bind 'h') "Before parent" $ moveCurRelative goParent insBefore)
+      , (kmLeaf (bind '<') "After parent" $ moveCurRelative goParent insAfter)
+      , (kmLeaf (bind 'L') "Last child of next" $ moveCurRelative goNextSibling insLastChild)
+      , (kmLeaf (bind 'l') "First child of next" $ moveCurRelative goNextSibling insFirstChild)
+      , (kmLeaf (bind '>') "Last child of previous" $ moveCurRelative goPrevSibling insLastChild)
+      -- NB 'H' is not used and that's fine IMHO. I'm not sure why but these bindings were the most intuitive.
+      -- SOMEDAY hierarchy-breaking '<' (dedent)
       ]
 
 openExternallyKeymap :: Keymap (AppContext -> EventM n MainTree ())
@@ -252,11 +254,11 @@ openExternallyKeymap =
     "Open externally"
     [ ( kmLeaf (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
           whenJust (findFirstURL name) $ \url -> liftIO (openURL url)
-      ),
-      ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
+      )
+    , ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
           liftIO $ setClipboard name
-      ),
-      ( kmLeaf (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
+      )
+    , ( kmLeaf (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
           whenJust (findFirstHexCode name) $ \code -> liftIO (setClipboard code)
       )
     ]
@@ -317,7 +319,9 @@ pushInsertNewItemRelToCur go ctx = do
         uuid <- nextRandom
         modifyModelOnServer (acModelServer ctx') (insertNewNormalWithNewId uuid attr tgt' go')
         return $ EIDNormal uuid
-  liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . newNodeOverlay cb "" "New Item")
+  liftIO $
+    writeBChan (acAppChan ctx) $
+      PushOverlay (SomeBrickComponent . newNodeOverlay cb "" "New Item")
 
 setStatus :: Status -> AppContext -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
@@ -343,14 +347,14 @@ make root = makeWithFilters root (CList.fromList defaultFilters)
 makeWithFilters :: EID -> CList.CList Filter -> Model -> ZonedTime -> AppResourceName -> MainTree
 makeWithFilters root filters model ztime rname =
   MainTree
-    { mtRoot = root,
-      mtFilters = filters,
-      mtSubtree = subtree,
-      mtList = list,
-      mtResourceName = rname,
-      mtZonedTime = ztime,
-      mtKeymap = keymapToZipper rootKeymap,
-      mtShowDetails = False
+    { mtRoot = root
+    , mtFilters = filters
+    , mtSubtree = subtree
+    , mtList = list
+    , mtResourceName = rname
+    , mtZonedTime = ztime
+    , mtKeymap = keymapToZipper rootKeymap
+    , mtShowDetails = False
     }
   where
     subtree = filterRun (fromJust $ CList.focus filters) root model
@@ -367,22 +371,28 @@ withSelAttr True = withDefAttr selectedItemRowAttr
 withSelAttr False = id
 
 renderRow :: ZonedTime -> Bool -> (Int, a, LocalLabel) -> Widget n
-renderRow ztime sel (lvl, _, llabel@((Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}, _), _)) =
-  withSelAttr sel $
-    hBox $
-      -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
-      -- alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
-      -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
-      -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
-      -- I think it's so we don't have two greedy widgets or something.
-      [indentW, statusW, str " ", padRight Max nameW, str " ", dateW, str " ", lastStatusModifiedW]
-  where
-    -- The first level doesn't take indent b/c deadlines are enough rn.
-    indentW = str (concat (replicate (lvl + 1) "    "))
-    dateW = renderMostUrgentDate ztime sel dates
-    lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
-    statusW = renderStatus sel status (llActionability llabel)
-    nameW = strTruncateAvailable name
+renderRow
+  ztime
+  sel
+  ( lvl
+    , _
+    , llabel@((Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}, _), _)
+    ) =
+    withSelAttr sel $
+      hBox $
+        -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
+        -- alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
+        -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
+        -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
+        -- I think it's so we don't have two greedy widgets or something.
+        [indentW, statusW, str " ", padRight Max nameW, str " ", dateW, str " ", lastStatusModifiedW]
+    where
+      -- The first level doesn't take indent b/c deadlines are enough rn.
+      indentW = str (concat (replicate (lvl + 1) "    "))
+      dateW = renderMostUrgentDate ztime sel dates
+      lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
+      statusW = renderStatus sel status (llActionability llabel)
+      nameW = strTruncateAvailable name
 
 -- SOMEDAY also deadline for the root (if any)?
 renderRoot :: ZonedTime -> Label -> [IdLabel] -> Widget n
@@ -397,8 +407,8 @@ renderRoot ztime glabel@(rootAttr, _) breadcrumbs =
        in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
     mkBreadcrumbW attr =
       hBox
-        [ str (name attr),
-          maybe emptyWidget (wrapBreadcrumbWidget attr) (renderMostUrgentDateMaybe ztime False (dates attr))
+        [ str (name attr)
+        , maybe emptyWidget (wrapBreadcrumbWidget attr) (renderMostUrgentDateMaybe ztime False (dates attr))
         ]
 
 -- Currently we only render the currently selected filter.
@@ -412,10 +422,10 @@ renderItemDetails ztime (eid, llabel) =
   padLeftRight 1 $
     withDefAttr (attrName "item_details") $
       vBox
-        [ padBottom (Pad 1) topBox,
-          -- TODO try a vertical line instead of padding. There should be some example in brick
-          padBottom (Pad 1) $ hBox [padRight (Pad 5) leftBox, rightBox],
-          botBox
+        [ padBottom (Pad 1) topBox
+        , -- TODO try a vertical line instead of padding. There should be some example in brick
+          padBottom (Pad 1) $ hBox [padRight (Pad 5) leftBox, rightBox]
+        , botBox
         ]
   where
     (label@(attr, dattr), ldattr) = llabel
@@ -441,14 +451,14 @@ renderItemDetails ztime (eid, llabel) =
       tbl $
         -- SOMEDAY we may wanna make this not one big table but separate the bottom part out into
         -- another vBox element below the rest. Looks a bit strange re reserved space rn.
-        [ sectionHeaderRow "Status",
-          [str "Status", str (show $ status attr)],
-          [str "Actionability", str (show $ llActionability llabel)],
-          [str "Global Actionability", str (show $ glActionability label)],
-          [str "Child Actionability", str (show $ daChildActionability dattr)],
-          [str "Parent Actionability", str (show $ ldParentActionability ldattr)],
-          spacerRow,
-          sectionHeaderRow "Metadata"
+        [ sectionHeaderRow "Status"
+        , [str "Status", str (show $ status attr)]
+        , [str "Actionability", str (show $ llActionability llabel)]
+        , [str "Global Actionability", str (show $ glActionability label)]
+        , [str "Child Actionability", str (show $ daChildActionability dattr)]
+        , [str "Parent Actionability", str (show $ ldParentActionability ldattr)]
+        , spacerRow
+        , sectionHeaderRow "Metadata"
         ]
           ++ mkAutodatesCells "" (autoDates attr)
           ++ [spacerRow]
@@ -459,12 +469,12 @@ renderItemDetails ztime (eid, llabel) =
       tbl $
         [sectionHeaderRow "Dates"]
           ++ mkDatesCells "" (dates attr)
-          ++ [ spacerRow,
-               sectionHeaderRow "Implied Dates"
+          ++ [ spacerRow
+             , sectionHeaderRow "Implied Dates"
              ]
           ++ mkDatesCells "" (daImpliedDates dattr)
-          ++ [ spacerRow,
-               sectionHeaderRow "Descendant Dates"
+          ++ [ spacerRow
+             , sectionHeaderRow "Descendant Dates"
              ]
           ++ mkDatesCells "Earliest " (daEarliestDates dattr)
           ++ [spacerRow]
@@ -472,15 +482,15 @@ renderItemDetails ztime (eid, llabel) =
     sectionHeaderRow s = [withAttr sectionHeaderAttr (str s), emptyWidget]
     spacerRow = [str " ", emptyWidget]
     mkAutodatesCells prefix ad =
-      [ [str (prefix ++ "Created"), renderUTCTime (created ad)],
-        [str (prefix ++ "Modified"), renderUTCTime (lastModified ad)],
-        [str (prefix ++ "Status Modified"), renderUTCTime (lastStatusModified ad)]
+      [ [str (prefix ++ "Created"), renderUTCTime (created ad)]
+      , [str (prefix ++ "Modified"), renderUTCTime (lastModified ad)]
+      , [str (prefix ++ "Status Modified"), renderUTCTime (lastStatusModified ad)]
       ]
     mkDatesCells prefix ds =
-      [ [str (prefix ++ "Deadline"), renderMDate (deadline ds)],
-        [str (prefix ++ "Goalline"), renderMDate (goalline ds)],
-        [str (prefix ++ "Scheduled"), renderMDate (scheduled ds)],
-        [str (prefix ++ "Remind"), renderMDate (remind ds)]
+      [ [str (prefix ++ "Deadline"), renderMDate (deadline ds)]
+      , [str (prefix ++ "Goalline"), renderMDate (goalline ds)]
+      , [str (prefix ++ "Scheduled"), renderMDate (scheduled ds)]
+      , [str (prefix ++ "Remind"), renderMDate (remind ds)]
       ]
     renderMDate :: Maybe DateOrTime -> Widget n
     -- For some reason, emptyWidget doesn't work with `setWidth`.
@@ -500,15 +510,22 @@ renderItemDetails ztime (eid, llabel) =
     sectionHeaderAttr = attrName "section_header"
 
 instance BrickComponent MainTree where
-  renderComponentWithOverlays s@MainTree {mtList, mtSubtree = Subtree {rootLabel, breadcrumbs}, mtFilters, mtZonedTime, mtShowDetails} =
-    (box, ovls)
-    where
-      -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
-      headrow = renderRoot mtZonedTime rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
-      box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
-      ovls = case (mtShowDetails, mtCurWithAttr s) of
-        (True, Just illabel) -> [("Item Details", renderItemDetails mtZonedTime illabel)]
-        _ -> []
+  renderComponentWithOverlays
+    s@MainTree
+      { mtList
+      , mtSubtree = Subtree {rootLabel, breadcrumbs}
+      , mtFilters
+      , mtZonedTime
+      , mtShowDetails
+      } =
+      (box, ovls)
+      where
+        -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
+        headrow = renderRoot mtZonedTime rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
+        box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
+        ovls = case (mtShowDetails, mtCurWithAttr s) of
+          (True, Just illabel) -> [("Item Details", renderItemDetails mtZonedTime illabel)]
+          _ -> []
 
   handleEvent ctx ev =
     -- LATER when filters become more fancy and filter something wrt. the current time, this *may*
@@ -596,7 +613,8 @@ withCur go ctx = do
     Just cur -> go cur ctx
     Nothing -> return ()
 
-withCurWithAttr :: (LocalIdLabel -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
+withCurWithAttr ::
+  (LocalIdLabel -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
 withCurWithAttr go ctx = do
   s <- get
   case mtCurWithAttr s of
@@ -620,13 +638,15 @@ withRoot go ctx = do
 --
 -- SOMEDAY this can be generalized by replacing the first Label by whatever label type we ultimately use
 -- here. The forest just has to be labeled (EID, a) for some a. See `moveSubtreeRelFromForest`.
-moveCurRelative :: GoWalker LocalIdLabel -> InsertWalker IdLabel -> AppContext -> EventM n MainTree ()
+moveCurRelative ::
+  GoWalker LocalIdLabel -> InsertWalker IdLabel -> AppContext -> EventM n MainTree ()
 moveCurRelative go ins = withCur $ \cur ctx -> do
   forest <- use $ mtSubtreeL . stForestL
   modifyModel (moveSubtreeRelFromForest cur go ins forest) ctx
 
 -- SOMEDAY ^^ Same applies. Also, these could all be unified.
-moveCurRelativeDynamic :: DynamicMoveWalker LocalIdLabel IdLabel -> AppContext -> EventM n MainTree ()
+moveCurRelativeDynamic ::
+  DynamicMoveWalker LocalIdLabel IdLabel -> AppContext -> EventM n MainTree ()
 moveCurRelativeDynamic dgo = withCur $ \cur ctx -> do
   forest <- use $ mtSubtreeL . stForestL
   modifyModel (moveSubtreeRelFromForestDynamic cur dgo forest) ctx
@@ -634,7 +654,8 @@ moveCurRelativeDynamic dgo = withCur $ \cur ctx -> do
 modifyModel :: ((?mue :: ModelUpdateEnv) => Model -> Model) -> AppContext -> EventM n MainTree ()
 modifyModel f = modifyModelWithCtx (const f)
 
-modifyModelWithCtx :: ((?mue :: ModelUpdateEnv) => AppContext -> Model -> Model) -> AppContext -> EventM n MainTree ()
+modifyModelWithCtx ::
+  ((?mue :: ModelUpdateEnv) => AppContext -> Model -> Model) -> AppContext -> EventM n MainTree ()
 modifyModelWithCtx f ctx@(AppContext {acModelServer}) = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
@@ -683,6 +704,8 @@ mtGoSubtreeFromCur go mt = fromMaybe mt mres
 setResourceName :: AppResourceName -> MainTree -> MainTree
 setResourceName rname state =
   state
-    { mtList = resetListPosition (mtList state) $ forestToBrickList (MainListFor rname) (stForest . mtSubtree $ state),
-      mtResourceName = rname
+    { mtList =
+        resetListPosition (mtList state) $
+          forestToBrickList (MainListFor rname) (stForest . mtSubtree $ state)
+    , mtResourceName = rname
     }

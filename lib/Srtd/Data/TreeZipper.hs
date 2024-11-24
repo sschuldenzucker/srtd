@@ -20,7 +20,15 @@ import Srtd.Todo
 -- SOMEDAY Delete this? Looks like this always gets us in trouble. And I don't think we're using it.
 type MoveWalker a = TreePos Empty a -> Maybe (TreePos Empty a)
 
-toNextSibling, toPrevSibling, toBeforeParent, toAfterParent, toFirstChildOfNext, toFirstChildOfPrev, toLastChildOfNext, toLastChildOfPrev :: MoveWalker a
+toNextSibling
+  , toPrevSibling
+  , toBeforeParent
+  , toAfterParent
+  , toFirstChildOfNext
+  , toFirstChildOfPrev
+  , toLastChildOfNext
+  , toLastChildOfPrev ::
+    MoveWalker a
 toNextSibling = Z.next
 toPrevSibling = Z.prev
 toBeforeParent = fmap Z.prevSpace . Z.parent
@@ -63,7 +71,13 @@ type GoWalker a = TreePos Full a -> Maybe (TreePos Full a)
 
 -- The following are a trivial abstraction and could be eliminated, but we keep them for now to
 -- abstract the tree implementation away.
-goNextSibling, goPrevSibling, goParent, goFirstChild, goFirstChildOfNext, goLastChildOfPrev :: GoWalker a
+goNextSibling
+  , goPrevSibling
+  , goParent
+  , goFirstChild
+  , goFirstChildOfNext
+  , goLastChildOfPrev ::
+    GoWalker a
 goNextSibling = Z.next
 goPrevSibling = Z.prev
 goParent = Z.parent

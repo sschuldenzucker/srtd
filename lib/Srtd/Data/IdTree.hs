@@ -73,7 +73,8 @@ filterIdForestWithIds p = withIdForest filter'
     filter' forest = [Node l (filter' children) | Node l children <- forest, uncurry p l]
 
 -- | Modify the forest below the given target ID by a function. No-op if the ID is not found.
-onForestBelowId :: (Eq id) => id -> (Forest (id, a) -> Forest (id, a)) -> IdForest id a -> IdForest id a
+onForestBelowId ::
+  (Eq id) => id -> (Forest (id, a) -> Forest (id, a)) -> IdForest id a -> IdForest id a
 -- This is probably a bit inefficient but it was there so w/e
 -- SOMEDAY it's actually an error if root is not found.
 onForestBelowId root f idforest@(IdForest forest) = case zFindId root . Z.fromForest $ forest of
@@ -95,7 +96,8 @@ transformIdForestBottomUp f = withIdForest $ foldForest _go
        in Node (i, x') cs
 
 -- | Specialization of 'transformTreeDownUp' that preserves the IDs. See there.
-transformIdForestDownUp :: (Maybe u -> attr -> u) -> (u -> attr -> [attr'] -> attr') -> IdForest id attr -> IdForest id attr'
+transformIdForestDownUp ::
+  (Maybe u -> attr -> u) -> (u -> attr -> [attr'] -> attr') -> IdForest id attr -> IdForest id attr'
 transformIdForestDownUp fdown gmake = withIdForest $ transformForestDownUp _fdown _gmake
   where
     _fdown crumbs (_i, x) = fdown crumbs x
@@ -115,7 +117,8 @@ transformIdForestDownUpRec f = withIdForest $ transformForestDownUpRec _f
 
 -- * Inserting nodes
 
-forestInsertLabelRelToId :: (Eq id) => id -> InsertWalker (id, a) -> id -> a -> IdForest id a -> IdForest id a
+forestInsertLabelRelToId ::
+  (Eq id) => id -> InsertWalker (id, a) -> id -> a -> IdForest id a -> IdForest id a
 forestInsertLabelRelToId tgt go i label forest = fromMaybe forest $ do
   tgtLoc <- zFindId tgt forestLoc
   insLoc <- go tgtLoc
@@ -131,7 +134,8 @@ forestInsertLabelRelToId tgt go i label forest = fromMaybe forest $ do
 -- `anchor` cannot be `tgt` or one of its descendants. This will silently fail as a no-op.
 --
 -- SOMEDAY Instead of silent failure, it's actually an *error* if any of the nodes are not found (except maybe in `go`)
-forestMoveSubtreeIdRelToAnchorId :: (Eq id) => id -> id -> InsertWalker (id, a) -> IdForest id a -> IdForest id a
+forestMoveSubtreeIdRelToAnchorId ::
+  (Eq id) => id -> id -> InsertWalker (id, a) -> IdForest id a -> IdForest id a
 forestMoveSubtreeIdRelToAnchorId tgt anchor go forest = fromMaybe forest $ do
   tgtLoc <- zFindId tgt forestLoc
   let tgtTree = Z.tree tgtLoc
@@ -154,7 +158,9 @@ forestMoveSubtreeIdRelToAnchorId tgt anchor go forest = fromMaybe forest $ do
 -- SOMEDAY the former is actually an error. The latter is not.
 --
 -- SOMEDAY can be refactored as a special case of the Dynamic variant below.
-forestMoveSubtreeRelFromForestId :: (Eq id) => id -> GoWalker (id, a) -> InsertWalker (id, b) -> IdForest id a -> IdForest id b -> IdForest id b
+forestMoveSubtreeRelFromForestId ::
+  (Eq id) =>
+  id -> GoWalker (id, a) -> InsertWalker (id, b) -> IdForest id a -> IdForest id b -> IdForest id b
 forestMoveSubtreeRelFromForestId tgt go ins haystack forest = fromMaybe forest $ do
   tgtLoc <- zFindId tgt haystackLoc
   anchorLoc <- go tgtLoc
@@ -164,7 +170,9 @@ forestMoveSubtreeRelFromForestId tgt go ins haystack forest = fromMaybe forest $
     haystackLoc = Z.fromForest . idForest $ haystack
 
 -- | Version of 'forestMoveSubtreeRelFromForestId' where the 'InsertWalker' can be provided dynamically as part of the 'GoWalker'. This is required for more complex move operations like preorder move.
-forestMoveSubtreeRelFromForestIdDynamic :: (Eq id) => id -> DynamicMoveWalker (id, a) (id, b) -> IdForest id a -> IdForest id b -> IdForest id b
+forestMoveSubtreeRelFromForestIdDynamic ::
+  (Eq id) =>
+  id -> DynamicMoveWalker (id, a) (id, b) -> IdForest id a -> IdForest id b -> IdForest id b
 forestMoveSubtreeRelFromForestIdDynamic tgt dto haystack forest = fromMaybe forest $ do
   tgtLoc <- zFindId tgt haystackLoc
   (anchorLoc, ins) <- dto tgtLoc

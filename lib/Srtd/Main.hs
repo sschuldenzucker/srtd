@@ -45,19 +45,19 @@ import System.FilePath
 import Toml qualified
 
 data AppState = AppState
-  { asContext :: AppContext,
-    -- SOMEDAY we may wanna keep these as MainTree so we can clone. Or 'new tab' should be a shortcut of MainTree, not sure.
+  { asContext :: AppContext
+  , -- SOMEDAY we may wanna keep these as MainTree so we can clone. Or 'new tab' should be a shortcut of MainTree, not sure.
 
-    -- | We make sure that `asTabs` is never after the end and in particular that it's nonempty.
-    -- We store the resource name of the tab title (!) so we can find it again for mouse clicks.
-    -- SOMEDAY I don't think we even have to store the resource name as state. We can just use the
-    -- index in the list.
-    asTabs :: LZ.Zipper (AppResourceName, SomeBrickComponent),
-    -- | "Unique ID" for the next tab being opened, for resource names.
-    asNextTabID :: Int,
-    asOverlays :: [SomeBrickComponent],
-    asHelpAlways :: Bool,
-    asAttrMapRing :: CList.CList (String, AttrMap)
+    asTabs :: LZ.Zipper (AppResourceName, SomeBrickComponent)
+  -- ^ We make sure that `asTabs` is never after the end and in particular that it's nonempty.
+  -- We store the resource name of the tab title (!) so we can find it again for mouse clicks.
+  -- SOMEDAY I don't think we even have to store the resource name as state. We can just use the
+  -- index in the list.
+  , asNextTabID :: Int
+  -- ^ "Unique ID" for the next tab being opened, for resource names.
+  , asOverlays :: [SomeBrickComponent]
+  , asHelpAlways :: Bool
+  , asAttrMapRing :: CList.CList (String, AttrMap)
   }
 
 suffixLenses ''AppState
@@ -115,14 +115,14 @@ main = do
   ztime <- getZonedTime
   let appState =
         AppState
-          { asContext = AppContext modelServer appChan ztime,
-            asTabs =
+          { asContext = AppContext modelServer appChan ztime
+          , asTabs =
               let rname = Tab 0
-               in LZ.fromList [(TabTitleFor rname, SomeBrickComponent $ MainTree.make Vault model ztime rname)],
-            asNextTabID = 1,
-            asOverlays = [],
-            asHelpAlways = False,
-            asAttrMapRing = attrMapRing
+               in LZ.fromList [(TabTitleFor rname, SomeBrickComponent $ MainTree.make Vault model ztime rname)]
+          , asNextTabID = 1
+          , asOverlays = []
+          , asHelpAlways = False
+          , asAttrMapRing = attrMapRing
           }
 
   -- let buildVty = Graphics.Vty.CrossPlatform.mkVty Graphics.Vty.Config.defaultConfig
@@ -258,7 +258,8 @@ popTab state@AppState {asTabs} =
    in state {asTabs = asTabs''}
 
 -- not sure if this is quite right but maybe it's enough. If we're missing cursors, we should prob revise.
-myChooseCursor :: AppState -> [CursorLocation AppResourceName] -> Maybe (CursorLocation AppResourceName)
+myChooseCursor ::
+  AppState -> [CursorLocation AppResourceName] -> Maybe (CursorLocation AppResourceName)
 myChooseCursor _ = listToMaybe . reverse . filter isEditLocation . filter cursorLocationVisible
   where
     isEditLocation cloc = case cursorLocationName cloc of
@@ -281,11 +282,11 @@ myAppStartEvent = do
 app :: App AppState AppMsg AppResourceName
 app =
   App
-    { appDraw = myAppDraw,
-      appHandleEvent = myHandleEvent,
-      appStartEvent = myAppStartEvent,
-      appAttrMap = myChooseAttrMap,
-      appChooseCursor = myChooseCursor
+    { appDraw = myAppDraw
+    , appHandleEvent = myHandleEvent
+    , appStartEvent = myAppStartEvent
+    , appAttrMap = myChooseAttrMap
+    , appChooseCursor = myChooseCursor
     }
 
 -- --------------------------

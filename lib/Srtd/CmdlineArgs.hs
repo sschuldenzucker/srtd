@@ -7,8 +7,8 @@ module Srtd.CmdlineArgs where
 import Options.Applicative
 
 data Args = Args
-  { theme_name :: Maybe String,
-    -- SOMEDAY This does nothing right now.
+  { theme_name :: Maybe String
+  , -- SOMEDAY This does nothing right now.
     theme_file :: Maybe String
   }
   deriving (Show)

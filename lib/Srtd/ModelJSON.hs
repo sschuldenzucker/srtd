@@ -13,9 +13,9 @@ data Model = Model
   deriving (Generic)
 
 data Tree = Tree
-  { id :: EID,
-    attr :: Attr,
-    children :: [Tree]
+  { id :: EID
+  , attr :: Attr
+  , children :: [Tree]
   }
   deriving (Generic)
 

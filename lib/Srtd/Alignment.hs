@@ -9,12 +9,12 @@ module Srtd.Alignment where
 
 import Brick.Types
 import Brick.Widgets.Core
-import Graphics.Vty
-  ( imageHeight,
-    imageWidth,
-    translateX,
-    translateY,
-  )
+import Graphics.Vty (
+  imageHeight,
+  imageWidth,
+  translateX,
+  translateY,
+ )
 import Lens.Micro.Platform (to, (&), (.~), (^.))
 
 -- | Counterpart to hCenterLayer that aligns right.

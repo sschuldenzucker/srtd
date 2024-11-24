@@ -20,8 +20,8 @@ keymap =
   kmMake
     "Test Overlay"
     [ kmLeaf (bind 'T') "Close" $ \(AppContext {acAppChan}) -> do
-        liftIO $ writeBChan acAppChan (PopOverlay ORNone),
-      kmSub (bind 'a') stickySubmap
+        liftIO $ writeBChan acAppChan (PopOverlay ORNone)
+    , kmSub (bind 'a') stickySubmap
     ]
 
 stickySubmap :: Keymap (AppContext -> EventM n TestOverlay ())
