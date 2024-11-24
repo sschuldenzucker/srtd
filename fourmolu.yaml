@@ -62,6 +62,3 @@ fixities: []
 # Module reexports Fourmolu should know about
 reexports: []
 
-# SOMEDAY review import-grouping see https://fourmolu.github.io/config/import-grouping/
-# We could use `by-scope`.
-
