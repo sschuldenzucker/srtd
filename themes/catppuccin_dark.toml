@@ -93,6 +93,6 @@ fg = "text"
 "date.scheduled.today" = {fg = "yellow"}
 "date.scheduled.overdue" = {fg = "red"}
 
-"date.remind.today" = {fg = "blue"}
-"date.remind.overdue" = {fg = "blue"}
+"date.remind.today" = {fg = "green"}
+"date.remind.overdue" = {fg = "yellow"}
 
