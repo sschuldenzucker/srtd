@@ -51,28 +51,28 @@ mostUrgentDateLabeled (ZonedTime _ tz) =
     . sortBy (compareDateOrTime EndOfDay tz `on` lblValue)
     . catMaybeVals
     . applyDates
-  where
-    applyDates dates = map (lblValueL %~ ($ dates)) labeledDateLenses
-    catMaybeVals = catMaybes . map (traverse id)
+ where
+  applyDates dates = map (lblValueL %~ ($ dates)) labeledDateLenses
+  catMaybeVals = catMaybes . map (traverse id)
 
 renderLabeledDate :: ZonedTime -> Bool -> Labeled DateOrTime -> Widget n
 renderLabeledDate now sel ldt = withAttr (dateAttrForLabeled now sel ldt) (str label)
-  where
-    label = lblShortLabel ldt ++ " " ++ prettyRelativeMed now (lblValue ldt)
+ where
+  label = lblShortLabel ldt ++ " " ++ prettyRelativeMed now (lblValue ldt)
 
 dateAttrForLabeled :: ZonedTime -> Bool -> Labeled DateOrTime -> AttrName
 dateAttrForLabeled now sel ldt = rootattr <> kindattr <> subattr <> selattr
-  where
-    dt = lblValue ldt
-    rootattr = attrName "date"
-    kindattr = attrName . lblAttrName $ ldt
-    subattr
-      | dt `isBefore` now = attrName "overdue"
-      | dt `isTodayOf` now = attrName "today"
-      | dt `isTomorrowOf` now = attrName "tomorrow"
-      -- SOMEDAY style for next 7 days (like todoist)
-      | otherwise = mempty
-    selattr = if sel then attrName "selected" else mempty
+ where
+  dt = lblValue ldt
+  rootattr = attrName "date"
+  kindattr = attrName . lblAttrName $ ldt
+  subattr
+    | dt `isBefore` now = attrName "overdue"
+    | dt `isTodayOf` now = attrName "today"
+    | dt `isTomorrowOf` now = attrName "tomorrow"
+    -- SOMEDAY style for next 7 days (like todoist)
+    | otherwise = mempty
+  selattr = if sel then attrName "selected" else mempty
 
 -- | Only get the attr of the most urgent date
 mostUrgentDateAttr :: ZonedTime -> Bool -> AttrDates -> AttrName
@@ -91,34 +91,34 @@ renderMostUrgentDateMaybe now sel dates = fmap (renderLabeledDate now sel) . mos
 renderPastDate :: ZonedTime -> Bool -> DateOrTime -> Widget n
 -- SOMEDAY styling options (`withAttr`), but I'm not using them rn.
 renderPastDate now _sel dt = setWidth 10 $ str label
-  where
-    label = prettyRelativeMed now dt
+ where
+  label = prettyRelativeMed now dt
 
 -- | `renderMStatus selected status actionability`
 renderStatus :: Bool -> Status -> Status -> Widget n
 renderStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
-  where
-    rootAttr = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
-    subAttr = attrName . status2subAttrName $ act
-    status2subAttrName s = case s of
-      Next -> "next"
-      Waiting -> "waiting"
-      Project -> "project"
-      Later -> "later"
-      WIP -> "wip"
-      Someday -> "someday"
-      Done -> "done"
-      Open -> "open"
-      -- NB this typically isn't configured in the theme, which is fine.
-      None -> "none"
-    sym = status2Symbol a
-    status2Symbol s = case s of
-      Next -> "*"
-      Waiting -> "<"
-      Project -> ">"
-      Later -> "/"
-      WIP -> "*"
-      Someday -> "~"
-      Done -> "+"
-      Open -> "o"
-      None -> "-"
+ where
+  rootAttr = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
+  subAttr = attrName . status2subAttrName $ act
+  status2subAttrName s = case s of
+    Next -> "next"
+    Waiting -> "waiting"
+    Project -> "project"
+    Later -> "later"
+    WIP -> "wip"
+    Someday -> "someday"
+    Done -> "done"
+    Open -> "open"
+    -- NB this typically isn't configured in the theme, which is fine.
+    None -> "none"
+  sym = status2Symbol a
+  status2Symbol s = case s of
+    Next -> "*"
+    Waiting -> "<"
+    Project -> ">"
+    Later -> "/"
+    WIP -> "*"
+    Someday -> "~"
+    Done -> "+"
+    Open -> "o"
+    None -> "-"

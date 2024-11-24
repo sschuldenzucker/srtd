@@ -133,10 +133,10 @@ interpretHumanDateOrTimeTests =
         parseAndInterpretDateE "mon 17:00" now1
           `shouldBeRight` (DateAndTime $ UTCTime (fromGregorian 2024 8 12) (secondsToDiffTime $ hours 16))
     ]
-  where
-    now1 = ZonedTime (LocalTime (fromGregorian 2024 8 10) (TimeOfDay 8 0 0)) cet
-    cet = hoursToTimeZone 1
-    hours n = n * 60 * 60
+ where
+  now1 = ZonedTime (LocalTime (fromGregorian 2024 8 10) (TimeOfDay 8 0 0)) cet
+  cet = hoursToTimeZone 1
+  hours n = n * 60 * 60
 
 treeTests =
   testGroup
@@ -164,18 +164,18 @@ testTransformTreeDownUpRec =
                 ]
          in res @?= expd
     ]
-  where
-    tree1 :: Tree Int
-    tree1 =
-      Node
-        1
-        [ Node
-            11
-            [ Node 101 []
-            , Node 102 []
-            ]
-        , Node 12 []
-        ]
+ where
+  tree1 :: Tree Int
+  tree1 =
+    Node
+      1
+      [ Node
+          11
+          [ Node 101 []
+          , Node 102 []
+          ]
+      , Node 12 []
+      ]
 
 testTransformIdForestDownUpRec =
   testGroup
@@ -202,22 +202,22 @@ testTransformIdForestDownUpRec =
                 ]
          in res @?= expd
     ]
-  where
-    forest1 :: IdForest String Int
-    forest1 =
-      IdForest $
-        [ Node
-            ("A", 1)
-            [ Node
-                ("B", 11)
-                [ Node ("C", 101) []
-                , Node ("D", 102) []
-                ]
-            , Node ("E", 12) []
-            ]
-        ]
-    fst3 (x, _, _) = x
-    snd3 (_, x, _) = x
+ where
+  forest1 :: IdForest String Int
+  forest1 =
+    IdForest $
+      [ Node
+          ("A", 1)
+          [ Node
+              ("B", 11)
+              [ Node ("C", 101) []
+              , Node ("D", 102) []
+              ]
+          , Node ("E", 12) []
+          ]
+      ]
+  fst3 (x, _, _) = x
+  snd3 (_, x, _) = x
 
 tests :: TestTree
 tests = testGroup "Tests" [testTests, dateTests, treeTests]

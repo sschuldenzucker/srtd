@@ -51,8 +51,8 @@ dateSelectOverlay cb origValue tz title rname =
     , dsTimeZone = tz
     , dsTitle = title
     }
-  where
-    theEditor = editor (EditorFor rname) (Just 1) ""
+ where
+  theEditor = editor (EditorFor rname) (Just 1) ""
 
 -- SOMEDAY a nice calendar display of the selected month and key bindings to directly select dates
 
@@ -67,12 +67,12 @@ keymap =
         when (isJust mv) $ submitAndClose ctx
     , kmLeaf (ctrl 'd') "Delete" submitAndClose
     ]
-  where
-    submitAndClose ctx = do
-      mv <- use dsValueL
-      cb <- use dsCallbackL
-      eid <- liftIO $ cb mv ctx
-      liftIO $ writeBChan (acAppChan ctx) (PopOverlay $ OREID eid)
+ where
+  submitAndClose ctx = do
+    mv <- use dsValueL
+    cb <- use dsCallbackL
+    eid <- liftIO $ cb mv ctx
+    liftIO $ writeBChan (acAppChan ctx) (PopOverlay $ OREID eid)
 
 -- Trivial rn.
 keymapZipper :: KeymapZipper (AppContext -> EventM n DateSelectOverlay ())
@@ -82,11 +82,11 @@ instance BrickComponent DateSelectOverlay where
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
   -- TODO make prettier, e.g., colors, spacing, padding, etc.
   renderComponent self = editUI <=> dateUI <=> origDateUI
-    where
-      editUI = renderEditor (txt . T.intercalate "\n") True (dsEditor self)
-      dateUI = renderDate (dsValue self)
-      origDateUI = renderDate (dsOrigValue self)
-      renderDate date = maybe emptyWidget (str . prettyAbsolute (dsTimeZone self)) $ date
+   where
+    editUI = renderEditor (txt . T.intercalate "\n") True (dsEditor self)
+    dateUI = renderDate (dsValue self)
+    origDateUI = renderDate (dsOrigValue self)
+    renderDate date = maybe emptyWidget (str . prettyAbsolute (dsTimeZone self)) $ date
 
   -- NB we don't have sub-keymaps here atm, so don't need to handle as much as MainTree, for instance.
   handleEvent ctx ev =
@@ -97,13 +97,13 @@ instance BrickComponent DateSelectOverlay where
           LeafResult act _nxt -> act ctx
           SubmapResult _sm -> error "wtf submap?"
       _ -> handleFallback ev
-    where
-      handleFallback ev' = do
-        zoom dsEditorL $ handleEditorEvent ev'
-        text <- (T.intercalate "\n" . getEditContents) <$> use dsEditorL
-        dsValueL .= parseInterpretHumanDateOrTime text (acZonedTime ctx)
-      -- Yeah time zones change really rarely but w/e.
-      updateTimeZone = dsTimeZoneL .= zonedTimeZone (acZonedTime ctx)
+   where
+    handleFallback ev' = do
+      zoom dsEditorL $ handleEditorEvent ev'
+      text <- (T.intercalate "\n" . getEditContents) <$> use dsEditorL
+      dsValueL .= parseInterpretHumanDateOrTime text (acZonedTime ctx)
+    -- Yeah time zones change really rarely but w/e.
+    updateTimeZone = dsTimeZoneL .= zonedTimeZone (acZonedTime ctx)
 
   componentKeyDesc self = kmzDesc keymapZipper & kdNameL .~ (dsTitle self)
 

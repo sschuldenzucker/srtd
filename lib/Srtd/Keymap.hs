@@ -103,9 +103,9 @@ kmDesc (Keymap {kmMap, kmAddlDesc}) =
     & fmap (\(k, item) -> (ppBinding k, describeItem item))
     & (++ kmAddlDesc)
     & sortBy (comparing fst)
-  where
-    describeItem (KeymapItem {kmiItem = LeafItem name _}) = name
-    describeItem (KeymapItem {kmiItem = SubmapItem (Keymap {kmName})}) = kmName <> "..."
+ where
+  describeItem (KeymapItem {kmiItem = LeafItem name _}) = name
+  describeItem (KeymapItem {kmiItem = SubmapItem (Keymap {kmName})}) = kmName <> "..."
 
 data KeyDesc = KeyDesc
   { kdName :: Text

@@ -40,8 +40,8 @@ makeLenses ''NewNodeOverlay
 
 newNodeOverlay :: Callback -> String -> Text -> AppResourceName -> NewNodeOverlay
 newNodeOverlay cb initName title rname = NewNodeOverlay (editor editorRName (Just 1) initName) cb title
-  where
-    editorRName = EditorFor rname
+ where
+  editorRName = EditorFor rname
 
 instance BrickComponent NewNodeOverlay where
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
@@ -56,8 +56,8 @@ instance BrickComponent NewNodeOverlay where
       eid <- liftIO $ _nnCallback (intercalate "\n" $ getEditContents _nnEditor) ctx
       liftIO $ writeBChan acAppChan (PopOverlay $ OREID eid)
     _ -> zoom nnEditor $ handleEditorEvent ev
-    where
-      AppContext {acAppChan} = ctx
+   where
+    AppContext {acAppChan} = ctx
 
   componentKeyDesc self = KeyDesc (_nnTitle self) True [("esc", "cancel"), ("enter", "confirm")]
 

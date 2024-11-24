@@ -21,8 +21,7 @@ comma-style: leading
 import-export-style: diff-friendly
 
 # Whether to full-indent or half-indent 'where' bindings past the preceding body
-# TODO set to false?
-indent-wheres: true
+indent-wheres: false
 
 # Whether to leave a space before an opening record brace
 # record-brace-space: false

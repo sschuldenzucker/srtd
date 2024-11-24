@@ -43,9 +43,9 @@ modifyModelOnServer server@(ModelServer mv _) f = do
   let f1 = let ?mue = ModelUpdateEnv {mueTimeZone = tz} in f
   atomically $ modifyTVar' mv f1
   notifyAll msg server
-  where
-    -- Dummy right now but might do something later when we accept more structured updates.
-    msg = MsgModelUpdated
+ where
+  -- Dummy right now but might do something later when we accept more structured updates.
+  msg = MsgModelUpdated
 
 startModelServer :: IO ModelServer
 startModelServer = do
@@ -59,17 +59,17 @@ startModelServer = do
 
 readModelFromFile :: (?mue :: ModelUpdateEnv) => IO (Maybe Model)
 readModelFromFile = run `catch` handleFileNotFound
-  where
-    handleFileNotFound e
-      | isDoesNotExistError e = return Nothing
-      | otherwise = throwIO e
-    run = do
-      edmodel <- eitherDecodeFileStrict model_filename :: IO (Either String DiskModel)
-      case edmodel of
-        Left e -> do
-          glogL ERROR ("Failed to decode file " ++ model_filename ++ ": " ++ e)
-          throwIO $ AesonException e
-        Right m -> return . Just $ diskModelToModel m
+ where
+  handleFileNotFound e
+    | isDoesNotExistError e = return Nothing
+    | otherwise = throwIO e
+  run = do
+    edmodel <- eitherDecodeFileStrict model_filename :: IO (Either String DiskModel)
+    case edmodel of
+      Left e -> do
+        glogL ERROR ("Failed to decode file " ++ model_filename ++ ": " ++ e)
+        throwIO $ AesonException e
+      Right m -> return . Just $ diskModelToModel m
 
 subscribe :: ModelServer -> (MsgModelUpdated -> IO ()) -> IO ()
 subscribe (ModelServer _ msubs) sub = atomically $ modifyTVar' msubs (sub :)

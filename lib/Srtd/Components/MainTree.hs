@@ -203,18 +203,18 @@ editDateKeymap =
       , (bind 's', "Scheduled", datesL . scheduledL)
       , (bind 'r', "Remind", datesL . remindL)
       ]
-  where
-    mkDateEditShortcut ::
-      (Binding, Text, Lens' Attr (Maybe DateOrTime)) ->
-      (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
-    mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ctx ->
-      let tz = zonedTimeZone $ acZonedTime ctx
-          cb date' ctx' = do
-            let f = setLastModified (zonedTimeToUTC $ acZonedTime ctx) . (l .~ date')
-            modifyModelOnServer (acModelServer ctx') (modifyAttrByEID cur f)
-            return cur
-          mkDateEdit = dateSelectOverlay cb (attr ^. l) tz ("Edit " <> label)
-       in liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . mkDateEdit)
+ where
+  mkDateEditShortcut ::
+    (Binding, Text, Lens' Attr (Maybe DateOrTime)) ->
+    (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
+  mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ctx ->
+    let tz = zonedTimeZone $ acZonedTime ctx
+        cb date' ctx' = do
+          let f = setLastModified (zonedTimeToUTC $ acZonedTime ctx) . (l .~ date')
+          modifyModelOnServer (acModelServer ctx') (modifyAttrByEID cur f)
+          return cur
+        mkDateEdit = dateSelectOverlay cb (attr ^. l) tz ("Edit " <> label)
+     in liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . mkDateEdit)
 
 moveSubtreeModeKeymap :: Keymap (AppContext -> EventM n MainTree ())
 moveSubtreeModeKeymap =
@@ -278,32 +278,32 @@ _mkSortKeymap withFunc name =
     name
     $ (kmSub (bind 'D') $ kmMake "Deep" (mkItems sortDeepBelow))
       : mkItems sortShallowBelow
-  where
-    -- For some reason, I have to explicitly state that 'sorter' has a `?mue` context. Otherwise, it
-    -- forgets about it and the code doesn't type check. Have to do this in both places.
-    mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
-      [kmLeaf (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
-    sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModel (sorter ord root)
-    -- comparison function that puts notes first (which is what we usually want)
-    compareActionabilityForSort :: Label -> Label -> Ordering
-    compareActionabilityForSort l1 l2 = case (isNote l1, isNote l2) of
-      (True, False) -> LT
-      (True, True) -> EQ
-      _ -> compare (glActionability l1) (glActionability l2)
-    isNote l = (status . fst $ l) == None && glActionability l == None
+ where
+  -- For some reason, I have to explicitly state that 'sorter' has a `?mue` context. Otherwise, it
+  -- forgets about it and the code doesn't type check. Have to do this in both places.
+  mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
+    [kmLeaf (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
+  sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModel (sorter ord root)
+  -- comparison function that puts notes first (which is what we usually want)
+  compareActionabilityForSort :: Label -> Label -> Ordering
+  compareActionabilityForSort l1 l2 = case (isNote l1, isNote l2) of
+    (True, False) -> LT
+    (True, True) -> EQ
+    _ -> compare (glActionability l1) (glActionability l2)
+  isNote l = (status . fst $ l) == None && glActionability l == None
 
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String
 findFirstURL s = listToMaybe $ getAllTextMatches (s =~ urlPattern :: AllTextMatches [] String)
-  where
-    urlPattern :: String
-    urlPattern = "(\\b[a-z]+://[a-zA-Z0-9./?=&-_%]+)"
+ where
+  urlPattern :: String
+  urlPattern = "(\\b[a-z]+://[a-zA-Z0-9./?=&-_%]+)"
 
 findFirstHexCode :: String -> Maybe String
 findFirstHexCode s = listToMaybe $ getAllTextMatches (s =~ pat :: AllTextMatches [] String)
-  where
-    pat :: String
-    pat = "0x[0-9a-fA-F]+"
+ where
+  pat :: String
+  pat = "0x[0-9a-fA-F]+"
 
 openURL :: String -> IO ()
 openURL url = callProcess "open" [url]
@@ -356,15 +356,15 @@ makeWithFilters root filters model ztime rname =
     , mtKeymap = keymapToZipper rootKeymap
     , mtShowDetails = False
     }
-  where
-    subtree = filterRun (fromJust $ CList.focus filters) root model
-    list = forestToBrickList (MainListFor rname) $ stForest subtree
+ where
+  subtree = filterRun (fromJust $ CList.focus filters) root model
+  list = forestToBrickList (MainListFor rname) $ stForest subtree
 
 forestToBrickList :: AppResourceName -> STForest -> MyList
 -- TODO when we have multiple tabs, MainList should be replaced by something that will actually be unique (take as an argument)
 forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
-  where
-    contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels . idForest $ forest
+ where
+  contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels . idForest $ forest
 
 withSelAttr :: Bool -> Widget n -> Widget n
 withSelAttr True = withDefAttr selectedItemRowAttr
@@ -386,36 +386,36 @@ renderRow
         -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
         -- I think it's so we don't have two greedy widgets or something.
         [indentW, statusW, str " ", padRight Max nameW, str " ", dateW, str " ", lastStatusModifiedW]
-    where
-      -- The first level doesn't take indent b/c deadlines are enough rn.
-      indentW = str (concat (replicate (lvl + 1) "    "))
-      dateW = renderMostUrgentDate ztime sel dates
-      lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
-      statusW = renderStatus sel status (llActionability llabel)
-      nameW = strTruncateAvailable name
+   where
+    -- The first level doesn't take indent b/c deadlines are enough rn.
+    indentW = str (concat (replicate (lvl + 1) "    "))
+    dateW = renderMostUrgentDate ztime sel dates
+    lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
+    statusW = renderStatus sel status (llActionability llabel)
+    nameW = strTruncateAvailable name
 
 -- SOMEDAY also deadline for the root (if any)?
 renderRoot :: ZonedTime -> Label -> [IdLabel] -> Widget n
 renderRoot ztime glabel@(rootAttr, _) breadcrumbs =
   hBox
     [statusW, str " ", pathW]
-  where
-    statusW = renderStatus False (status rootAttr) (glActionability glabel)
-    pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootAttr : map (fst . snd) breadcrumbs
-    wrapBreadcrumbWidget attr w =
-      let battr = mostUrgentDateAttr ztime False (dates attr)
-       in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
-    mkBreadcrumbW attr =
-      hBox
-        [ str (name attr)
-        , maybe emptyWidget (wrapBreadcrumbWidget attr) (renderMostUrgentDateMaybe ztime False (dates attr))
-        ]
+ where
+  statusW = renderStatus False (status rootAttr) (glActionability glabel)
+  pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootAttr : map (fst . snd) breadcrumbs
+  wrapBreadcrumbWidget attr w =
+    let battr = mostUrgentDateAttr ztime False (dates attr)
+     in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
+  mkBreadcrumbW attr =
+    hBox
+      [ str (name attr)
+      , maybe emptyWidget (wrapBreadcrumbWidget attr) (renderMostUrgentDateMaybe ztime False (dates attr))
+      ]
 
 -- Currently we only render the currently selected filter.
 renderFilters :: CList.CList Filter -> Widget n
 renderFilters fs = maybe emptyWidget go (CList.focus fs)
-  where
-    go f = withDefAttr filterLabelAttr $ str (filterName f)
+ where
+  go f = withDefAttr filterLabelAttr $ str (filterName f)
 
 renderItemDetails :: ZonedTime -> LocalIdLabel -> Widget n
 renderItemDetails ztime (eid, llabel) =
@@ -427,87 +427,87 @@ renderItemDetails ztime (eid, llabel) =
           padBottom (Pad 1) $ hBox [padRight (Pad 5) leftBox, rightBox]
         , botBox
         ]
-  where
-    (label@(attr, dattr), ldattr) = llabel
-    topBox =
-      -- We cannot make this a table b/c `strWrap` has greedy growth and tables don't support that.
-      -- NB in principle, we also don't *need* a table here but sth less general would be fine.
-      vBox
-        [ -- hBox [str "EID    ", str (showEIDShort eid)],
-          -- hBox [str "Title  ", strWrapWith nameWrapSettings (name attr)]
-          hBox [strWrapWith nameWrapSettings (name attr)]
-        ]
-    botBox =
-      vBox
-        [hBox [str "EID  ", str (showEIDShort eid)]]
-    nameWrapSettings = defaultWrapSettings {breakLongWords = True}
-    -- tbl
-    --   [ [str "EID", str (showEIDShort eid)],
-    --     -- TODO strWrap doesn't work here. I'm getting TEInvalidCellSizePolicy
-    --     -- I think I can't have greedy (not fixed) growth policy in a table.
-    --     [str "Title", strWrap (name attr)]
-    --   ]
-    leftBox =
-      tbl $
-        -- SOMEDAY we may wanna make this not one big table but separate the bottom part out into
-        -- another vBox element below the rest. Looks a bit strange re reserved space rn.
-        [ sectionHeaderRow "Status"
-        , [str "Status", str (show $ status attr)]
-        , [str "Actionability", str (show $ llActionability llabel)]
-        , [str "Global Actionability", str (show $ glActionability label)]
-        , [str "Child Actionability", str (show $ daChildActionability dattr)]
-        , [str "Parent Actionability", str (show $ ldParentActionability ldattr)]
-        , spacerRow
-        , sectionHeaderRow "Metadata"
-        ]
-          ++ mkAutodatesCells "" (autoDates attr)
-          ++ [spacerRow]
-          ++ mkAutodatesCells "Latest " (daLatestAutodates dattr)
-          ++ [spacerRow]
-          ++ mkAutodatesCells "Earliest " (daEarliestAutodates dattr)
-    rightBox =
-      tbl $
-        [sectionHeaderRow "Dates"]
-          ++ mkDatesCells "" (dates attr)
-          ++ [ spacerRow
-             , sectionHeaderRow "Implied Dates"
-             ]
-          ++ mkDatesCells "" (daImpliedDates dattr)
-          ++ [ spacerRow
-             , sectionHeaderRow "Descendant Dates"
-             ]
-          ++ mkDatesCells "Earliest " (daEarliestDates dattr)
-          ++ [spacerRow]
-          ++ mkDatesCells "Latest" (daLatestDates dattr)
-    sectionHeaderRow s = [withAttr sectionHeaderAttr (str s), emptyWidget]
-    spacerRow = [str " ", emptyWidget]
-    mkAutodatesCells prefix ad =
-      [ [str (prefix ++ "Created"), renderUTCTime (created ad)]
-      , [str (prefix ++ "Modified"), renderUTCTime (lastModified ad)]
-      , [str (prefix ++ "Status Modified"), renderUTCTime (lastStatusModified ad)]
+ where
+  (label@(attr, dattr), ldattr) = llabel
+  topBox =
+    -- We cannot make this a table b/c `strWrap` has greedy growth and tables don't support that.
+    -- NB in principle, we also don't *need* a table here but sth less general would be fine.
+    vBox
+      [ -- hBox [str "EID    ", str (showEIDShort eid)],
+        -- hBox [str "Title  ", strWrapWith nameWrapSettings (name attr)]
+        hBox [strWrapWith nameWrapSettings (name attr)]
       ]
-    mkDatesCells prefix ds =
-      [ [str (prefix ++ "Deadline"), renderMDate (deadline ds)]
-      , [str (prefix ++ "Goalline"), renderMDate (goalline ds)]
-      , [str (prefix ++ "Scheduled"), renderMDate (scheduled ds)]
-      , [str (prefix ++ "Remind"), renderMDate (remind ds)]
+  botBox =
+    vBox
+      [hBox [str "EID  ", str (showEIDShort eid)]]
+  nameWrapSettings = defaultWrapSettings {breakLongWords = True}
+  -- tbl
+  --   [ [str "EID", str (showEIDShort eid)],
+  --     -- TODO strWrap doesn't work here. I'm getting TEInvalidCellSizePolicy
+  --     -- I think I can't have greedy (not fixed) growth policy in a table.
+  --     [str "Title", strWrap (name attr)]
+  --   ]
+  leftBox =
+    tbl $
+      -- SOMEDAY we may wanna make this not one big table but separate the bottom part out into
+      -- another vBox element below the rest. Looks a bit strange re reserved space rn.
+      [ sectionHeaderRow "Status"
+      , [str "Status", str (show $ status attr)]
+      , [str "Actionability", str (show $ llActionability llabel)]
+      , [str "Global Actionability", str (show $ glActionability label)]
+      , [str "Child Actionability", str (show $ daChildActionability dattr)]
+      , [str "Parent Actionability", str (show $ ldParentActionability ldattr)]
+      , spacerRow
+      , sectionHeaderRow "Metadata"
       ]
-    renderMDate :: Maybe DateOrTime -> Widget n
-    -- For some reason, emptyWidget doesn't work with `setWidth`.
-    renderMDate d = setWidth 21 . maybe (str " ") (str . prettyAbsolute (zonedTimeZone ztime)) $ d
-    renderUTCTime :: UTCTime -> Widget n
-    renderUTCTime d = renderMDate (Just . DateAndTime $ d)
-    tbl =
-      renderTable
-        . surroundingBorder False
-        . columnBorders False
-        . rowBorders False
-        . setDefaultColAlignment AlignLeft
-        . table
-        . map padFirstCell
-    padFirstCell [] = []
-    padFirstCell (h : t) = padRight (Pad 2) h : t
-    sectionHeaderAttr = attrName "section_header"
+        ++ mkAutodatesCells "" (autoDates attr)
+        ++ [spacerRow]
+        ++ mkAutodatesCells "Latest " (daLatestAutodates dattr)
+        ++ [spacerRow]
+        ++ mkAutodatesCells "Earliest " (daEarliestAutodates dattr)
+  rightBox =
+    tbl $
+      [sectionHeaderRow "Dates"]
+        ++ mkDatesCells "" (dates attr)
+        ++ [ spacerRow
+           , sectionHeaderRow "Implied Dates"
+           ]
+        ++ mkDatesCells "" (daImpliedDates dattr)
+        ++ [ spacerRow
+           , sectionHeaderRow "Descendant Dates"
+           ]
+        ++ mkDatesCells "Earliest " (daEarliestDates dattr)
+        ++ [spacerRow]
+        ++ mkDatesCells "Latest" (daLatestDates dattr)
+  sectionHeaderRow s = [withAttr sectionHeaderAttr (str s), emptyWidget]
+  spacerRow = [str " ", emptyWidget]
+  mkAutodatesCells prefix ad =
+    [ [str (prefix ++ "Created"), renderUTCTime (created ad)]
+    , [str (prefix ++ "Modified"), renderUTCTime (lastModified ad)]
+    , [str (prefix ++ "Status Modified"), renderUTCTime (lastStatusModified ad)]
+    ]
+  mkDatesCells prefix ds =
+    [ [str (prefix ++ "Deadline"), renderMDate (deadline ds)]
+    , [str (prefix ++ "Goalline"), renderMDate (goalline ds)]
+    , [str (prefix ++ "Scheduled"), renderMDate (scheduled ds)]
+    , [str (prefix ++ "Remind"), renderMDate (remind ds)]
+    ]
+  renderMDate :: Maybe DateOrTime -> Widget n
+  -- For some reason, emptyWidget doesn't work with `setWidth`.
+  renderMDate d = setWidth 21 . maybe (str " ") (str . prettyAbsolute (zonedTimeZone ztime)) $ d
+  renderUTCTime :: UTCTime -> Widget n
+  renderUTCTime d = renderMDate (Just . DateAndTime $ d)
+  tbl =
+    renderTable
+      . surroundingBorder False
+      . columnBorders False
+      . rowBorders False
+      . setDefaultColAlignment AlignLeft
+      . table
+      . map padFirstCell
+  padFirstCell [] = []
+  padFirstCell (h : t) = padRight (Pad 2) h : t
+  sectionHeaderAttr = attrName "section_header"
 
 instance BrickComponent MainTree where
   renderComponentWithOverlays
@@ -519,13 +519,13 @@ instance BrickComponent MainTree where
       , mtShowDetails
       } =
       (box, ovls)
-      where
-        -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
-        headrow = renderRoot mtZonedTime rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
-        box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
-        ovls = case (mtShowDetails, mtCurWithAttr s) of
-          (True, Just illabel) -> [("Item Details", renderItemDetails mtZonedTime illabel)]
-          _ -> []
+     where
+      -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
+      headrow = renderRoot mtZonedTime rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
+      box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
+      ovls = case (mtShowDetails, mtCurWithAttr s) of
+        (True, Just illabel) -> [("Item Details", renderItemDetails mtZonedTime illabel)]
+        _ -> []
 
   handleEvent ctx ev =
     -- LATER when filters become more fancy and filter something wrt. the current time, this *may*
@@ -578,27 +578,27 @@ instance BrickComponent MainTree where
             SubmapResult sm -> mtKeymapL .= sm
         (VtyEvent e) -> handleFallback e
         _miscEvents -> return ()
-    where
-      -- SOMEDAY when I want mouse support, I prob have to revise this: this only interprets
-      -- keystroke events (Event, from vty), not BrickEvent. Possible I have to run *both* event
-      -- handlers. Really a shame we can't know if somethings was handled. - or can we somehow??
-      -- NB e.g., Editor handles the full BrickEvent type.
-      handleFallback e = zoom mtListL $ L.handleListEventVi (const $ return ()) e
-      updateZonedTime = mtZonedTimeL .= acZonedTime ctx
+   where
+    -- SOMEDAY when I want mouse support, I prob have to revise this: this only interprets
+    -- keystroke events (Event, from vty), not BrickEvent. Possible I have to run *both* event
+    -- handlers. Really a shame we can't know if somethings was handled. - or can we somehow??
+    -- NB e.g., Editor handles the full BrickEvent type.
+    handleFallback e = zoom mtListL $ L.handleListEventVi (const $ return ()) e
+    updateZonedTime = mtZonedTimeL .= acZonedTime ctx
 
   componentKeyDesc = kmzDesc . mtKeymap
 
   -- "Root name - Realm" unless the Realm is the root itself, or higher.
   componentTitle MainTree {mtSubtree} = T.pack $ pathStr
-    where
-      -- pathStr = intercalate " < " $ name (rootAttr mtSubtree) : [name attr | (_, attr) <- (breadcrumbs mtSubtree)]
-      pathStr = case mRealmBreadcrumb of
-        Nothing -> rootName
-        Just (_, (c, _)) -> rootName ++ " - " ++ name c
-      mRealmBreadcrumb = case reverse (breadcrumbs mtSubtree) of
-        _ : c : _ -> Just c
-        _ -> Nothing
-      rootName = name (fst . rootLabel $ mtSubtree)
+   where
+    -- pathStr = intercalate " < " $ name (rootAttr mtSubtree) : [name attr | (_, attr) <- (breadcrumbs mtSubtree)]
+    pathStr = case mRealmBreadcrumb of
+      Nothing -> rootName
+      Just (_, (c, _)) -> rootName ++ " - " ++ name c
+    mRealmBreadcrumb = case reverse (breadcrumbs mtSubtree) of
+      _ : c : _ -> Just c
+      _ -> Nothing
+    rootName = name (fst . rootLabel $ mtSubtree)
 
 mtCur :: MainTree -> Maybe EID
 mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _)) -> i)
@@ -693,12 +693,12 @@ resetListPosition old new = case L.listSelectedElement old of
 
 mtGoSubtreeFromCur :: GoWalker LocalIdLabel -> MainTree -> MainTree
 mtGoSubtreeFromCur go mt = fromMaybe mt mres
-  where
-    mres = do
-      -- Maybe monad
-      cur <- mtCur mt
-      par <- mt ^. mtSubtreeL . stForestL . to (forestGoFromToId cur go)
-      return $ mt & mtListL %~ scrollListToEID par
+ where
+  mres = do
+    -- Maybe monad
+    cur <- mtCur mt
+    par <- mt ^. mtSubtreeL . stForestL . to (forestGoFromToId cur go)
+    return $ mt & mtListL %~ scrollListToEID par
 
 -- | Toplevel app resource name, including all contained resources. This is a "cloning" routine.
 setResourceName :: AppResourceName -> MainTree -> MainTree

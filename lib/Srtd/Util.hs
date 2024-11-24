@@ -96,13 +96,13 @@ transformForestDownUp fdown gmake = map (transformTreeDownUp fdown gmake)
 -- I think.
 transformTreeDownUp :: (Maybe u -> a -> u) -> (u -> a -> [b] -> b) -> Tree a -> Tree b
 transformTreeDownUp fdown gmake = _go Nothing
-  where
-    _go crumbs (Node x cs) =
-      let crumb = fdown crumbs x
-          crumbs' = Just crumb
-          cs' = map (_go crumbs') cs
-          clabels' = map rootLabel cs'
-       in Node (gmake crumb x clabels') cs'
+ where
+  _go crumbs (Node x cs) =
+    let crumb = fdown crumbs x
+        crumbs' = Just crumb
+        cs' = map (_go crumbs') cs
+        clabels' = map rootLabel cs'
+     in Node (gmake crumb x clabels') cs'
 
 -- | Combined top-down and bottom-up transformation function. Mutually recursive.
 --
@@ -118,13 +118,13 @@ transformTreeDownUp fdown gmake = _go Nothing
 -- things-inherited-upwards and things-inherited-downwards.
 transformTreeDownUpRec :: (Maybe b -> [b] -> a -> b) -> Tree a -> Tree b
 transformTreeDownUpRec f = _go Nothing
-  where
-    _go mpar (Node x cs) =
-      -- Mutually recursive group!
-      let reslabel = f mpar clabels' x
-          cs' = map (_go (Just reslabel)) cs
-          clabels' = map rootLabel cs'
-       in Node reslabel cs'
+ where
+  _go mpar (Node x cs) =
+    -- Mutually recursive group!
+    let reslabel = f mpar clabels' x
+        cs' = map (_go (Just reslabel)) cs
+        clabels' = map rootLabel cs'
+     in Node reslabel cs'
 
 -- | See 'transformTreeDownUpRec'.
 transformForestDownUpRec :: (Maybe b -> [b] -> a -> b) -> [Tree a] -> [Tree b]

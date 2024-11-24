@@ -73,9 +73,9 @@ readThemeFileOrExit p = do
       case AppTheme.themeFileToTheme themefile of
         Left err -> logParseErrors ERROR [T.unpack err] >> exitFailure
         Right res' -> return res'
-  where
-    logParseErrors lvl errors = forM_ errors $ \e ->
-      glogL lvl $ "While reading " ++ p ++ ": parse error: " ++ e
+ where
+  logParseErrors lvl errors = forM_ errors $ \e ->
+    glogL lvl $ "While reading " ++ p ++ ": parse error: " ++ e
 
 loadAllThemes :: IO [(String, Theme)]
 loadAllThemes = do
@@ -83,8 +83,8 @@ loadAllThemes = do
   forM filenames $ \filename -> do
     theme <- readThemeFileOrExit $ themeDir </> filename
     return (takeBaseName filename, theme)
-  where
-    themeDir = "themes"
+ where
+  themeDir = "themes"
 
 ringSelectNamedTheme :: String -> CList.CList (String, AttrMap) -> CList.CList (String, AttrMap)
 ringSelectNamedTheme s ring = fromMaybe ring $ CList.findRotateTo (\(s', _) -> s' == s) ring
@@ -139,42 +139,42 @@ main = do
 
 myAppDraw :: AppState -> [Widget AppResourceName]
 myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ mainUIs
-  where
-    tab0 = snd $ LZ.cursor asTabs
-    mainUIs =
-      let (w0, ovls0) = renderComponentWithOverlays tab0
-       in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar asTabs <=> w0]
-    renderTabTitle :: (BrickComponent c, Ord n) => Bool -> n -> c -> Widget n
-    renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 20 $ txt (componentTitle c)
-      where
-        theAttrName = (if sel then tabBarAttr <> attrName "selected" else tabBarAttr) <> attrName "tab_title"
-    renderTabBar pairs =
-      withDefAttr tabBarAttr $
-        let (front, cur, back) = lzSplit3 pairs
-         in hBox $
-              intersperse (txt "|") $
-                map (uncurry (renderTabTitle False)) front
-                  ++ [uncurry (renderTabTitle True) cur]
-                  ++ map (uncurry (renderTabTitle False)) back
-                  ++ [padLeft Max (str " ")]
-    wrapOverlay title w =
-      centerLayer
-        . Brick.hLimitPercent 80
-        . Brick.vLimitPercent 75
-        . borderWithLabel (padLeftRight 1 . txt $ title)
-        $ w
-    renderOverlay o = wrapOverlay (componentTitle o) (renderComponent o)
-    renderKeyHelp keymapName pairs =
-      let configTable = surroundingBorder False . rowBorders False . columnBorders False
-          inner = configTable $ table [[padRight (Pad 1) (txt keydesc), txt actdesc] | (keydesc, actdesc) <- pairs]
-       in -- SOMEDAY minor bug: When `keymapName` is wider than the content (the key table), it's cut off.
-          -- This happens in particular with smaller sub-mode keymaps.
-          -- The easiest fix is probably to set a min width for the keymap overlay (content of border; also looks better).
-          -- I think helix did this, e.g., in the `"` overlay.
-          alignBottomRightLayer . borderWithLabel (padLeftRight 1 $ txt keymapName) $ renderTable inner
-    keyHelpUI =
-      let KeyDesc keymapName isToplevel keydescs = componentKeyDesc $ state ^. activeComponentL
-       in if not isToplevel || (asHelpAlways state) then renderKeyHelp keymapName keydescs else emptyWidget
+ where
+  tab0 = snd $ LZ.cursor asTabs
+  mainUIs =
+    let (w0, ovls0) = renderComponentWithOverlays tab0
+     in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar asTabs <=> w0]
+  renderTabTitle :: (BrickComponent c, Ord n) => Bool -> n -> c -> Widget n
+  renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 20 $ txt (componentTitle c)
+   where
+    theAttrName = (if sel then tabBarAttr <> attrName "selected" else tabBarAttr) <> attrName "tab_title"
+  renderTabBar pairs =
+    withDefAttr tabBarAttr $
+      let (front, cur, back) = lzSplit3 pairs
+       in hBox $
+            intersperse (txt "|") $
+              map (uncurry (renderTabTitle False)) front
+                ++ [uncurry (renderTabTitle True) cur]
+                ++ map (uncurry (renderTabTitle False)) back
+                ++ [padLeft Max (str " ")]
+  wrapOverlay title w =
+    centerLayer
+      . Brick.hLimitPercent 80
+      . Brick.vLimitPercent 75
+      . borderWithLabel (padLeftRight 1 . txt $ title)
+      $ w
+  renderOverlay o = wrapOverlay (componentTitle o) (renderComponent o)
+  renderKeyHelp keymapName pairs =
+    let configTable = surroundingBorder False . rowBorders False . columnBorders False
+        inner = configTable $ table [[padRight (Pad 1) (txt keydesc), txt actdesc] | (keydesc, actdesc) <- pairs]
+     in -- SOMEDAY minor bug: When `keymapName` is wider than the content (the key table), it's cut off.
+        -- This happens in particular with smaller sub-mode keymaps.
+        -- The easiest fix is probably to set a min width for the keymap overlay (content of border; also looks better).
+        -- I think helix did this, e.g., in the `"` overlay.
+        alignBottomRightLayer . borderWithLabel (padLeftRight 1 $ txt keymapName) $ renderTable inner
+  keyHelpUI =
+    let KeyDesc keymapName isToplevel keydescs = componentKeyDesc $ state ^. activeComponentL
+     in if not isToplevel || (asHelpAlways state) then renderKeyHelp keymapName keydescs else emptyWidget
 
 myHandleEvent :: BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
 myHandleEvent ev =
@@ -209,9 +209,9 @@ myHandleEvent ev =
     _ -> do
       AppState {asContext} <- get
       zoom activeComponentL $ handleEvent asContext ev
-  where
-    dbgprint = liftIO $ glogL INFO $ "Received: " ++ show ev
-    updateCurrentTime = liftIO getZonedTime >>= assign (asContextL . acZonedTimeL)
+ where
+  dbgprint = liftIO $ glogL INFO $ "Received: " ++ show ev
+  updateCurrentTime = liftIO getZonedTime >>= assign (asContextL . acZonedTimeL)
 
 forComponentsM :: EventM AppResourceName SomeBrickComponent () -> EventM AppResourceName AppState ()
 forComponentsM act = do
@@ -225,16 +225,16 @@ forComponentsM act = do
 activeComponentL :: Lens' AppState SomeBrickComponent
 -- There's probably some clever way to do this but idk. It's also trivial rn.
 activeComponentL = lens getter setter
-  where
-    getter AppState {asOverlays = o : _} = o
-    getter AppState {asTabs} = snd $ LZ.cursor asTabs
-    setter state@(AppState {asOverlays = _ : os}) t' = state {asOverlays = t' : os}
-    setter state@(AppState {asTabs}) t' = state {asTabs = lzModify (second $ const t') asTabs}
+ where
+  getter AppState {asOverlays = o : _} = o
+  getter AppState {asTabs} = snd $ LZ.cursor asTabs
+  setter state@(AppState {asOverlays = _ : os}) t' = state {asOverlays = t' : os}
+  setter state@(AppState {asTabs}) t' = state {asTabs = lzModify (second $ const t') asTabs}
 
 pushOverlay :: (AppResourceName -> SomeBrickComponent) -> AppState -> AppState
 pushOverlay mk state@(AppState {asOverlays}) = state {asOverlays = mk ovlResourceName : asOverlays}
-  where
-    ovlResourceName = Overlay (length asOverlays)
+ where
+  ovlResourceName = Overlay (length asOverlays)
 
 popOverlay :: AppState -> AppState
 popOverlay state@(AppState {asOverlays = _ : os}) = state {asOverlays = os}
@@ -243,9 +243,9 @@ popOverlay _ = error "No overlays"
 
 pushTab :: (AppResourceName -> SomeBrickComponent) -> AppState -> AppState
 pushTab mk state@(AppState {asTabs, asNextTabID}) = state {asTabs = asTabs', asNextTabID = asNextTabID + 1}
-  where
-    rname = Tab asNextTabID
-    asTabs' = LZ.insert (TabTitleFor rname, mk rname) . LZ.right $ asTabs
+ where
+  rname = Tab asNextTabID
+  asTabs' = LZ.insert (TabTitleFor rname, mk rname) . LZ.right $ asTabs
 
 -- | Remove active tab and go to next or else previous.
 popTab :: AppState -> AppState
@@ -261,10 +261,10 @@ popTab state@AppState {asTabs} =
 myChooseCursor ::
   AppState -> [CursorLocation AppResourceName] -> Maybe (CursorLocation AppResourceName)
 myChooseCursor _ = listToMaybe . reverse . filter isEditLocation . filter cursorLocationVisible
-  where
-    isEditLocation cloc = case cursorLocationName cloc of
-      Just (EditorFor _) -> True
-      _ -> False
+ where
+  isEditLocation cloc = case cursorLocationName cloc of
+    Just (EditorFor _) -> True
+    _ -> False
 
 myChooseAttrMap :: AppState -> AttrMap
 myChooseAttrMap state = case CList.focus $ asAttrMapRing state of
@@ -336,10 +336,10 @@ lzFindBegin :: (a -> Bool) -> LZ.Zipper a -> LZ.Zipper a
 lzFindBegin p z =
   let res = lzFind p (LZ.start z)
    in if LZ.endp res then z else res
-  where
-    -- Find the first following position where the predicate is true, or return the end position
-    -- if none.
-    lzFind p z
-      | LZ.endp z = z
-      | p (LZ.cursor z) = z
-      | otherwise = lzFind p (LZ.right z)
+ where
+  -- Find the first following position where the predicate is true, or return the end position
+  -- if none.
+  lzFind p z
+    | LZ.endp z = z
+    | p (LZ.cursor z) = z
+    | otherwise = lzFind p (LZ.right z)

@@ -59,19 +59,19 @@ forestGoFromToId tgt go = fmap zGetId . go <=< zForestFindId tgt
 -- | This is like `fmap` but also allows access to the *ids* while updating labels (but doesn't allow modification of the labels)
 mapIdForestWithIds :: (id -> a -> b) -> IdForest id a -> IdForest id b
 mapIdForestWithIds f = withIdForest $ mapForest go
-  where
-    go (i, x) = (i, f i x)
+ where
+  go (i, x) = (i, f i x)
 
 -- | Only leaves the initial segments of the forest where the predicate all applies.
 filterIdForest :: (a -> Bool) -> IdForest id a -> IdForest id a
 filterIdForest p = withIdForest filter'
-  where
-    filter' forest = [Node l (filter' children) | Node l@(_, x) children <- forest, p x]
+ where
+  filter' forest = [Node l (filter' children) | Node l@(_, x) children <- forest, p x]
 
 filterIdForestWithIds :: (id -> a -> Bool) -> IdForest id a -> IdForest id a
 filterIdForestWithIds p = withIdForest filter'
-  where
-    filter' forest = [Node l (filter' children) | Node l children <- forest, uncurry p l]
+ where
+  filter' forest = [Node l (filter' children) | Node l children <- forest, uncurry p l]
 
 -- | Modify the forest below the given target ID by a function. No-op if the ID is not found.
 onForestBelowId ::
@@ -81,8 +81,8 @@ onForestBelowId ::
 onForestBelowId root f idforest@(IdForest forest) = case zFindId root . Z.fromForest $ forest of
   Nothing -> idforest
   Just rootLoc -> IdForest $ Z.forest . zForestRoot . Z.modifyTree (onTreeChildren f) $ rootLoc
-  where
-    onTreeChildren g (Node x children) = Node x (g children)
+ where
+  onTreeChildren g (Node x children) = Node x (g children)
 
 -- SOMEDAY the non-Rec functions can be replaced by the Rec variant.
 
@@ -91,18 +91,18 @@ onForestBelowId root f idforest@(IdForest forest) = case zFindId root . Z.fromFo
 -- SOMEDAY obsolete I think
 transformIdForestBottomUp :: (a -> [b] -> b) -> IdForest id a -> IdForest id b
 transformIdForestBottomUp f = withIdForest $ foldForest _go
-  where
-    _go (i, x) cs =
-      let x' = f x [y | Node (_, y) _ <- cs]
-       in Node (i, x') cs
+ where
+  _go (i, x) cs =
+    let x' = f x [y | Node (_, y) _ <- cs]
+     in Node (i, x') cs
 
 -- | Specialization of 'transformTreeDownUp' that preserves the IDs. See there.
 transformIdForestDownUp ::
   (Maybe u -> attr -> u) -> (u -> attr -> [attr'] -> attr') -> IdForest id attr -> IdForest id attr'
 transformIdForestDownUp fdown gmake = withIdForest $ transformForestDownUp _fdown _gmake
-  where
-    _fdown crumbs (_i, x) = fdown crumbs x
-    _gmake crumb (i, x) cilabels = (i, gmake crumb x (map snd cilabels))
+ where
+  _fdown crumbs (_i, x) = fdown crumbs x
+  _gmake crumb (i, x) cilabels = (i, gmake crumb x (map snd cilabels))
 
 -- | Top-down transformation. This is a specialization of 'transformIdForestDownUp'.
 transformIdForestTopDown :: (Maybe attr' -> attr -> attr') -> IdForest id attr -> IdForest id attr'
@@ -111,8 +111,8 @@ transformIdForestTopDown f = transformIdForestDownUp f (\res _ _ -> res)
 -- | Specialization of 'transformForestDownUpRec' that preserves the IDs. See there.
 transformIdForestDownUpRec :: (Maybe b -> [b] -> a -> b) -> IdForest id a -> IdForest id b
 transformIdForestDownUpRec f = withIdForest $ transformForestDownUpRec _f
-  where
-    _f mipar cirs (i, x) = (i, f (fmap snd mipar) (fmap snd cirs) x)
+ where
+  _f mipar cirs (i, x) = (i, f (fmap snd mipar) (fmap snd cirs) x)
 
 -- go (i, x) cs = Node (i, go x [y | Node (_, y) _ <- cs]) cs
 
@@ -125,8 +125,8 @@ forestInsertLabelRelToId tgt go i label forest = fromMaybe forest $ do
   insLoc <- go tgtLoc
   let postInsLoc = Z.insert (Node (i, label) []) insLoc
   return $ IdForest $ Z.forest . zForestRoot $ postInsLoc
-  where
-    forestLoc = Z.fromForest . idForest $ forest
+ where
+  forestLoc = Z.fromForest . idForest $ forest
 
 -- * Moving nodes
 
@@ -145,8 +145,8 @@ forestMoveSubtreeIdRelToAnchorId tgt anchor go forest = fromMaybe forest $ do
   insertLoc <- go anchorLoc
   let forest'' = Z.forest . zForestRoot . Z.insert tgtTree $ insertLoc
   return $ IdForest forest''
-  where
-    forestLoc = Z.fromForest . idForest $ forest
+ where
+  forestLoc = Z.fromForest . idForest $ forest
 
 -- | When called like `forestMoveSubtreeRelFromForestId tgt go ins haystack forest`, this doesn the following:
 --
@@ -167,8 +167,8 @@ forestMoveSubtreeRelFromForestId tgt go ins haystack forest = fromMaybe forest $
   anchorLoc <- go tgtLoc
   let (anchorId, _) = Z.label anchorLoc
   return $ forestMoveSubtreeIdRelToAnchorId tgt anchorId ins forest
-  where
-    haystackLoc = Z.fromForest . idForest $ haystack
+ where
+  haystackLoc = Z.fromForest . idForest $ haystack
 
 -- | Version of 'forestMoveSubtreeRelFromForestId' where the 'InsertWalker' can be provided dynamically as part of the 'GoWalker'. This is required for more complex move operations like preorder move.
 forestMoveSubtreeRelFromForestIdDynamic ::
@@ -179,5 +179,5 @@ forestMoveSubtreeRelFromForestIdDynamic tgt dto haystack forest = fromMaybe fore
   (anchorLoc, ins) <- dto tgtLoc
   let (anchorId, _) = Z.label anchorLoc
   return $ forestMoveSubtreeIdRelToAnchorId tgt anchorId ins forest
-  where
-    haystackLoc = Z.fromForest . idForest $ haystack
+ where
+  haystackLoc = Z.fromForest . idForest $ haystack

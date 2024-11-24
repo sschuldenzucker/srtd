@@ -175,21 +175,21 @@ interpretHumanDateOrTime hdt now = case hdt of
      in -- SOMEDAY if at 9:00 this is set to 8:00, do we want 8:00 of the *current* day (in the past) or of the *next* day?
         -- Currently, it's the current day (in the past).
         Right $ DateAndTime . zonedTimeToUTC $ mapZonedTime (addLocalTime deltaTOD) beginOfToday
-  where
-    -- Current day in *local* time.
-    today :: Day
-    today = localDay . zonedTimeToLocalTime $ now
+ where
+  -- Current day in *local* time.
+  today :: Day
+  today = localDay . zonedTimeToLocalTime $ now
 
-    -- Beginning (i.e. 00:00) of the current day in *local* time.
-    beginOfToday :: ZonedTime
-    beginOfToday = ZonedTime (beginningOfDay today) (zonedTimeZone now)
+  -- Beginning (i.e. 00:00) of the current day in *local* time.
+  beginOfToday :: ZonedTime
+  beginOfToday = ZonedTime (beginningOfDay today) (zonedTimeZone now)
 
-    interpretHumanDate :: HumanDate -> Either String Day
-    interpretHumanDate (HDAbs day) = return $ day
-    interpretHumanDate (HDDiff dd) = return $ addGregorianDurationRollOver dd today
-    interpretHumanDate (HDToNext n anchor)
-      | n <= 0 = Left $ "Invalid number of steps: " ++ show n
-      | otherwise = stepOverAnchorTimes n anchor $ today
+  interpretHumanDate :: HumanDate -> Either String Day
+  interpretHumanDate (HDAbs day) = return $ day
+  interpretHumanDate (HDDiff dd) = return $ addGregorianDurationRollOver dd today
+  interpretHumanDate (HDToNext n anchor)
+    | n <= 0 = Left $ "Invalid number of steps: " ++ show n
+    | otherwise = stepOverAnchorTimes n anchor $ today
 
 -- | Step n times over the given anchor. Require `times > 0`.
 --
@@ -216,12 +216,12 @@ stepOverAnchorTimes n (AnchorMonthDay m d) day =
 -- One of those things that should really be part of time.
 nextWeekday :: DayOfWeek -> Day -> Day
 nextWeekday dow day = addDays deltaDays day
-  where
-    (_, _, currentDOW) = toWeekDate day
-    dowInt = fromEnum dow
-    deltaDays0 = (dowInt - currentDOW) `mod` 7
-    -- Ensure we go strictly forward:
-    deltaDays = toInteger $ if deltaDays0 == 0 then 7 else deltaDays0
+ where
+  (_, _, currentDOW) = toWeekDate day
+  dowInt = fromEnum dow
+  deltaDays0 = (dowInt - currentDOW) `mod` 7
+  -- Ensure we go strictly forward:
+  deltaDays = toInteger $ if deltaDays0 == 0 then 7 else deltaDays0
 
 mapZonedTime :: (LocalTime -> LocalTime) -> ZonedTime -> ZonedTime
 mapZonedTime f (ZonedTime t tz) = ZonedTime (f t) tz
@@ -238,8 +238,8 @@ prettyAbsolute _ (DateOnly day) = formatTime defaultTimeLocale "%a, %Y-%m-%d" da
 -- SOMEDAY show time zone (%Z). Needs an extended locale though, the default doesn't know CET for
 -- instance by name.
 prettyAbsolute tz (DateAndTime time) = formatTime defaultTimeLocale "%a, %Y-%m-%d %H:%M" zonedTime
-  where
-    zonedTime = utcToZonedTime tz time
+ where
+  zonedTime = utcToZonedTime tz time
 
 -- | Pretty-render relative to the given `now` moment in time. Medium-length.
 --
@@ -248,14 +248,14 @@ prettyAbsolute tz (DateAndTime time) = formatTime defaultTimeLocale "%a, %Y-%m-%
 -- This is a valid inverse to `parseInterpretHumanDateOrTime`.
 prettyRelativeMed :: ZonedTime -> DateOrTime -> String
 prettyRelativeMed (ZonedTime lnow tz) dot = dayS <> maybe mempty (" " <>) mtimeS
-  where
-    -- SOMEDAY all of this should really use Text, not String. Really nothing should use String.
-    dayS = fixTomorrow $ prettyDayRelativeMed (localDay lnow) (dotDay tz dot)
-    -- HACK to make 'tomorrow 18:00' occupy less space.
-    fixTomorrow
-      | hasTime dot = replacePrefix "tomorrow" "tom"
-      | otherwise = id
-    mtimeS = prettyTimeOfDay <$> dotmLocalTimeOfDay tz dot
+ where
+  -- SOMEDAY all of this should really use Text, not String. Really nothing should use String.
+  dayS = fixTomorrow $ prettyDayRelativeMed (localDay lnow) (dotDay tz dot)
+  -- HACK to make 'tomorrow 18:00' occupy less space.
+  fixTomorrow
+    | hasTime dot = replacePrefix "tomorrow" "tom"
+    | otherwise = id
+  mtimeS = prettyTimeOfDay <$> dotmLocalTimeOfDay tz dot
 
 prettyDayRelativeMed :: Day -> Day -> String
 prettyDayRelativeMed dnow d =
@@ -264,21 +264,21 @@ prettyDayRelativeMed dnow d =
       <|> (findDelta dayOfWeekPairs =<< dowIfNext)
       <|> (fmap ("-" ++) $ findDelta namedOffsetPairs negCdiffDays)
       <|> (fmap ("-" ++) . findDelta dayOfWeekPairs =<< dowIfPrev)
-  where
-    deltaDays = diffDays d dnow
-    cdiffDays = CalendarDiffDays 0 deltaDays
-    negCdiffDays = CalendarDiffDays 0 (-deltaDays)
-    dowIfNext
-      | deltaDays <= 0 = Nothing
-      | deltaDays > 7 = Nothing
-      | otherwise = Just $ dayOfWeek d
-    dowIfPrev
-      | deltaDays >= 0 = Nothing
-      | deltaDays < -7 = Nothing
-      | otherwise = Just $ dayOfWeek d
-    findDelta pairs delta =
-      L.find (\(_names, v) -> v == delta) pairs <&> \(names, _) ->
-        T.unpack $ head names
+ where
+  deltaDays = diffDays d dnow
+  cdiffDays = CalendarDiffDays 0 deltaDays
+  negCdiffDays = CalendarDiffDays 0 (-deltaDays)
+  dowIfNext
+    | deltaDays <= 0 = Nothing
+    | deltaDays > 7 = Nothing
+    | otherwise = Just $ dayOfWeek d
+  dowIfPrev
+    | deltaDays >= 0 = Nothing
+    | deltaDays < -7 = Nothing
+    | otherwise = Just $ dayOfWeek d
+  findDelta pairs delta =
+    L.find (\(_names, v) -> v == delta) pairs <&> \(names, _) ->
+      T.unpack $ head names
 
 -- SOMEDAY maybe include %a (day of week, short)
 prettyDay :: Day -> String
@@ -355,8 +355,8 @@ pHDAbs = do
   day <- pPosInt
   Just theDate <- return $ fromGregorianValid (toInteger year) month day
   return $ HDAbs theDate
-  where
-    fixYear y = if y < 100 then 2000 + y else y
+ where
+  fixYear y = if y < 100 then 2000 + y else y
 
 pHDToNext :: Parser HumanDate
 pHDToNext =
@@ -412,25 +412,25 @@ pDAMonthDay = do
 
 pHDDiff :: Parser HumanDate
 pHDDiff = HDDiff <$> (try pNamedOffset <|> pProperOffset)
-  where
-    pNamedOffset = keywords namedOffsetPairs
-    pProperOffset = do
-      void $ optional (string "in" >> space)
-      n <- pNonNegInt
-      space
-      step <- pStep
-      let res = scaleCalendarDiffDays (toInteger n) step
-      return res
-    pStep :: Parser CalendarDiffDays
-    pStep =
-      -- The default step is 1 day
-      -- (disabled for now b/c it's a bit too ambiguous for my taste)
-      -- <|> (return $ CalendarDiffDays 0 1)
-      keywords
-        [ (["days", "day", "d"], CalendarDiffDays 0 1)
-        , (["weeks", "week", "w"], CalendarDiffDays 0 7)
-        , (["months", "month", "m"], CalendarDiffDays 1 0)
-        ]
+ where
+  pNamedOffset = keywords namedOffsetPairs
+  pProperOffset = do
+    void $ optional (string "in" >> space)
+    n <- pNonNegInt
+    space
+    step <- pStep
+    let res = scaleCalendarDiffDays (toInteger n) step
+    return res
+  pStep :: Parser CalendarDiffDays
+  pStep =
+    -- The default step is 1 day
+    -- (disabled for now b/c it's a bit too ambiguous for my taste)
+    -- <|> (return $ CalendarDiffDays 0 1)
+    keywords
+      [ (["days", "day", "d"], CalendarDiffDays 0 1)
+      , (["weeks", "week", "w"], CalendarDiffDays 0 7)
+      , (["months", "month", "m"], CalendarDiffDays 1 0)
+      ]
 
 pHTimeOnly :: Parser HumanDateOrTime
 pHTimeOnly = HTimeOnly <$> pTimeOfDay
@@ -438,29 +438,29 @@ pHTimeOnly = HTimeOnly <$> pTimeOfDay
 -- Similar to `pHDDiff`
 pHDiffTime :: Parser HumanDateOrTime
 pHDiffTime = HDiffTime <$> properTimeOffset
-  where
-    properTimeOffset = do
-      void $ optional (string "in" >> space)
-      n <- pNonNegInt
-      space
-      step <- pStep
-      let res = scaleNominalDiffTime (toInteger n) step
-      return res
-    pStep :: Parser NominalDiffTime
-    pStep =
-      keywords
-        [ (["hours", "hour", "h"], fromInteger (60 * 60))
-        , -- We do *not* use 'm' as a short form for "minute" b/c it's already used by month. Prob fine, we don't use this really anyways.
-          (["minutes", "minute", "mins", "min"], fromInteger 60)
-        , (["seconds", "second", "secs", "sec", "s"], fromInteger 1)
-        ]
+ where
+  properTimeOffset = do
+    void $ optional (string "in" >> space)
+    n <- pNonNegInt
+    space
+    step <- pStep
+    let res = scaleNominalDiffTime (toInteger n) step
+    return res
+  pStep :: Parser NominalDiffTime
+  pStep =
+    keywords
+      [ (["hours", "hour", "h"], fromInteger (60 * 60))
+      , -- We do *not* use 'm' as a short form for "minute" b/c it's already used by month. Prob fine, we don't use this really anyways.
+        (["minutes", "minute", "mins", "min"], fromInteger 60)
+      , (["seconds", "second", "secs", "sec", "s"], fromInteger 1)
+      ]
 
 keywords :: [([Text], a)] -> Parser a
 keywords = choice . map (\(ss, v) -> try $ choice (map mkKeyword ss) >> return v)
-  where
-    -- NB notFollowedBy is important to resolve ambiguities.
-    -- For example, 'mon' (monday) and 'month' (unit of time in date) both occur and otherwise would be ambiguous.
-    mkKeyword s = try (string s) >> notFollowedBy alphaNumChar
+ where
+  -- NB notFollowedBy is important to resolve ambiguities.
+  -- For example, 'mon' (monday) and 'month' (unit of time in date) both occur and otherwise would be ambiguous.
+  mkKeyword s = try (string s) >> notFollowedBy alphaNumChar
 
 pPosInt :: Parser Int
 pPosInt = do
@@ -473,5 +473,5 @@ pNonNegInt = read <$> some digitChar
 
 scaleNominalDiffTime :: (Integral a) => a -> NominalDiffTime -> NominalDiffTime
 scaleNominalDiffTime n t = n' * t
-  where
-    n' = fromRational (toInteger n % 1)
+ where
+  n' = fromRational (toInteger n % 1)

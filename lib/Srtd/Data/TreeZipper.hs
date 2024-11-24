@@ -46,23 +46,23 @@ toBeforeNextPreorder eloc =
     <|> Z.next eloc
     <|> Z.nextSpace
       <$> Z.parent eloc
-  where
-    -- Like toFirstChildOfNext but fails if there is no first child. This is intuitive for some use cases.
-    toBeforeFirstChildOfNext eloc = do
-      nxt <- Z.nextTree eloc
-      fc <- Z.firstChild nxt
-      return $ Z.prevSpace fc
+ where
+  -- Like toFirstChildOfNext but fails if there is no first child. This is intuitive for some use cases.
+  toBeforeFirstChildOfNext eloc = do
+    nxt <- Z.nextTree eloc
+    fc <- Z.firstChild nxt
+    return $ Z.prevSpace fc
 toAfterPrevPreorder eloc =
   toAfterLastChildOfPrev eloc
     <|> Z.prev eloc
     <|> Z.prevSpace
       <$> Z.parent eloc
-  where
-    -- Like toLastChildOfPrev but fails if there is no first child. This is intuitive for some use cases.
-    toAfterLastChildOfPrev eloc = do
-      nxt <- Z.prevTree eloc
-      fc <- Z.lastChild nxt
-      return $ Z.nextSpace fc
+ where
+  -- Like toLastChildOfPrev but fails if there is no first child. This is intuitive for some use cases.
+  toAfterLastChildOfPrev eloc = do
+    nxt <- Z.prevTree eloc
+    fc <- Z.lastChild nxt
+    return $ Z.nextSpace fc
 
 -- ** Go Walker
 
@@ -140,9 +140,9 @@ zFollowingTrees :: TreePos Empty a -> [TreePos Full a]
 zFollowingTrees epos = case Z.nextTree epos of
   Nothing -> []
   Just pos -> pos : unfoldr go pos
-  where
-    go = fmap dup . Z.next
-    dup x = (x, x)
+ where
+  go = fmap dup . Z.next
+  dup x = (x, x)
 
 -- | List all descendents in DFS preorder. For empty positions, we list the descendants of all
 -- following trees (so that the `children` position, before the first child, lists the forest .)
@@ -164,9 +164,9 @@ instance ZDescendants Empty where
 -- more generally actually) - And then prob also optimized zFullForest etc.
 zFindDescendantByLabel :: (ZDescendants t) => (b -> Bool) -> TreePos t b -> Maybe (TreePos Full b)
 zFindDescendantByLabel lp = zFindFirst $ lp . Z.label
-  where
-    zFindFirst :: (ZDescendants t) => (TreePos Full a -> Bool) -> TreePos t a -> Maybe (TreePos Full a)
-    zFindFirst p = listToMaybe . filter p . zDescendants
+ where
+  zFindFirst :: (ZDescendants t) => (TreePos Full a -> Bool) -> TreePos t a -> Maybe (TreePos Full a)
+  zFindFirst p = listToMaybe . filter p . zDescendants
 
 -- * Rebuilding Trees and Forests
 

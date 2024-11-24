@@ -78,15 +78,15 @@ emptyDiskModel =
 
 diskModelToJSONModel :: DiskModel -> ModelJSON.Model
 diskModelToJSONModel (DiskModel (IdForest forest)) = ModelJSON.Model forestJSON
-  where
-    forestJSON = map treeToJSONTree forest
-    treeToJSONTree = foldTree $ \(i, attr) children -> ModelJSON.Tree i attr children
+ where
+  forestJSON = map treeToJSONTree forest
+  treeToJSONTree = foldTree $ \(i, attr) children -> ModelJSON.Tree i attr children
 
 diskModelFromJSONModel :: ModelJSON.Model -> DiskModel
 diskModelFromJSONModel (ModelJSON.Model forestJSON) = DiskModel $ IdForest forest
-  where
-    forest = jsonForestToForest forestJSON
-    jsonForestToForest = unfoldForest $ \(ModelJSON.Tree i attr children) -> ((i, attr), children)
+ where
+  forest = jsonForestToForest forestJSON
+  jsonForestToForest = unfoldForest $ \(ModelJSON.Tree i attr children) -> ((i, attr), children)
 
 instance ToJSON DiskModel where
   toJSON = toJSON . diskModelToJSONModel
@@ -111,14 +111,14 @@ onForestChildren f = map (onTreeChildren f)
 -- | All subtrees (with repetitions of children) with breadcrumbs (parents), in preorder.
 forestTreesWithBreadcrumbs :: Forest a -> [([a], Tree a)]
 forestTreesWithBreadcrumbs = concatMap (goTree [])
-  where
-    goTree crumbs n@(Node x children) = (crumbs, n) : concatMap (goTree (x : crumbs)) children
+ where
+  goTree crumbs n@(Node x children) = (crumbs, n) : concatMap (goTree (x : crumbs)) children
 
 -- | Preorder nodes with their respecive levels
 forestFlattenWithLevels :: Forest a -> [(Int, a)]
 forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
-  where
-    extr (crumbs, (Node x _)) = (length crumbs, x)
+ where
+  extr (crumbs, (Node x _)) = (length crumbs, x)
 
 -- | Environment for updating the model, specifically for computing derived params. We pass this
 -- around as an implicit parameter.
@@ -127,27 +127,27 @@ data ModelUpdateEnv = ModelUpdateEnv {mueTimeZone :: TimeZone}
 -- For some reason, this has to be above `diskModelToModel`, otherwise it's not found.
 _forestMakeDerivedAttrs :: (?mue :: ModelUpdateEnv) => IdForest EID Attr -> IdForest EID Label
 _forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> (attr, makeNodeDerivedAttr mplabel clabels attr)
-  where
-    -- TODO WIP re-write to use 'transformIdForestDownUp' and the "down" step is for updating 'daImpliedDates'.
-    -- Requires some thought how exactly these should be implied from the parent (always inherit or base on status/actionability?)
-    -- Also make this a test case for the structure of transformIdForestDownUp. Should it be more symmetic? Or can we hack it by making 'u' a closure? Or use a final mapping step? Add this to transformIdForestDownUp or separate fmap? Or mutual recursion after all?
-    makeNodeDerivedAttr mplabel clabels attr =
-      DerivedAttr
-        { daChildActionability = forEmptyList None minimum . map glActionability $ clabels
-        , daEarliestAutodates =
-            foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
-        , daLatestAutodates =
-            foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
-        , daEarliestDates =
-            foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . map (daEarliestDates . snd) $ clabels
-        , daLatestDates =
-            foldl' (pointwiseChooseAttrDates chooseMax tz) (dates attr) . map (daLatestDates . snd) $ clabels
-        , -- TODO should this actually *always* inherit from the parent? Or depend on status?
-          -- Writing this as fold to match the above, but `mplabel` is just a Maybe, not a list.
-          daImpliedDates =
-            foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . fmap (daImpliedDates . snd) $ mplabel
-        }
-    tz = mueTimeZone ?mue
+ where
+  -- TODO WIP re-write to use 'transformIdForestDownUp' and the "down" step is for updating 'daImpliedDates'.
+  -- Requires some thought how exactly these should be implied from the parent (always inherit or base on status/actionability?)
+  -- Also make this a test case for the structure of transformIdForestDownUp. Should it be more symmetic? Or can we hack it by making 'u' a closure? Or use a final mapping step? Add this to transformIdForestDownUp or separate fmap? Or mutual recursion after all?
+  makeNodeDerivedAttr mplabel clabels attr =
+    DerivedAttr
+      { daChildActionability = forEmptyList None minimum . map glActionability $ clabels
+      , daEarliestAutodates =
+          foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
+      , daLatestAutodates =
+          foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
+      , daEarliestDates =
+          foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . map (daEarliestDates . snd) $ clabels
+      , daLatestDates =
+          foldl' (pointwiseChooseAttrDates chooseMax tz) (dates attr) . map (daLatestDates . snd) $ clabels
+      , -- TODO should this actually *always* inherit from the parent? Or depend on status?
+        -- Writing this as fold to match the above, but `mplabel` is just a Maybe, not a list.
+        daImpliedDates =
+          foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . fmap (daImpliedDates . snd) $ mplabel
+      }
+  tz = mueTimeZone ?mue
 
 diskModelToModel :: (?mue :: ModelUpdateEnv) => DiskModel -> Model
 diskModelToModel (DiskModel forest) = Model (_forestMakeDerivedAttrs forest)
@@ -183,32 +183,32 @@ filterSubtree p = stForestL %~ (filterIdForest p)
 
 forestFindTreeWithBreadcrumbs :: (Eq id) => id -> IdForest id a -> Maybe ([(id, a)], Tree (id, a))
 forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt) $ treesWithIdBreadcrumbs
-  where
-    -- Mogrify b/c forestTreesWithBreadcrumbs also returns the attrs, which we don't care about here.
-    treesWithIdBreadcrumbs = forestTreesWithBreadcrumbs . idForest $ forest
+ where
+  -- Mogrify b/c forestTreesWithBreadcrumbs also returns the attrs, which we don't care about here.
+  treesWithIdBreadcrumbs = forestTreesWithBreadcrumbs . idForest $ forest
 
 -- | Add local derived attrs across a subtree.
 --
 -- SOMEDAY also do this for the root?
 addLocalDerivedAttrs :: MForest -> STForest
 addLocalDerivedAttrs = transformIdForestTopDown _go
-  where
-    _go Nothing label = (label, LocalDerivedAttr {ldParentActionability = None})
-    _go (Just ((parAttr, _parDAttr), parLDAttr)) label =
-      ( label
-      , LocalDerivedAttr
-          { ldParentActionability = stepParentActionability (status parAttr) (ldParentActionability parLDAttr)
-          }
-      )
+ where
+  _go Nothing label = (label, LocalDerivedAttr {ldParentActionability = None})
+  _go (Just ((parAttr, _parDAttr), parLDAttr)) label =
+    ( label
+    , LocalDerivedAttr
+        { ldParentActionability = stepParentActionability (status parAttr) (ldParentActionability parLDAttr)
+        }
+    )
 
-    stepParentActionability :: Status -> Status -> Status
-    stepParentActionability a pa = case (a, pa) of
-      -- SOMEDAY this is a very ad-hoc solution. Think about the structure, also re the upwards derivation.
-      -- Not super sure if this is the right way.
-      (a, None) -> a
-      (None, pa) -> pa
-      (a, Project) -> a
-      (a, ap) -> max a ap
+  stepParentActionability :: Status -> Status -> Status
+  stepParentActionability a pa = case (a, pa) of
+    -- SOMEDAY this is a very ad-hoc solution. Think about the structure, also re the upwards derivation.
+    -- Not super sure if this is the right way.
+    (a, None) -> a
+    (None, pa) -> pa
+    (a, Project) -> a
+    (a, ap) -> max a ap
 
 -- stepParentActionability st pst = case (st, pst) of
 --   (st, None) -> st
@@ -245,8 +245,8 @@ instance Show Filter where
 -- SOMEDAY decide on error handling
 f_identity :: Filter
 f_identity = Filter "all" f
-  where
-    f i m = fromRight (error "root EID not found") $ modelGetSubtreeBelow i m
+ where
+  f i m = fromRight (error "root EID not found") $ modelGetSubtreeBelow i m
 
 -- | Hide completed tasks, top-down
 --
@@ -256,8 +256,8 @@ f_hide_completed =
   let (Filter _ fi) = f_identity
       fi' i m = filterSubtree p $ fi i m
    in Filter "not done" fi'
-  where
-    p ((Attr {status}, _), _) = status /= Done
+ where
+  p ((Attr {status}, _), _) = status /= Done
 
 -- * Model modifications
 
@@ -274,8 +274,8 @@ updateDerivedAttrs = forestL %~ (_forestMakeDerivedAttrs . fmap fst)
 -- | Update an item's attr.
 modifyAttrByEID :: (?mue :: ModelUpdateEnv) => EID -> (Attr -> Attr) -> Model -> Model
 modifyAttrByEID tgt f = updateDerivedAttrs . (forestL %~ mapIdForestWithIds updateContent)
-  where
-    updateContent eid (attr, dattr) = (if eid == tgt then f attr else attr, dattr)
+ where
+  updateContent eid (attr, dattr) = (if eid == tgt then f attr else attr, dattr)
 
 -- | Delete the given ID and the subtree below it.
 deleteSubtree :: (?mue :: ModelUpdateEnv) => EID -> Model -> Model
@@ -287,10 +287,10 @@ deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterIdForestWithIds (\eid
 insertNewNormalWithNewId ::
   (?mue :: ModelUpdateEnv) => UUID -> Attr -> EID -> InsertWalker IdLabel -> Model -> Model
 insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ Model forest'
-  where
-    -- NB 'emptyDerivedAttr' is immediately overwritten by 'updateDerivedAttrs'. It's just here so
-    -- we can re-use code.
-    forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, emptyDerivedAttr attr) forest
+ where
+  -- NB 'emptyDerivedAttr' is immediately overwritten by 'updateDerivedAttrs'. It's just here so
+  -- we can re-use code.
+  forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, emptyDerivedAttr attr) forest
 
 -- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
 moveSubtreeRelFromForest ::
@@ -310,13 +310,13 @@ moveSubtreeRelFromForestDynamic tgt dto haystack = updateDerivedAttrs . (forestL
 sortShallowBelow ::
   (?mue :: ModelUpdateEnv) => (Label -> Label -> Ordering) -> EID -> Model -> Model
 sortShallowBelow ord root = updateDerivedAttrs . (forestL %~ onForestBelowId root (sortBy ord'))
-  where
-    ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2
+ where
+  ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2
 
 -- | Sort the subtree below the given target ID, recursive at all levels
 sortDeepBelow :: (?mue :: ModelUpdateEnv) => (Label -> Label -> Ordering) -> EID -> Model -> Model
 sortDeepBelow ord root = updateDerivedAttrs . (forestL %~ onForestBelowId root deepSortByOrd)
-  where
-    -- prob kinda inefficient but I got <= 10 levels or something.
-    deepSortByOrd = onForestChildren deepSortByOrd . sortBy ord'
-    ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2
+ where
+  -- prob kinda inefficient but I got <= 10 levels or something.
+  deepSortByOrd = onForestChildren deepSortByOrd . sortBy ord'
+  ord' (Node (_, attr1) _) (Node (_, attr2) _) = ord attr1 attr2

@@ -104,10 +104,10 @@ pointwiseChooseAttrDates ch tz ad1 ad2 =
     , scheduled = chooseWith EndOfDay scheduled
     , remind = chooseWith BeginningOfDay remind
     }
-  where
-    -- 'Just' values are always dominant! (doesn't matter what 'ch' does)
-    chooseWith dr f = (unionMaybeWith (chooseWith' dr) `on` f) ad1 ad2
-    chooseWith' dr d1 d2 = ch (compareDateOrTime dr tz d1 d2) d1 d2
+ where
+  -- 'Just' values are always dominant! (doesn't matter what 'ch' does)
+  chooseWith dr f = (unionMaybeWith (chooseWith' dr) `on` f) ad1 ad2
+  chooseWith' dr d1 d2 = ch (compareDateOrTime dr tz d1 d2) d1 d2
 
 data AttrAutoDates = AttrAutoDates
   { created :: UTCTime

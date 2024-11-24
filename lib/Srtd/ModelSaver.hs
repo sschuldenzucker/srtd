@@ -31,6 +31,6 @@ startModelSaver mserver = do
 
 writeModelToFile :: Model -> IO ()
 writeModelToFile model = B.writeFile model_filename (encodePretty' prettyConfig $ modelToDiskModel model)
-  where
-    prettyConfig = defConfig {confIndent = Spaces 2, confCompare = keyComp}
-    keyComp = keyOrder ["id", "name"] `mappend` compare
+ where
+  prettyConfig = defConfig {confIndent = Spaces 2, confCompare = keyComp}
+  keyComp = keyOrder ["id", "name"] `mappend` compare

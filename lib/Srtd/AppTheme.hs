@@ -43,18 +43,18 @@ data MyAttr = MyAttr
 -- Mostly taken from Brick.Themes (which doesn't export this unfortunately)
 parseColor :: Text -> Either Text Color
 parseColor t = maybe (Left $ "Invalid color: " <> t) Right parsedRGB
-  where
-    parsedRGB =
-      if T.head t /= '#'
-        then Nothing
-        else case mapMaybe readHex (T.chunksOf 2 (T.tail t)) of
-          -- Do NOT use rgbColor or srgbColor here. Colors will be really off.
-          -- SOMEDAY Maybe the color settings are wrong or something? Maybe I need to set full color for the terminal?
-          [r, g, b] -> Just (linearColor r g b)
-          _ -> Nothing
+ where
+  parsedRGB =
+    if T.head t /= '#'
+      then Nothing
+      else case mapMaybe readHex (T.chunksOf 2 (T.tail t)) of
+        -- Do NOT use rgbColor or srgbColor here. Colors will be really off.
+        -- SOMEDAY Maybe the color settings are wrong or something? Maybe I need to set full color for the terminal?
+        [r, g, b] -> Just (linearColor r g b)
+        _ -> Nothing
 
-    readHex :: T.Text -> Maybe Int
-    readHex t' = either (const Nothing) (Just . fst) (T.hexadecimal t')
+  readHex :: T.Text -> Maybe Int
+  readHex t' = either (const Nothing) (Just . fst) (T.hexadecimal t')
 
 type Palette = Map Text Color
 
@@ -80,21 +80,21 @@ myAttrToAttr palette MyAttr {style, fg, bg} = do
   bgTrans <- maybeGetTrans bg getColor (flip withBackColor)
   styleTrans <- maybeGetTrans style parseStyle (flip withStyle)
   return $ fgTrans . bgTrans . styleTrans $ defAttr
-  where
-    maybeGetTrans Nothing _ _ = return id
-    maybeGetTrans (Just x) fget ftrans = ftrans <$> fget x
+ where
+  maybeGetTrans Nothing _ _ = return id
+  maybeGetTrans (Just x) fget ftrans = ftrans <$> fget x
 
-    getColor c = maybe (Left $ "Color not found in palette: " <> c) Right $ Map.lookup c palette
+  getColor c = maybe (Left $ "Color not found in palette: " <> c) Right $ Map.lookup c palette
 
 parseAttrName :: Text -> AttrName
 parseAttrName = mconcat . map (attrName . T.unpack) . T.splitOn "."
 
 themeMapToAttrPairs :: Palette -> Map Text MyAttr -> Either Text [(AttrName, Attr)]
 themeMapToAttrPairs palette = mapM transPair . Map.toList
-  where
-    transPair (attrStr, myattr) = do
-      attr <- myAttrToAttr palette myattr
-      return (parseAttrName attrStr, attr)
+ where
+  transPair (attrStr, myattr) = do
+    attr <- myAttrToAttr palette myattr
+    return (parseAttrName attrStr, attr)
 
 themeFileToTheme :: ThemeFile -> Either Text Theme
 themeFileToTheme ThemeFile {palette, theme, defaultAttr} = do
