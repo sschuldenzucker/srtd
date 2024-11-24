@@ -1,9 +1,10 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TemplateHaskell #-}
 
--- | A model defining a unified component interface. I have no idea why Brick doesn't include this.
---
--- The only place where we really need this is for overlays. We don't localize resource names or messages.
+{-| A model defining a unified component interface. I have no idea why Brick doesn't include this.
+
+The only place where we really need this is for overlays. We don't localize resource names or messages.
+-}
 module Srtd.Component where
 
 import Brick

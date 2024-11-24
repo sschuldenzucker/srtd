@@ -1,7 +1,8 @@
--- |
--- Some convenience helpers for logging.
---
--- May see some changes going forward (e.g., for concurrency)
+{-|
+Some convenience helpers for logging.
+
+May see some changes going forward (e.g., for concurrency)
+-}
 module Srtd.Log (setupLogger, glogL, uglogL, traceUGlogl, Priority (..)) where
 
 import GHC.IO.Unsafe (unsafePerformIO)

@@ -1,8 +1,9 @@
--- | Data structure for trees/forests where nodes can be identified via IDs, and helpers
---
--- SOMEDAY change this to something where ID access is more efficient; see the Elixir version I made at some point.
---
--- To be imported qualified.
+{-| Data structure for trees/forests where nodes can be identified via IDs, and helpers
+
+SOMEDAY change this to something where ID access is more efficient; see the Elixir version I made at some point.
+
+To be imported qualified.
+-}
 module Srtd.Data.IdTree where
 
 import Control.Monad ((<=<))

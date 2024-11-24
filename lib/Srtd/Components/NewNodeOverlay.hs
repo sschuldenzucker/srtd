@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
--- | Component for editing item names for new/existing items.
---
--- TODO Rename. It's more of a generic name editing component.
+{-| Component for editing item names for new/existing items.
+
+TODO Rename. It's more of a generic name editing component.
+-}
 module Srtd.Components.NewNodeOverlay where
 
 import Brick

@@ -2,9 +2,10 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- | My own theming and theme management. For loading themes from toml files (see README).
---
--- Similar to Brick's built-in theme support but I wanted indirection for colors (which Brick doesn't support).
+{-| My own theming and theme management. For loading themes from toml files (see README).
+
+Similar to Brick's built-in theme support but I wanted indirection for colors (which Brick doesn't support).
+-}
 module Srtd.AppTheme where
 
 import Brick (AttrName, attrName)

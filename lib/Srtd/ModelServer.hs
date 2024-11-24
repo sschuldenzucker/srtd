@@ -1,8 +1,9 @@
 {-# LANGUAGE ImplicitParams #-}
 
--- | Synchronization framework for concurrent model access.
---
--- There's not actually a server here but we *may* want to make it one later.
+{-| Synchronization framework for concurrent model access.
+
+There's not actually a server here but we *may* want to make it one later.
+-}
 module Srtd.ModelServer (ModelServer, MsgModelUpdated (..), getModel, modifyModelOnServer, startModelServer, subscribe) where
 
 import Control.Concurrent.STM

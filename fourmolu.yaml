@@ -36,7 +36,7 @@ haddock-style: single-line
 
 # How to print module docstring
 # TODO if we switch the above, maybe configure this.
-haddock-style-module: null
+haddock-style-module: multi-line-compact
 
 # Styling of let blocks (choices: auto, inline, newline, or mixed)
 # TODO review

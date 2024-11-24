@@ -1,10 +1,11 @@
--- | Alignment helpers for brick, to get e.g. transparent ("layer") bottom-right alignment.
---
--- Kinda shocking it doesn't have that tbh.
---
--- NB if you want non-transparent (non-"layer") alignment, this can simply be achieved using
--- `padLeft Max` etc. That is probably the better choice in most situations (and less flakey with
--- colors), *except* overlay windows.
+{-| Alignment helpers for brick, to get e.g. transparent ("layer") bottom-right alignment.
+
+Kinda shocking it doesn't have that tbh.
+
+NB if you want non-transparent (non-"layer") alignment, this can simply be achieved using
+`padLeft Max` etc. That is probably the better choice in most situations (and less flakey with
+colors), *except* overlay windows.
+-}
 module Srtd.Alignment where
 
 import Brick.Types
