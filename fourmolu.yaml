@@ -35,11 +35,9 @@ newlines-between-decls: 1
 haddock-style: single-line
 
 # How to print module docstring
-# TODO if we switch the above, maybe configure this.
 haddock-style-module: multi-line-compact
 
 # Styling of let blocks (choices: auto, inline, newline, or mixed)
-# TODO review
 let-style: auto
 
 # How to align the 'in' keyword with respect to the 'let' keyword (choices: left-align, right-align, or no-space)
