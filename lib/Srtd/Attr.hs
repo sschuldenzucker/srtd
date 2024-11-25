@@ -43,6 +43,7 @@ data Status
   | -- | Active project. Checked for next actions / being stuck.
     Project
   | -- | Not ready, but will likely become Next later.
+    -- SOMEDAY move this before Project. (but doesn't matter in practice I think)
     Waiting
   | -- | Open point. Something we can't / don't want to do anything about rn but likely needs to be
     -- resolved to complete the project, and also no clear *other* person is responsible for doing this.
