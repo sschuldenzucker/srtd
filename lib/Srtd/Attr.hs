@@ -7,6 +7,7 @@ module Srtd.Attr where
 
 -- SOMEDAY it's not very nice we depend on Brick here. Copy the definition (I'm sure it's easy)
 import Brick (suffixLenses)
+import Control.Arrow (second)
 import Data.Aeson
 import Data.Aeson.Types (typeMismatch)
 import Data.Function (on)
@@ -295,6 +296,10 @@ data LocalDerivedAttr = LocalDerivedAttr
   -- ^ Actionability of the parent, derived downwards
   --
   -- SOMEDAY Replace this by what's llActionability right now.
+  , ldBreadcrumbs :: [LocalIdLabel]
+  -- ^ Ancestors starting at the parent up to and excluding the root.
+  --
+  -- SOMEDAY rename to ancestors.
   }
   deriving (Show)
 
@@ -311,6 +316,9 @@ llActionability (label, ldattr) = case (glActionability label, ldParentActionabi
   (a, None) -> a
   (a, Project) -> a
   (a, ap) -> max a ap
+
+localIdLabel2IdLabel :: LocalIdLabel -> IdLabel
+localIdLabel2IdLabel = second fst
 
 -- SOMEDAY these unused?
 

@@ -30,7 +30,7 @@ import Srtd.Data.TreeZipper
 import Srtd.Log
 import Srtd.ModelJSON qualified as ModelJSON
 import Srtd.Todo
-import Srtd.Util (chooseMax, chooseMin, forEmptyList, mapForest)
+import Srtd.Util (chooseMax, chooseMin, forEmptyList, mapForest, transformForestTopDown)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- import Data.UUID.V4 (nextRandom)
@@ -167,6 +167,8 @@ type STForest = IdForest EID LocalLabel
 --
 -- SOMEDAY can be generalized to label and id types and moved to IdForest. (and called IdSubtree)
 data Subtree = Subtree
+  -- SOMEDAY we compute breadcrumbs twice: here for the root and in ldBreadcrumbs for children.
+  -- That's not wrong but maybe we can unify code?
   { breadcrumbs :: [IdLabel]
   , root :: EID
   , rootLabel :: Label
@@ -181,6 +183,7 @@ data IdNotFoundError = IdNotFoundError deriving (Show)
 filterSubtree :: (LocalLabel -> Bool) -> Subtree -> Subtree
 filterSubtree p = stForestL %~ (filterIdForest p)
 
+-- TODO we may not need this anymore
 forestFindTreeWithBreadcrumbs :: (Eq id) => id -> IdForest id a -> Maybe ([(id, a)], Tree (id, a))
 forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt) $ treesWithIdBreadcrumbs
  where
@@ -191,14 +194,18 @@ forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt
 --
 -- SOMEDAY also do this for the root?
 addLocalDerivedAttrs :: MForest -> STForest
-addLocalDerivedAttrs = transformIdForestTopDown _go
+addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
  where
-  _go Nothing label = (label, LocalDerivedAttr {ldParentActionability = None})
-  _go (Just ((parAttr, _parDAttr), parLDAttr)) label =
-    ( label
-    , LocalDerivedAttr
-        { ldParentActionability = stepParentActionability (status parAttr) (ldParentActionability parLDAttr)
-        }
+  _go Nothing (i, label) = (i, (label, LocalDerivedAttr {ldParentActionability = None, ldBreadcrumbs = []}))
+  _go (Just plilabel@(_i, ((parAttr, _parDAttr), parLDAttr))) (i, label) =
+    ( i
+    ,
+      ( label
+      , LocalDerivedAttr
+          { ldParentActionability = stepParentActionability (status parAttr) (ldParentActionability parLDAttr)
+          , ldBreadcrumbs = plilabel : ldBreadcrumbs parLDAttr
+          }
+      )
     )
 
   stepParentActionability :: Status -> Status -> Status

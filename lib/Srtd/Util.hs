@@ -104,6 +104,10 @@ transformTreeDownUp fdown gmake = _go Nothing
         clabels' = map rootLabel cs'
      in Node (gmake crumb x clabels') cs'
 
+-- | Top-down transformation. This is a specialization of 'transformForestDownUp'.
+transformForestTopDown :: (Maybe b -> a -> b) -> Forest a -> Forest b
+transformForestTopDown f = transformForestDownUp f (\res _ _ -> res)
+
 -- | Combined top-down and bottom-up transformation function. Mutually recursive.
 --
 -- The given transformation function accepts the result at the parent, the result at the children,

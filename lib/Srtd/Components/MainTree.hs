@@ -402,7 +402,27 @@ renderRoot ztime glabel@(rootAttr, _) breadcrumbs =
     [statusW, str " ", pathW]
  where
   statusW = renderStatus False (status rootAttr) (glActionability glabel)
+  pathW = renderBreadcrumbs ztime glabel breadcrumbs
+
+-- SOMEDAY annoying these are two duplicate functions.
+
+renderBreadcrumbs :: ZonedTime -> Label -> [IdLabel] -> Widget n
+renderBreadcrumbs ztime (rootAttr, _) breadcrumbs = pathW
+ where
   pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootAttr : map (fst . snd) breadcrumbs
+  wrapBreadcrumbWidget attr w =
+    let battr = mostUrgentDateAttr ztime False (dates attr)
+     in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
+  mkBreadcrumbW attr =
+    hBox
+      [ str (name attr)
+      , maybe emptyWidget (wrapBreadcrumbWidget attr) (renderMostUrgentDateMaybe ztime False (dates attr))
+      ]
+
+renderBreadcrumbsOnly :: ZonedTime -> [IdLabel] -> Widget n
+renderBreadcrumbsOnly ztime breadcrumbs = pathW
+ where
+  pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ map (fst . snd) breadcrumbs
   wrapBreadcrumbWidget attr w =
     let battr = mostUrgentDateAttr ztime False (dates attr)
      in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
@@ -419,7 +439,7 @@ renderFilters fs = maybe emptyWidget go (CList.focus fs)
   go f = withDefAttr filterLabelAttr $ str (filterName f)
 
 renderItemDetails :: ZonedTime -> LocalIdLabel -> Widget n
-renderItemDetails ztime (eid, llabel) =
+renderItemDetails ztime lillabel@(eid, llabel) =
   padLeftRight 1 $
     withDefAttr (attrName "item_details") $
       vBox
@@ -436,11 +456,18 @@ renderItemDetails ztime (eid, llabel) =
     vBox
       [ -- hBox [str "EID    ", str (showEIDShort eid)],
         -- hBox [str "Title  ", strWrapWith nameWrapSettings (name attr)]
-        hBox
-          [ renderStatus False (status attr) (llActionability llabel)
-          , str " "
-          , strWrapWith nameWrapSettings (name attr)
-          ]
+        padBottom (Pad 1) $
+          hBox
+            [ renderStatus False (status attr) (llActionability llabel)
+            , str " "
+            , strWrapWith nameWrapSettings (name attr)
+            ]
+      , -- SOMEDAY all these conversions are pretty fucking annoying. Maybe use lenses? Proper data
+        -- structures for the different *Label things?
+        str "< "
+          <+> renderBreadcrumbsOnly
+            ztime
+            (map localIdLabel2IdLabel . ldBreadcrumbs $ ldattr)
       ]
   botBox =
     vBox
