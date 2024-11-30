@@ -1,7 +1,6 @@
 module Srtd.Components.TestOverlay where
 
 import Brick
-import Brick.BChan (writeBChan)
 import Brick.Keybindings (bind)
 import Control.Monad.State (liftIO)
 import Graphics.Vty (Event (..), Key (..))
@@ -17,9 +16,7 @@ keymap :: Keymap (AppEventAction TestOverlay () ())
 keymap =
   kmMake
     "Test Overlay"
-    [ kmLeafA (bind 'T') "Close" $ do
-        liftIO $ writeBChan (acAppChan ?actx) (PopOverlay ORNone)
-        return $ Confirmed ()
+    [ kmLeafA (bind 'T') "Close" $ return (Confirmed ())
     , kmSub (bind 'a') stickySubmap
     ]
 

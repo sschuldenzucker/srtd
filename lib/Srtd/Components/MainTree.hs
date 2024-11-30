@@ -1,6 +1,7 @@
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
 {-# HLINT ignore "Redundant bracket" #-}
+-- For overlay management
+{-# LANGUAGE ExistentialQuantification #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module Srtd.Components.MainTree (MainTree (..), make) where
 
@@ -10,11 +11,12 @@ import Brick.Keybindings (Binding, bind, ctrl)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
+import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 import Data.CircularList qualified as CList
 import Data.Function (on)
 import Data.List (intercalate, intersperse)
-import Data.Maybe (fromJust, fromMaybe, listToMaybe)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (UTCTime, ZonedTime, zonedTimeToUTC, zonedTimeZone)
@@ -26,7 +28,9 @@ import Lens.Micro.Platform
 import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
-import Srtd.Component
+-- TODO clean up that name clash
+import Srtd.Component hiding (Overlay)
+import Srtd.Component qualified as Component
 import Srtd.Components.Attr (
   mostUrgentDateAttr,
   renderMostUrgentDate,
@@ -53,6 +57,23 @@ import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 
 type MyList = L.List AppResourceName (Int, EID, LocalLabel)
 
+-- | A class for overlays. Two callbacks define interruptible computations. Note that this doesn't
+-- store state of the computation *itself*.
+--
+-- SOMEDAY are we over-generalizing here? Compare this to explicitly naming the overlays we might have open.
+--
+-- Might also be related to that question of representation of having a data structure vs the list
+-- of filled fields in some priority order (e.g., for dates rendering).
+data Overlay = forall s a b. (AppComponent s a b) => Overlay
+  { olState :: s
+  , olOnContinue :: (?actx :: AppContext) => a -> EventM AppResourceName MainTree (AppEventReturn () ())
+  , olOnConfirm :: (?actx :: AppContext) => b -> EventM AppResourceName MainTree (AppEventReturn () ())
+  }
+
+-- | Helper to use for 'olOnContinue' or 'olOnConfirm' when you want to ignore these events.
+overlayNoop :: (Monad m) => p -> m (AppEventReturn () b)
+overlayNoop _ = return (Continue ())
+
 data MainTree = MainTree
   { mtRoot :: EID
   , mtFilters :: CList.CList Filter
@@ -65,6 +86,10 @@ data MainTree = MainTree
   , mtShowDetails :: Bool
   -- ^ Whether or not to show the details view. This is not implemented as a full overlay
   -- component for simplicity.
+  , mtOverlay :: Maybe Overlay
+  -- ^ Active overlay, if any. If this is 'Just', events are forwarded to the overlay.
+  --
+  -- SOMEDAY do I want to make a wrapper for "things that have overlays" that *consistenly* handles everything?
   }
 
 suffixLenses ''MainTree
@@ -80,6 +105,13 @@ defaultFilters =
   , f_identity
   ]
 
+-- * Overlay infra
+
+-- SOMEDAY can we make this a more general thing? Then also review how specific types have to be.
+-- (probably not very specific.)
+
+-- * Keymaps
+
 rootKeymap :: Keymap (AppEventAction MainTree () ())
 rootKeymap =
   kmMake
@@ -93,18 +125,17 @@ rootKeymap =
           case mtCurWithAttr state of
             Just (cur, ((curAttr, _), _)) -> do
               let oldName = name curAttr
-              let cb name' (AppContext {acModelServer = acModelServer', acZonedTime = acZonedTime'}) = do
-                    let f = setLastModified (zonedTimeToUTC acZonedTime') . (nameL .~ name')
-                    modifyModelOnServer acModelServer' (modifyAttrByEID cur f)
+              let cb name' = do
+                    let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
+                    liftIO $ modifyModelOnServer (acModelServer ?actx) (modifyAttrByEID cur f)
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
-                    return cur
-              liftIO $
-                writeBChan (acAppChan ?actx) $
-                  PushOverlay (SomeAppComponent . newNodeOverlay cb oldName "Edit Item")
+                    mtListL %= scrollListToEID cur
+                    return (Continue ())
+              pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb
             Nothing -> return ()
       )
-    , ( kmLeafA_ (ctrl 't') "Open test overlay" $ do
-          liftIO $ writeBChan (acAppChan ?actx) $ PushOverlay (const $ SomeAppComponent newTestOverlay)
+    , ( kmLeafA_ (ctrl 't') "Open test overlay" $
+          pushOverlay (const newTestOverlay) overlayNoop overlayNoop
       )
     , ( kmLeafA_ (bind 'T') "New tab" $ do
           state <- get
@@ -112,10 +143,8 @@ rootKeymap =
             writeBChan (acAppChan ?actx) $
               PushTab (\rname -> SomeAppComponent $ setResourceName rname state)
       )
-    , ( kmLeafA_ (bind 'Q') "Close tab" $
-          liftIO $
-            writeBChan (acAppChan ?actx) $
-              PopTab
+    , ( kmLeafA (bind 'Q') "Close tab" $
+          return Canceled
       )
     , ( kmLeafA_ (bind ']') "Next tab" $
           liftIO $
@@ -213,12 +242,14 @@ editDateKeymap =
  where
   mkDateEditShortcut (kb, label, l0 :: AttrDateOrTimeLens) = kmLeafA_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
     let tz = zonedTimeZone $ acZonedTime ?actx
-        cb date' ctx' = do
+        cb date' = do
           let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runAttrDateOrTimeLens l0 .~ date')
-          modifyModelOnServer (acModelServer ctx') (modifyAttrByEID cur f)
-          return cur
-        mkDateEdit = dateSelectOverlay cb (attr ^. runAttrDateOrTimeLens l0) tz ("Edit " <> label)
-     in liftIO $ writeBChan (acAppChan ?actx) $ PushOverlay (SomeAppComponent . mkDateEdit)
+          -- NB we don't *have* to use 'modifyModel' here b/c it doesn't have to be sync.
+          liftIO $ modifyModelOnServer (acModelServer ?actx) (modifyAttrByEID cur f)
+          mtListL %= scrollListToEID cur
+          return $ Continue ()
+        mkDateEdit = dateSelectOverlay (attr ^. runAttrDateOrTimeLens l0) tz ("Edit " <> label)
+     in pushOverlay mkDateEdit overlayNoop cb
 
 moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree () ())
 moveSubtreeModeKeymap =
@@ -315,20 +346,45 @@ findFirstHexCode s = listToMaybe $ getAllTextMatches (s =~ pat :: AllTextMatches
 openURL :: String -> IO ()
 openURL url = callProcess "open" [url]
 
-pushInsertNewItemRelToCur :: (?actx :: AppContext) => InsertWalker IdLabel -> EventM n MainTree ()
+-- * Operations
+
+pushOverlay ::
+  (AppComponent s a b) =>
+  (AppResourceName -> s) ->
+  ((?actx :: AppContext) => a -> EventM AppResourceName MainTree (AppEventReturn () ())) ->
+  ((?actx :: AppContext) => b -> EventM AppResourceName MainTree (AppEventReturn () ())) ->
+  EventM AppResourceName MainTree ()
+pushOverlay mk onContinue onConfirm = do
+  hasExisting <- isJust <$> use mtOverlayL
+  when hasExisting $
+    let s =
+          "MainTree: Pushing overlay onto an existing overlay. Old one will be thrown away. "
+            ++ "This is likely not intended."
+     in liftIO $ glogL WARNING s
+  rootRname <- use mtResourceNameL
+  let rname = Component.OverlayFor 0 rootRname
+  let ol = Overlay (mk rname) onContinue onConfirm
+  mtOverlayL .= Just ol
+
+pushInsertNewItemRelToCur ::
+  (?actx :: AppContext) => InsertWalker IdLabel -> EventM AppResourceName MainTree ()
 pushInsertNewItemRelToCur go = do
   state <- get
   let (tgt', go') = case mtCur state of
         Just cur -> (cur, go)
         Nothing -> (mtRoot state, insLastChild)
-  let cb name ctx' = do
-        let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ ctx') name
-        uuid <- nextRandom
-        modifyModelOnServer (acModelServer ctx') (insertNewNormalWithNewId uuid attr tgt' go')
-        return $ EIDNormal uuid
-  liftIO $
-    writeBChan (acAppChan ?actx) $
-      PushOverlay (SomeAppComponent . newNodeOverlay cb "" "New Item")
+  let cb name = do
+        let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ ?actx) name
+        uuid <- liftIO nextRandom
+        -- NB we *have* to use 'modifyModel' here b/c that will reload the model synchronously so we
+        -- find the new EID below.
+        -- SOMEDAY When this is async, we should just wait for the EID to appear in a ModelUpdated
+        -- message.
+        modifyModel $ insertNewNormalWithNewId uuid attr tgt' go'
+        let eid = EIDNormal uuid
+        mtListL %= scrollListToEID eid
+        return (Continue ())
+  pushOverlay (newNodeOverlay "" "New Item") overlayNoop cb
 
 setStatus :: (?actx :: AppContext) => Status -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
@@ -362,6 +418,7 @@ makeWithFilters root filters model ztime rname =
     , mtZonedTime = ztime
     , mtKeymap = keymapToZipper rootKeymap
     , mtShowDetails = False
+    , mtOverlay = Nothing
     }
  where
   subtree = filterRun (fromJust $ CList.focus filters) root model
@@ -561,31 +618,29 @@ instance AppComponent MainTree () () where
       , mtFilters
       , mtZonedTime
       , mtShowDetails
+      , mtOverlay
       } =
-      (box, ovls)
+      (box, catMaybes [ovl, detailsOvl])
      where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
       headrow = renderRoot mtZonedTime rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
       box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
-      ovls = case (mtShowDetails, mtCurWithAttr s) of
-        (True, Just illabel) -> [("Item Details", renderItemDetails mtZonedTime illabel)]
-        _ -> []
+      detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
+        (True, Just illabel) -> Just ("Item Details", renderItemDetails mtZonedTime illabel)
+        _ -> Nothing
+      ovl = case mtOverlay of
+        Just (Overlay ol _ _) -> Just $ (componentTitle ol, renderComponent ol)
+        Nothing -> Nothing
 
   handleEvent ev =
     -- LATER when filters become more fancy and filter something wrt. the current time, this *may*
     -- need to process the Tick event and update its filter. (we probably don't wanna do this on
     -- \*every* event though to keep it usable, and maybe we don't even wanna process Tick in this
     -- way. If it ever matters, manual reload may be better.)
-    updateZonedTime >> do
+    wrappingActions $ do
       isTopLevel <- use (mtKeymapL . to kmzIsToplevel)
       listRName <- use (mtListL . L.listNameL)
       case ev of
-        (AppEvent (ModelUpdated _)) -> pullNewModel >> return (Continue ())
-        (AppEvent (PopOverlay (OREID eid))) -> do
-          -- We do not distinguish between *who* returned or *why* rn. That's a bit of a hole but not needed right now.
-          -- NB we really trust in synchronicity here b/c we don't reload the model. That's fine now but could be an issue later.
-          mtListL %= scrollListToEID eid
-          return (Continue ())
         -- Code for keymap. NB this is a bit nasty, having some abstraction here would be good if we need it again.
         -- We also gotta be a bit careful not to overlap these in principle.
         (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzResetRoot >> return (Continue ())
@@ -630,12 +685,33 @@ instance AppComponent MainTree () () where
         (VtyEvent e) -> handleFallback e
         _miscEvents -> return (Continue ())
    where
+    wrappingActions actMain = do
+      updateZonedTime
+      -- Global updates that should happen even if there's an active overlay
+      case ev of
+        (AppEvent (ModelUpdated _)) -> pullNewModel
+        _ -> return ()
+
+      -- Now pass the event to either the overlay or to our main function.
+      mol <- use mtOverlayL
+      case mol of
+        Just (Overlay ol onContinue onConfirm) -> do
+          -- SOMEDAY all of this wants some abstraction I think
+          (ol', res) <- nestEventM ol (handleEvent ev)
+          mtOverlayL .= Just (Overlay ol' onContinue onConfirm)
+          case res of
+            Continue x -> onContinue x
+            Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
+            Canceled -> mtOverlayL .= Nothing >> return (Continue ())
+        Nothing -> actMain
     handleFallback e = do
       zoom mtListL $ L.handleListEventVi (const $ return ()) e
       return (Continue ())
     updateZonedTime = mtZonedTimeL .= acZonedTime ?actx
 
-  componentKeyDesc = kmzDesc . mtKeymap
+  componentKeyDesc s = case mtOverlay s of
+    Nothing -> kmzDesc . mtKeymap $ s
+    Just (Overlay ol _ _) -> componentKeyDesc ol
 
   -- "Root name - Realm" unless the Realm is the root itself, or higher.
   componentTitle MainTree {mtSubtree} = T.pack $ pathStr
@@ -704,11 +780,14 @@ moveCurRelativeDynamic dgo = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
   modifyModel (moveSubtreeRelFromForestDynamic cur dgo forest)
 
--- | Modify the model. The modification function can also depend on `?actx` (most likely for the
--- current time if needed).
+-- | Modify the model and *synchronously* pull the new model. Important for adding nodes.
+--
+-- SOMEDAY Synchronicity is a design issue really. We also don't need it often (only for adding nodes rn).
+--
+-- TODO make an async function and remove the updating. Also improves perf.
 modifyModel ::
   (?actx :: AppContext) =>
-  ((?mue :: ModelUpdateEnv, ?actx :: AppContext) => Model -> Model) ->
+  ((?mue :: ModelUpdateEnv) => Model -> Model) ->
   EventM n MainTree ()
 modifyModel f = do
   s@(MainTree {mtRoot, mtList}) <- get

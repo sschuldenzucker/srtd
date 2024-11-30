@@ -13,21 +13,13 @@ import Brick.Keybindings (Binding)
 import Data.Text (Text)
 import Data.Time (ZonedTime)
 import Lens.Micro.Platform
-import Srtd.Attr (EID)
 import Srtd.Keymap (KeyDesc, KeymapItem, kmLeaf)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
 
--- SOMEDAY This is really messy. Would be way way better if it could be typed to what the caller is even doing.
--- I.e.: what they're calling; what they're expecting as a return value.
-data OverlayReturnValue = ORNone | OREID EID deriving (Show)
-
--- TODO this we can refactor most of away.
 data AppMsg
-  = PopOverlay OverlayReturnValue
-  | PushOverlay (AppResourceName -> SomeAppComponent)
-  | PushTab (AppResourceName -> SomeAppComponent)
-  | -- SOMEDAY PopOverlay and PopTab should be reconciled into a generic "pop active" msg so views can safely "pop themselves".
-    PopTab
+  = -- SOMEDAY the first couple ones are for MainTree to communicate with Main. May not be needed.
+    -- (but let's keep them for now in case I have some funky interaction pattern later)
+    PushTab (AppResourceName -> SomeAppComponent)
   | NextTab
   | PrevTab
   | ModelUpdated MsgModelUpdated
@@ -39,10 +31,7 @@ data AppMsg
 -- SOMEDAY we could make Show a precondition for BrickComponent or for SomeBrickComponent for better vis
 -- This is a custom instance b/c some constructors' data doesn't have show and there are no sane defaults. :/
 instance Show AppMsg where
-  show (PopOverlay ret) = "PopOverlay(" ++ show ret ++ ")"
-  show (PushOverlay _) = "PushOverlay _"
   show (PushTab _) = "PushTab _"
-  show PopTab = "PopTab"
   show NextTab = "NextTab"
   show PrevTab = "PrevTab"
   show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
@@ -52,7 +41,7 @@ instance Show AppMsg where
 -- SOMEDAY maybe our resource names should just be lists of strings, aka. Brick attr names.
 data AppResourceName
   = MainListFor AppResourceName
-  | Overlay Int
+  | OverlayFor Int AppResourceName
   | Tab Int
   | TabTitleFor AppResourceName
   | EditorFor AppResourceName
@@ -82,22 +71,17 @@ forgetAppEventReturnData = \case
 acZonedTimeL :: Lens' AppContext ZonedTime
 acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 
--- TODO add type AppHandler s = AppContext -> EventM AppResourceName s ()
--- or AppHandler n s a or something.
-
 -- | A class of components. All Brick components (hopefully,,,) satisfy this.
 --
 -- Parameters:
 --
 -- - `s` The state type of the component
--- - `a` The type of intermediate results that is returned when the component remains visible.
--- - `b` The type of final results when the component is closed.
+-- - `a` The type of intermediate messages that is passed to the parent/caller when the component
+--   remains visible.
+-- - `b` The type of final messages that is passed to the parent/caller when the component is
+--   closed.
 --
 -- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented.
---
--- SOMEDAY is the intermediate result even needed? We could just inspect the component! And also for
--- the final result actually. (question is prob: does this have to be polymorphic, and I think the
--- answer is no.) So we could remove a and b. Not *such* a huge simplification but still.
 class AppComponent s a b | s -> a, s -> b where
   -- | Render this component to a widget. Like `appRender` for apps, or the many render functions.
   renderComponent :: (?actx :: AppContext) => s -> Widget AppResourceName

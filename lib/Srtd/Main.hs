@@ -7,12 +7,12 @@ import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
 import Control.Arrow (second)
-import Control.Monad (forM_, void)
+import Control.Monad (forM_, void, when)
 import Control.Monad.State (liftIO)
 import Data.CircularList qualified as CList
 import Data.List (intersperse)
 import Data.List.Zipper qualified as LZ
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
@@ -44,7 +44,8 @@ import Toml qualified
 data AppState = AppState
   { asContext :: AppContext
   , -- SOMEDAY we may wanna keep these as MainTree so we can clone. Or 'new tab' should be a shortcut of MainTree, not sure.
-
+    -- SOMEDAY should we have a componentResourceName getter in AppComponent? Then we can get rid of storing it here.
+    -- SOMEDAY maybe it makes sense to frame a tab as an overlay and use the infra from maintree??
     asTabs :: LZ.Zipper (AppResourceName, SomeAppComponent)
   -- ^ We make sure that `asTabs` is never after the end and in particular that it's nonempty.
   -- We store the resource name of the tab title (!) so we can find it again for mouse clicks.
@@ -52,7 +53,6 @@ data AppState = AppState
   -- index in the list.
   , asNextTabID :: Int
   -- ^ "Unique ID" for the next tab being opened, for resource names.
-  , asOverlays :: [SomeAppComponent]
   , asHelpAlways :: Bool
   , asAttrMapRing :: CList.CList (String, AttrMap)
   }
@@ -117,7 +117,6 @@ main = do
               let rname = Tab 0
                in LZ.fromList [(TabTitleFor rname, SomeAppComponent $ MainTree.make Vault model ztime rname)]
           , asNextTabID = 1
-          , asOverlays = []
           , asHelpAlways = False
           , asAttrMapRing = attrMapRing
           }
@@ -135,7 +134,7 @@ main = do
   glogL INFO "App did quit normally"
 
 myAppDraw :: AppState -> [Widget AppResourceName]
-myAppDraw state@(AppState {asTabs, asOverlays, asContext}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ mainUIs
+myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
  where
   tab0 = snd $ LZ.cursor asTabs
   mainUIs =
@@ -162,9 +161,6 @@ myAppDraw state@(AppState {asTabs, asOverlays, asContext}) = [keyHelpUI] ++ map 
       . Brick.vLimitPercent 75
       . borderWithLabel (padLeftRight 1 . txt $ title)
       $ w
-  renderOverlay o =
-    let ?actx = asContext
-     in wrapOverlay (componentTitle o) (renderComponent o)
   renderKeyHelp keymapName pairs =
     let configTable = surroundingBorder False . rowBorders False . columnBorders False
         inner = configTable $ table [[padRight (Pad 1) (txt keydesc), txt actdesc] | (keydesc, actdesc) <- pairs]
@@ -174,7 +170,7 @@ myAppDraw state@(AppState {asTabs, asOverlays, asContext}) = [keyHelpUI] ++ map 
         -- I think helix did this, e.g., in the `"` overlay.
         alignBottomRightLayer . borderWithLabel (padLeftRight 1 $ txt keymapName) $ renderTable inner
   keyHelpUI =
-    let KeyDesc keymapName isToplevel keydescs = componentKeyDesc $ state ^. activeComponentL
+    let KeyDesc keymapName isToplevel keydescs = componentKeyDesc $ state ^. activeTabL
      in if not isToplevel || (asHelpAlways state) then renderKeyHelp keymapName keydescs else emptyWidget
 
 myHandleEvent :: BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
@@ -189,23 +185,19 @@ myHandleEvent ev = wrappingActions $
       asHelpAlwaysL %= not
     (VtyEvent (EvKey (KFun 10) [])) -> do
       asAttrMapRingL %= CList.rotR
-    (AppEvent (PopOverlay _)) -> do
-      modify popOverlay
-      -- This is some unclean design right here. Ideally the caller-callee relationship should specify return values. :/
-      void $ zoom activeComponentL $ handleEvent ev
-    (AppEvent (PushOverlay o)) -> do
-      modify $ pushOverlay o
     (AppEvent (PushTab t)) -> modify $ pushTab t
-    (AppEvent PopTab) -> modify popTab
     (AppEvent NextTab) -> asTabsL %= lzCircRight
     (AppEvent PrevTab) -> asTabsL %= lzCircLeft
     (MouseDown rname@(TabTitleFor _) Vty.BLeft [] _location) -> asTabsL %= lzFindBegin ((rname ==) . fst)
     (AppEvent (ModelUpdated _)) -> do
-      forComponentsM $ void $ handleEvent ev
+      eachTabHandleEvent ev
     (AppEvent Tick) -> do
-      forComponentsM $ void $ handleEvent ev
+      eachTabHandleEvent ev
     _ -> do
-      void $ zoom activeComponentL $ handleEvent ev
+      res <- zoom activeTabL $ handleEvent ev
+      case res of
+        Continue () -> return ()
+        _ -> popTabAction
  where
   -- NB explicit type required to bind the implicit parameter in the right place.
   wrappingActions ::
@@ -220,33 +212,38 @@ myHandleEvent ev = wrappingActions $
   -- SOMEDAY could also just react to the tick event.
   updateCurrentTime = liftIO getZonedTime >>= assign (asContextL . acZonedTimeL)
 
-forComponentsM :: EventM AppResourceName SomeAppComponent () -> EventM AppResourceName AppState ()
-forComponentsM act = do
-  state@(AppState {asOverlays, asTabs}) <- get
-  asOverlays' <- forM asOverlays $ \t -> nestEventM' t act
-  -- SOMEDAY make a function for this
-  asTabs' <- forMLZ asTabs $ \(rname, t) -> (rname,) <$> nestEventM' t act
-  put $ state {asOverlays = asOverlays', asTabs = asTabs'}
-  return ()
+eachTabHandleEvent ::
+  (?actx :: AppContext) => BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
+eachTabHandleEvent ev = do
+  tabs <- use asTabsL
+  mtabs' <- lzForM tabs $ \(rname, tabCmp) -> do
+    (tabCmp', res) <- nestEventM tabCmp $ handleEvent ev
+    return $ case res of
+      Continue _ -> Just (rname, tabCmp')
+      _ -> Nothing
+  let tabs' = lzCatMaybesLeftNonEmpty $ mtabs'
+  asTabsL .= tabs'
+  fixEmptyTabs
+ where
 
-activeComponentL :: Lens' AppState SomeAppComponent
+-- | Use this (internally) after a tab was deleted to make sure we always have a tab.
+fixEmptyTabs :: EventM AppResourceName AppState ()
+fixEmptyTabs = do
+  tabs <- use asTabsL
+  when (LZ.emptyp tabs) pushDefaultTab
+ where
+  pushDefaultTab = do
+    actx <- use asContextL
+    model <- liftIO $ getModel (acModelServer actx)
+    modify $
+      pushTab (SomeAppComponent . MainTree.make Vault model (acZonedTime actx))
+
+activeTabL :: Lens' AppState SomeAppComponent
 -- There's probably some clever way to do this but idk. It's also trivial rn.
-activeComponentL = lens getter setter
+activeTabL = lens getter setter
  where
-  getter AppState {asOverlays = o : _} = o
   getter AppState {asTabs} = snd $ LZ.cursor asTabs
-  setter state@(AppState {asOverlays = _ : os}) t' = state {asOverlays = t' : os}
   setter state@(AppState {asTabs}) t' = state {asTabs = lzModify (second $ const t') asTabs}
-
-pushOverlay :: (AppResourceName -> SomeAppComponent) -> AppState -> AppState
-pushOverlay mk state@(AppState {asOverlays}) = state {asOverlays = mk ovlResourceName : asOverlays}
- where
-  ovlResourceName = Overlay (length asOverlays)
-
-popOverlay :: AppState -> AppState
-popOverlay state@(AppState {asOverlays = _ : os}) = state {asOverlays = os}
--- SOMEDAY could also just do nothing here. Source of crashes but only due to logic bugs though.
-popOverlay _ = error "No overlays"
 
 pushTab :: (AppResourceName -> SomeAppComponent) -> AppState -> AppState
 pushTab mk state@(AppState {asTabs, asNextTabID}) = state {asTabs = asTabs', asNextTabID = asNextTabID + 1}
@@ -254,15 +251,12 @@ pushTab mk state@(AppState {asTabs, asNextTabID}) = state {asTabs = asTabs', asN
   rname = Tab asNextTabID
   asTabs' = LZ.insert (TabTitleFor rname, mk rname) . LZ.right $ asTabs
 
--- | Remove active tab and go to next or else previous.
+-- | Remove active tab and go to previous or else next. You must call 'fixEmptyTabs' afterwards!
 popTab :: AppState -> AppState
-popTab state@AppState {asTabs} =
-  let asTabs' = LZ.delete asTabs
-      asTabs''
-        | LZ.emptyp asTabs' = asTabs -- can't pop the last tab.
-        | LZ.endp asTabs' = LZ.left asTabs'
-        | otherwise = asTabs'
-   in state {asTabs = asTabs''}
+popTab = asTabsL %~ lzDeleteLeft
+
+popTabAction :: EventM AppResourceName AppState ()
+popTabAction = modify popTab >> fixEmptyTabs
 
 -- not sure if this is quite right but maybe it's enough. If we're missing cursors, we should prob revise.
 myChooseCursor ::
@@ -301,14 +295,33 @@ app =
 -- --------------------------
 
 -- | Map a monad function over a zipper. Effects propagate from the first to the last element.
---
--- Not implementing any instances b/c (a) it's a PITA and (b) it's not super clear in which order
--- you want effects actually.
-mapMLZ :: (Monad m) => (a -> m b) -> LZ.Zipper a -> m (LZ.Zipper b)
-mapMLZ f z =
+lzMapM :: (Monad m) => (a -> m b) -> LZ.Zipper a -> m (LZ.Zipper b)
+lzMapM f z =
   let (back, front) = lzSplit z
       (mback, mfront) = (mapM f back, mapM f front)
    in lzFromFrontBack <$> mback <*> mfront
+
+-- | Like 'catMaybes' but for a zipper. If the current tab is nothing and possible, we move to the
+-- left. We only return an invalid (post-end) zipper if the result is empty.
+--
+-- SOMEDAY test this. Prob want a separate module for these helpers.
+lzCatMaybesLeftNonEmpty :: LZ.Zipper (Maybe a) -> LZ.Zipper a
+lzCatMaybesLeftNonEmpty = \case
+  LZ.Zip rfront (Just x : back) -> LZ.Zip (catMaybes rfront) (x : catMaybes back)
+  LZ.Zip rfront (Nothing : back) -> case (catMaybes rfront, catMaybes back) of
+    (x : rfront', back') -> LZ.Zip rfront' (x : back')
+    ([], back') -> LZ.Zip [] back'
+  -- Post-end. This won't be hit in our caller; we do something reasonable (namely, produce another
+  -- post-end zipper)
+  LZ.Zip rfront [] -> LZ.Zip (catMaybes rfront) []
+
+-- | Like 'LZ.delete' but move left after deletion, if possible. We only return an invalid zipper if
+-- the result is empty. Only valid of nonempty zippers.
+lzDeleteLeft :: LZ.Zipper a -> LZ.Zipper a
+lzDeleteLeft = \case
+  LZ.Zip (x : xs) (_ : ys) -> LZ.Zip xs (x : ys)
+  LZ.Zip [] (_ : ys) -> LZ.Zip [] ys
+  _ -> error "lzDeleteLeft: Invalid zipper"
 
 -- | (part before the cursor, part including and after the cursor)
 --
@@ -324,8 +337,8 @@ lzSplit3 _ = error "lzSplit3: Empty list"
 lzFromFrontBack :: [a] -> [a] -> LZ.Zipper a
 lzFromFrontBack front back = LZ.Zip (reverse front) back
 
-forMLZ :: (Monad m) => LZ.Zipper a -> (a -> m b) -> m (LZ.Zipper b)
-forMLZ = flip mapMLZ
+lzForM :: (Monad m) => LZ.Zipper a -> (a -> m b) -> m (LZ.Zipper b)
+lzForM = flip lzMapM
 
 lzCircRight, lzCircLeft :: LZ.Zipper a -> LZ.Zipper a
 lzCircRight z =
