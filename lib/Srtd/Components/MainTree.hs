@@ -197,8 +197,7 @@ setStatusKeymap =
     ]
 
 -- | Helper newtype to be able to pass lenses around to functions without having to enable some
--- crazy type-level hackery
--- TODO experiment if we can get it done with Rank2Types or so.
+-- crazy type-level hackery. (ImpredicativeTypes no bueno. RankNTypes is not enough)
 newtype AttrDateOrTimeLens = AttrDateOrTimeLens {runAttrDateOrTimeLens :: Lens' Attr (Maybe DateOrTime)}
 
 editDateKeymap :: Keymap (AppEventAction MainTree () ())
