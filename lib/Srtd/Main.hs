@@ -8,7 +8,7 @@ import Brick.Widgets.Center
 import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
 import Control.Arrow (second)
 import Control.Monad (forM_, void)
-import Control.Monad.State (MonadState, liftIO)
+import Control.Monad.State (liftIO)
 import Data.CircularList qualified as CList
 import Data.List (intersperse)
 import Data.List.Zipper qualified as LZ
