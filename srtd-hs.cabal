@@ -64,8 +64,6 @@ library
         OverloadedStrings,
         ImplicitParams,
         TemplateHaskell,
-        -- For some reason we need this for some type aliases from Srtd.Component
-        ImpredicativeTypes,
         DeriveGeneric,
         LambdaCase,
 

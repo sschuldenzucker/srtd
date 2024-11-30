@@ -80,15 +80,15 @@ defaultFilters =
   , f_identity
   ]
 
-rootKeymap :: Keymap (AppContext -> EventM n MainTree ())
+rootKeymap :: Keymap (AppEventAction MainTree () ())
 rootKeymap =
   kmMake
     "Tree View"
-    [ kmLeaf (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur insAfter
-    , kmLeaf (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore
-    , kmLeaf (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild
-    , kmLeaf (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild
-    , ( kmLeaf (bind 'e') "Edit name" $ \ctx -> do
+    [ kmLeafA_ (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur insAfter
+    , kmLeafA_ (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore
+    , kmLeafA_ (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild
+    , kmLeafA_ (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild
+    , ( kmLeafA_ (bind 'e') "Edit name" $ do
           state <- get
           case mtCurWithAttr state of
             Just (cur, ((curAttr, _), _)) -> do
@@ -99,120 +99,129 @@ rootKeymap =
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
                     return cur
               liftIO $
-                writeBChan (acAppChan ctx) $
-                  PushOverlay (SomeBrickComponent . newNodeOverlay cb oldName "Edit Item")
+                writeBChan (acAppChan ?actx) $
+                  PushOverlay (SomeAppComponent . newNodeOverlay cb oldName "Edit Item")
             Nothing -> return ()
       )
-    , ( kmLeaf (ctrl 't') "Open test overlay" $ \ctx -> do
-          liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (const $ SomeBrickComponent newTestOverlay)
+    , ( kmLeafA_ (ctrl 't') "Open test overlay" $ do
+          liftIO $ writeBChan (acAppChan ?actx) $ PushOverlay (const $ SomeAppComponent newTestOverlay)
       )
-    , ( kmLeaf (bind 'T') "New tab" $ \ctx -> do
+    , ( kmLeafA_ (bind 'T') "New tab" $ do
           state <- get
           liftIO $
-            writeBChan (acAppChan ctx) $
-              PushTab (\rname -> SomeBrickComponent $ setResourceName rname state)
+            writeBChan (acAppChan ?actx) $
+              PushTab (\rname -> SomeAppComponent $ setResourceName rname state)
       )
-    , ( kmLeaf (bind 'Q') "Close tab" $ \ctx ->
-          liftIO $ writeBChan (acAppChan ctx) $ PopTab
+    , ( kmLeafA_ (bind 'Q') "Close tab" $
+          liftIO $
+            writeBChan (acAppChan ?actx) $
+              PopTab
       )
-    , ( kmLeaf (bind ']') "Next tab" $ \ctx ->
-          liftIO $ writeBChan (acAppChan ctx) $ NextTab
+    , ( kmLeafA_ (bind ']') "Next tab" $
+          liftIO $
+            writeBChan (acAppChan ?actx) $
+              NextTab
       )
-    , ( kmLeaf (bind '[') "Prev tab" $ \ctx ->
-          liftIO $ writeBChan (acAppChan ctx) $ PrevTab
+    , ( kmLeafA_ (bind '[') "Prev tab" $
+          liftIO $
+            writeBChan (acAppChan ?actx) $
+              PrevTab
       )
-    , ( kmLeaf (binding (KChar 'j') [MMeta]) "Move subtree down same level" $
+    , ( kmLeafA_ (binding (KChar 'j') [MMeta]) "Move subtree down same level" $
           moveCurRelative goNextSibling insAfter
       )
-    , ( kmLeaf (binding (KChar 'k') [MMeta]) "Move subtree up same level" $
+    , ( kmLeafA_ (binding (KChar 'k') [MMeta]) "Move subtree up same level" $
           moveCurRelative goPrevSibling insBefore
       )
-    , (kmLeaf (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter)
-    , ( kmLeaf (bind '>') "Move subtree last child of previous" $ moveCurRelative goPrevSibling insLastChild
+    , (kmLeafA_ (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter)
+    , ( kmLeafA_ (bind '>') "Move subtree last child of previous" $
+          moveCurRelative goPrevSibling insLastChild
       )
     , -- (kmSub (bind 'm') moveSingleModeKeymap),
       (kmSub (bind 'M') moveSubtreeModeKeymap)
     , (kmSub (bind 'D') deleteKeymap)
-    , ( kmLeaf (binding KEnter []) "Hoist" $ withCur $ \cur ctx -> do
+    , ( kmLeafA_ (binding KEnter []) "Hoist" $ withCur $ \cur -> do
           rname <- mtResourceName <$> get
-          model <- liftIO $ getModel (acModelServer ctx)
+          model <- liftIO $ getModel (acModelServer ?actx)
           ztime <- use mtZonedTimeL
           filters <- mtFilters <$> get
           put $ makeWithFilters cur filters model ztime rname
       )
-    , ( kmLeaf (binding KBS []) "De-hoist" $ \ctx -> do
+    , ( kmLeafA_ (binding KBS []) "De-hoist" $ do
           s <- get
           case s ^. mtSubtreeL . breadcrumbsL of
             [] -> return ()
             (parent, _) : _ -> do
               rname <- mtResourceName <$> get
-              model <- liftIO $ getModel (acModelServer ctx)
+              model <- liftIO $ getModel (acModelServer ?actx)
               ztime <- use mtZonedTimeL
               filters <- mtFilters <$> get
               put $ makeWithFilters parent filters model ztime rname & mtListL %~ scrollListToEID (mtRoot s)
       )
     , (kmSub (bind ',') sortCurKeymap)
     , (kmSub (bind ';') sortRootKeymap)
-    , (kmLeaf (bind 'h') "Go to parent" (const $ modify (mtGoSubtreeFromCur goParent)))
-    , (kmLeaf (bind 'J') "Go to next sibling" (const $ modify (mtGoSubtreeFromCur goNextSibling)))
-    , (kmLeaf (bind 'K') "Go to prev sibling" (const $ modify (mtGoSubtreeFromCur goPrevSibling)))
+    , (kmLeafA_ (bind 'h') "Go to parent" (modify (mtGoSubtreeFromCur goParent)))
+    , (kmLeafA_ (bind 'J') "Go to next sibling" (modify (mtGoSubtreeFromCur goNextSibling)))
+    , (kmLeafA_ (bind 'K') "Go to prev sibling" (modify (mtGoSubtreeFromCur goPrevSibling)))
     , (kmSub (bind 't') setStatusKeymap)
     , (kmSub (bind 'o') openExternallyKeymap)
-    , (kmLeaf (bind '.') "Next filter" cycleNextFilter)
+    , (kmLeafA_ (bind '.') "Next filter" cycleNextFilter)
     , (kmSub (bind 'd') editDateKeymap)
-    , (kmLeaf (bind ' ') "Toggle details overlay" (const $ mtShowDetailsL %= not))
-    , (kmLeaf (bind 'q') "Quit" (const halt))
+    , (kmLeafA_ (bind ' ') "Toggle details overlay" (mtShowDetailsL %= not))
+    , (kmLeafA_ (bind 'q') "Quit" halt)
     ]
 
-deleteKeymap :: Keymap (AppContext -> EventM n MainTree ())
+deleteKeymap :: Keymap (AppEventAction MainTree () ())
 deleteKeymap =
   kmMake
     "Delete"
     -- TOOD some undo would be nice, lol.
-    [ (kmLeaf (bind 'D') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur))
+    [ (kmLeafA_ (bind 'D') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur))
     -- (kmLeaf (bind 's') "Single" $ withCur $ \cur -> modifyModel (deleteSingle cur))
     ]
 
-setStatusKeymap :: Keymap (AppContext -> EventM n MainTree ())
+setStatusKeymap :: Keymap (AppEventAction MainTree () ())
 setStatusKeymap =
   kmMake
     "Set status"
-    [ kmLeaf (bind ' ') "None" (setStatus None)
-    , kmLeaf (bind 'n') "Next" (setStatus $ Next)
-    , kmLeaf (bind 'w') "Waiting" (setStatus $ Waiting)
-    , kmLeaf (bind 'p') "Project" (setStatus $ Project)
-    , kmLeaf (bind 'l') "Later" (setStatus $ Later)
-    , kmLeaf (bind 'i') "WIP" (setStatus $ WIP)
-    , kmLeaf (binding KEnter []) "Done" (setStatus $ Done)
-    , kmLeaf (bind 's') "Someday" (setStatus $ Someday)
-    , kmLeaf (bind 'o') "Open" (setStatus $ Open)
-    , kmLeaf (bind 't') "Touch" touchLastStatusModified
+    [ kmLeafA_ (bind ' ') "None" (setStatus None)
+    , kmLeafA_ (bind 'n') "Next" (setStatus $ Next)
+    , kmLeafA_ (bind 'w') "Waiting" (setStatus $ Waiting)
+    , kmLeafA_ (bind 'p') "Project" (setStatus $ Project)
+    , kmLeafA_ (bind 'l') "Later" (setStatus $ Later)
+    , kmLeafA_ (bind 'i') "WIP" (setStatus $ WIP)
+    , kmLeafA_ (binding KEnter []) "Done" (setStatus $ Done)
+    , kmLeafA_ (bind 's') "Someday" (setStatus $ Someday)
+    , kmLeafA_ (bind 'o') "Open" (setStatus $ Open)
+    , kmLeafA_ (bind 't') "Touch" touchLastStatusModified
     ]
 
-editDateKeymap :: Keymap (AppContext -> EventM n MainTree ())
+-- | Helper newtype to be able to pass lenses around to functions without having to enable some
+-- crazy type-level hackery
+-- TODO experiment if we can get it done with Rank2Types or so.
+newtype AttrDateOrTimeLens = AttrDateOrTimeLens {runAttrDateOrTimeLens :: Lens' Attr (Maybe DateOrTime)}
+
+editDateKeymap :: Keymap (AppEventAction MainTree () ())
 editDateKeymap =
   kmMake
     "Edit date"
     $ map mkDateEditShortcut
-    $ [ (bind 'd', "Deadline", datesL . deadlineL)
-      , (bind 'g', "Goalline", datesL . goallineL)
-      , (bind 's', "Scheduled", datesL . scheduledL)
-      , (bind 'r', "Remind", datesL . remindL)
+    $ [ (bind 'd', "Deadline", AttrDateOrTimeLens $ datesL . deadlineL)
+      , (bind 'g', "Goalline", AttrDateOrTimeLens $ datesL . goallineL)
+      , (bind 's', "Scheduled", AttrDateOrTimeLens $ datesL . scheduledL)
+      , (bind 'r', "Remind", AttrDateOrTimeLens $ datesL . remindL)
       ]
  where
-  mkDateEditShortcut ::
-    (Binding, Text, Lens' Attr (Maybe DateOrTime)) ->
-    (Binding, KeymapItem (AppContext -> EventM n MainTree ()))
-  mkDateEditShortcut (kb, label, l) = kmLeaf kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ctx ->
-    let tz = zonedTimeZone $ acZonedTime ctx
+  mkDateEditShortcut (kb, label, l0 :: AttrDateOrTimeLens) = kmLeafA_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
+    let tz = zonedTimeZone $ acZonedTime ?actx
         cb date' ctx' = do
-          let f = setLastModified (zonedTimeToUTC $ acZonedTime ctx) . (l .~ date')
+          let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runAttrDateOrTimeLens l0 .~ date')
           modifyModelOnServer (acModelServer ctx') (modifyAttrByEID cur f)
           return cur
-        mkDateEdit = dateSelectOverlay cb (attr ^. l) tz ("Edit " <> label)
-     in liftIO $ writeBChan (acAppChan ctx) $ PushOverlay (SomeBrickComponent . mkDateEdit)
+        mkDateEdit = dateSelectOverlay cb (attr ^. runAttrDateOrTimeLens l0) tz ("Edit " <> label)
+     in liftIO $ writeBChan (acAppChan ?actx) $ PushOverlay (SomeAppComponent . mkDateEdit)
 
-moveSubtreeModeKeymap :: Keymap (AppContext -> EventM n MainTree ())
+moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree () ())
 moveSubtreeModeKeymap =
   sticky $
     kmMake
@@ -231,44 +240,47 @@ moveSubtreeModeKeymap =
         --     --   modifyModel (moveSubtreeBelow' root cur toAfterPrevPreorder)
         --     moveCurRelative goPrevPreorder insAfter
         -- ),
-        (kmLeaf (bind 'j') "Down" $ moveCurRelativeDynamic dtoNextPreorder)
-      , (kmLeaf (bind 'k') "Up" $ moveCurRelativeDynamic dtoPrevPreorder)
-      , (kmLeaf (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter)
-      , (kmLeaf (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore)
-      , (kmLeaf (bind 'h') "Before parent" $ moveCurRelative goParent insBefore)
-      , (kmLeaf (bind '<') "After parent" $ moveCurRelative goParent insAfter)
-      , (kmLeaf (bind 'L') "Last child of next" $ moveCurRelative goNextSibling insLastChild)
-      , (kmLeaf (bind 'l') "First child of next" $ moveCurRelative goNextSibling insFirstChild)
-      , (kmLeaf (bind '>') "Last child of previous" $ moveCurRelative goPrevSibling insLastChild)
+        (kmLeafA_ (bind 'j') "Down" $ moveCurRelativeDynamic dtoNextPreorder)
+      , (kmLeafA_ (bind 'k') "Up" $ moveCurRelativeDynamic dtoPrevPreorder)
+      , (kmLeafA_ (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter)
+      , (kmLeafA_ (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore)
+      , (kmLeafA_ (bind 'h') "Before parent" $ moveCurRelative goParent insBefore)
+      , (kmLeafA_ (bind '<') "After parent" $ moveCurRelative goParent insAfter)
+      , (kmLeafA_ (bind 'L') "Last child of next" $ moveCurRelative goNextSibling insLastChild)
+      , (kmLeafA_ (bind 'l') "First child of next" $ moveCurRelative goNextSibling insFirstChild)
+      , (kmLeafA_ (bind '>') "Last child of previous" $ moveCurRelative goPrevSibling insLastChild)
       -- NB 'H' is not used and that's fine IMHO. I'm not sure why but these bindings were the most intuitive.
       -- SOMEDAY hierarchy-breaking '<' (dedent)
       ]
 
-openExternallyKeymap :: Keymap (AppContext -> EventM n MainTree ())
+openExternallyKeymap :: Keymap (AppEventAction MainTree () ())
 openExternallyKeymap =
   kmMake
     "Open externally"
-    [ ( kmLeaf (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
+    [ ( kmLeafA_ (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
           whenJust (findFirstURL name) $ \url -> liftIO (openURL url)
       )
-    , ( kmLeaf (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
+    , ( kmLeafA_ (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
           liftIO $ setClipboard name
       )
-    , ( kmLeaf (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) _ctx ->
+    , ( kmLeafA_ (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
           whenJust (findFirstHexCode name) $ \code -> liftIO (setClipboard code)
       )
     ]
 
-sortRootKeymap :: Keymap (AppContext -> EventM n MainTree ())
+sortRootKeymap :: Keymap (AppEventAction MainTree () ())
 sortRootKeymap = _mkSortKeymap withRoot "Sort root by"
 
-sortCurKeymap :: Keymap (AppContext -> EventM n MainTree ())
+sortCurKeymap :: Keymap (AppEventAction MainTree () ())
 sortCurKeymap = _mkSortKeymap withCur "Sort selected by"
 
 -- | Either `withCur` or `withRoot`. Used to unify sorting.
-type WithFunc n = (EID -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
+type WithFunc =
+  (?actx :: AppContext) =>
+  (EID -> EventM AppResourceName MainTree ()) ->
+  EventM AppResourceName MainTree ()
 
-_mkSortKeymap :: WithFunc n -> Text -> Keymap (AppContext -> EventM n MainTree ())
+_mkSortKeymap :: WithFunc -> Text -> Keymap (AppEventAction MainTree () ())
 _mkSortKeymap withFunc name =
   kmMake
     name
@@ -278,7 +290,7 @@ _mkSortKeymap withFunc name =
   -- For some reason, I have to explicitly state that 'sorter' has a `?mue` context. Otherwise, it
   -- forgets about it and the code doesn't type check. Have to do this in both places.
   mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
-    [kmLeaf (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
+    [kmLeafA_ (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
   sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModel (sorter ord root)
   -- comparison function that puts notes first (which is what we usually want)
   compareActionabilityForSort :: Label -> Label -> Ordering
@@ -304,8 +316,8 @@ findFirstHexCode s = listToMaybe $ getAllTextMatches (s =~ pat :: AllTextMatches
 openURL :: String -> IO ()
 openURL url = callProcess "open" [url]
 
-pushInsertNewItemRelToCur :: InsertWalker IdLabel -> AppContext -> EventM n MainTree ()
-pushInsertNewItemRelToCur go ctx = do
+pushInsertNewItemRelToCur :: (?actx :: AppContext) => InsertWalker IdLabel -> EventM n MainTree ()
+pushInsertNewItemRelToCur go = do
   state <- get
   let (tgt', go') = case mtCur state of
         Just cur -> (cur, go)
@@ -316,25 +328,25 @@ pushInsertNewItemRelToCur go ctx = do
         modifyModelOnServer (acModelServer ctx') (insertNewNormalWithNewId uuid attr tgt' go')
         return $ EIDNormal uuid
   liftIO $
-    writeBChan (acAppChan ctx) $
-      PushOverlay (SomeBrickComponent . newNodeOverlay cb "" "New Item")
+    writeBChan (acAppChan ?actx) $
+      PushOverlay (SomeAppComponent . newNodeOverlay cb "" "New Item")
 
-setStatus :: Status -> AppContext -> EventM n MainTree ()
+setStatus :: (?actx :: AppContext) => Status -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
-  modifyModelWithCtx $ \ctx ->
-    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ctx) . (statusL .~ status')
+  modifyModelWithCtx $
+    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx) . (statusL .~ status')
      in modifyAttrByEID cur f
 
-touchLastStatusModified :: AppContext -> EventM n MainTree ()
+touchLastStatusModified :: (?actx :: AppContext) => EventM n MainTree ()
 touchLastStatusModified = withCur $ \cur ->
-  modifyModelWithCtx $ \ctx ->
-    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ctx)
+  modifyModelWithCtx $
+    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx)
      in modifyAttrByEID cur f
 
-cycleNextFilter :: AppContext -> EventM n MainTree ()
-cycleNextFilter ctx = do
+cycleNextFilter :: (?actx :: AppContext) => EventM n MainTree ()
+cycleNextFilter = do
   mtFiltersL %= CList.rotR
-  pullNewModel ctx
+  pullNewModel
 
 make :: EID -> Model -> ZonedTime -> AppResourceName -> MainTree
 make root = makeWithFilters root (CList.fromList defaultFilters)
@@ -569,7 +581,7 @@ instance AppComponent MainTree () () where
       isTopLevel <- use (mtKeymapL . to kmzIsToplevel)
       listRName <- use (mtListL . L.listNameL)
       case ev of
-        (AppEvent (ModelUpdated _)) -> pullNewModel ctx >> return (Continue ())
+        (AppEvent (ModelUpdated _)) -> pullNewModel >> return (Continue ())
         (AppEvent (PopOverlay (OREID eid))) -> do
           -- We do not distinguish between *who* returned or *why* rn. That's a bit of a hole but not needed right now.
           -- NB we really trust in synchronicity here b/c we don't reload the model. That's fine now but could be an issue later.
@@ -611,10 +623,13 @@ instance AppComponent MainTree () () where
           keymap <- use mtKeymapL
           case kmzLookup keymap key mods of
             NotFound -> handleFallback e
-            LeafResult act nxt -> act ctx >> mtKeymapL .= nxt
-            SubmapResult sm -> mtKeymapL .= sm
+            LeafResult act nxt -> do
+              res <- runAppEventAction act
+              mtKeymapL .= nxt
+              return res
+            SubmapResult sm -> mtKeymapL .= sm >> return (Continue ())
         (VtyEvent e) -> handleFallback e
-        _miscEvents -> return ()
+        _miscEvents -> return (Continue ())
    where
     handleFallback e = do
       zoom mtListL $ L.handleListEventVi (const $ return ()) e
@@ -641,26 +656,28 @@ mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _))
 mtCurWithAttr :: MainTree -> Maybe LocalIdLabel
 mtCurWithAttr (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, attr)) -> (i, attr))
 
-withCur :: (EID -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
-withCur go ctx = do
+withCur ::
+  (?actx :: AppContext) => (EID -> EventM n MainTree ()) -> EventM n MainTree ()
+withCur go = do
   s <- get
   case mtCur s of
-    Just cur -> go cur ctx
+    Just cur -> go cur
     Nothing -> return ()
 
 withCurWithAttr ::
-  (LocalIdLabel -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
-withCurWithAttr go ctx = do
+  (LocalIdLabel -> EventM n MainTree ()) -> EventM n MainTree ()
+withCurWithAttr go = do
   s <- get
   case mtCurWithAttr s of
-    Just cura -> go cura ctx
+    Just cura -> go cura
     Nothing -> return ()
 
-withRoot :: (EID -> AppContext -> EventM n MainTree ()) -> AppContext -> EventM n MainTree ()
-withRoot go ctx = do
+withRoot ::
+  (?actx :: AppContext) => (EID -> EventM n MainTree ()) -> EventM n MainTree ()
+withRoot go = do
   s <- get
   let root = mtRoot s
-  go root ctx
+  go root
 
 -- | Helper for relative move operations.
 --
@@ -674,41 +691,58 @@ withRoot go ctx = do
 -- SOMEDAY this can be generalized by replacing the first Label by whatever label type we ultimately use
 -- here. The forest just has to be labeled (EID, a) for some a. See `moveSubtreeRelFromForest`.
 moveCurRelative ::
-  GoWalker LocalIdLabel -> InsertWalker IdLabel -> AppContext -> EventM n MainTree ()
-moveCurRelative go ins = withCur $ \cur ctx -> do
+  (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> EventM n MainTree ()
+moveCurRelative go ins = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
-  modifyModel (moveSubtreeRelFromForest cur go ins forest) ctx
+  modifyModel (moveSubtreeRelFromForest cur go ins forest)
 
 -- SOMEDAY ^^ Same applies. Also, these could all be unified.
 moveCurRelativeDynamic ::
-  DynamicMoveWalker LocalIdLabel IdLabel -> AppContext -> EventM n MainTree ()
-moveCurRelativeDynamic dgo = withCur $ \cur ctx -> do
+  (?actx :: AppContext) =>
+  DynamicMoveWalker LocalIdLabel IdLabel ->
+  EventM n MainTree ()
+moveCurRelativeDynamic dgo = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
-  modifyModel (moveSubtreeRelFromForestDynamic cur dgo forest) ctx
+  modifyModel (moveSubtreeRelFromForestDynamic cur dgo forest)
 
-modifyModel :: ((?mue :: ModelUpdateEnv) => Model -> Model) -> AppContext -> EventM n MainTree ()
-modifyModel f = modifyModelWithCtx (const f)
-
-modifyModelWithCtx ::
-  ((?mue :: ModelUpdateEnv) => AppContext -> Model -> Model) -> AppContext -> EventM n MainTree ()
-modifyModelWithCtx f ctx@(AppContext {acModelServer}) = do
+-- TODO eliminate duplication with modifyModelWithCtx
+modifyModel ::
+  (?actx :: AppContext) => ((?mue :: ModelUpdateEnv) => Model -> Model) -> EventM n MainTree ()
+modifyModel f = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
-    modifyModelOnServer acModelServer (f ctx)
-    getModel acModelServer
+    modifyModelOnServer (acModelServer ?actx) f
+    getModel (acModelServer ?actx)
   let subtree = filterRun filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
 
-pullNewModel :: AppContext -> EventM n MainTree ()
-pullNewModel AppContext {acModelServer} = do
+modifyModelWithCtx ::
+  (?actx :: AppContext) =>
+  ((?mue :: ModelUpdateEnv, ?actx :: AppContext) => Model -> Model) ->
+  EventM n MainTree ()
+modifyModelWithCtx f = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
-  model' <- liftIO $ getModel acModelServer
+  model' <- liftIO $ do
+    -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
+    -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
+    modifyModelOnServer (acModelServer ?actx) f
+    getModel (acModelServer ?actx)
+  let subtree = filterRun filter_ mtRoot model'
+  let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
+  put s {mtSubtree = subtree, mtList = list'}
+  return ()
+
+pullNewModel :: (?actx :: AppContext) => EventM n MainTree ()
+pullNewModel = do
+  s@(MainTree {mtRoot, mtList}) <- get
+  let filter_ = mtFilter s
+  model' <- liftIO $ getModel (acModelServer ?actx)
   let subtree = filterRun filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}

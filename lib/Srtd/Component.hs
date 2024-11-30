@@ -9,11 +9,12 @@ module Srtd.Component where
 
 import Brick
 import Brick.BChan (BChan)
+import Brick.Keybindings (Binding)
 import Data.Text (Text)
 import Data.Time (ZonedTime)
 import Lens.Micro.Platform
 import Srtd.Attr (EID)
-import Srtd.Keymap (KeyDesc)
+import Srtd.Keymap (KeyDesc, KeymapItem, kmLeaf)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
 
 -- SOMEDAY This is really messy. Would be way way better if it could be typed to what the caller is even doing.
@@ -69,10 +70,6 @@ data AppContext = AppContext
 
 data AppEventReturn a b = Continue a | Confirmed b | Canceled
 
-type AppEventAction s a b =
-  (?actx :: AppContext) =>
-  EventM AppResourceName s (AppEventReturn a b)
-
 forgetAppEventReturnData :: AppEventReturn a b -> AppEventReturn () ()
 forgetAppEventReturnData = \case
   Continue _ -> Continue ()
@@ -97,6 +94,10 @@ acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 -- - `b` The type of final results when the component is closed.
 --
 -- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented.
+--
+-- SOMEDAY is the intermediate result even needed? We could just inspect the component! And also for
+-- the final result actually. (question is prob: does this have to be polymorphic, and I think the
+-- answer is no.) So we could remove a and b. Not *such* a huge simplification but still.
 class AppComponent s a b | s -> a, s -> b where
   -- | Render this component to a widget. Like `appRender` for apps, or the many render functions.
   renderComponent :: (?actx :: AppContext) => s -> Widget AppResourceName
@@ -113,7 +114,10 @@ class AppComponent s a b | s -> a, s -> b where
   --
   -- The return value gives the caller an intermediate or final result and tells them what to do
   -- with the component.
-  handleEvent :: BrickEvent AppResourceName AppMsg -> AppEventAction s a b
+  handleEvent ::
+    (?actx :: AppContext) =>
+    BrickEvent AppResourceName AppMsg ->
+    EventM AppResourceName s (AppEventReturn a b)
 
   -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
   componentKeyDesc :: s -> KeyDesc
@@ -141,3 +145,34 @@ instance AppComponent SomeAppComponent () () where
   componentKeyDesc (SomeAppComponent s) = componentKeyDesc s
 
   componentTitle (SomeAppComponent s) = componentTitle s
+
+-- * Keymap wrapper tools
+
+-- | Helper type for keymaps. This must be a newtype (not type alias) so that we can avoid
+-- ImpredicativeTypes, which can lead to ghc hangup (I've seen this with this particular code
+-- before!)
+--
+-- This isn't used in this module but you can use it with a keymap.
+newtype AppEventAction s a b = AppEventAction
+  { runAppEventAction ::
+      (?actx :: AppContext) =>
+      EventM AppResourceName s (AppEventReturn a b)
+  }
+
+-- | Like 'kmLeaf' but wrap the given action in 'AppEventAction'
+kmLeafA ::
+  Binding ->
+  Text ->
+  -- NB For some reason, *this* use of the constraint inside the type doesn't need ImpredicativeTypes.
+  ((?actx :: AppContext) => EventM AppResourceName s (AppEventReturn a b)) ->
+  (Binding, KeymapItem (AppEventAction s a b))
+kmLeafA b n x = kmLeaf b n (AppEventAction x)
+
+-- | Like 'kmLeafA' but also return 'Continue ()'. Useful to simplify code for components that don't
+-- return intermediate results.
+kmLeafA_ ::
+  Binding ->
+  Text ->
+  ((?actx :: AppContext) => EventM AppResourceName s a) ->
+  (Binding, KeymapItem (AppEventAction s () b))
+kmLeafA_ b n x = kmLeafA b n (x >> return (Continue ()))

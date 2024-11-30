@@ -51,20 +51,18 @@ dateSelectOverlay cb origValue tz title rname =
  where
   theEditor = editor (EditorFor rname) (Just 1) ""
 
--- SOMEDAY a nice calendar display of the selected month and key bindings to directly select dates
-
 keymap :: Keymap (AppEventAction DateSelectOverlay () ())
 keymap =
   kmMake
     "Select Date"
-    [ kmLeaf (binding KEsc []) "Cancel" $ do
+    [ kmLeafA (binding KEsc []) "Cancel" $ do
         liftIO $ writeBChan (acAppChan ?actx) (PopOverlay $ ORNone)
         return Canceled
-    , kmLeaf (binding KEnter []) "Confirm" $ do
+    , kmLeafA (binding KEnter []) "Confirm" $ do
         mv <- use dsValueL
         when (isJust mv) $ submitAndClose ?actx
         return $ Confirmed ()
-    , kmLeaf (ctrl 'd') "Delete" (submitAndClose ?actx >> (return $ Confirmed ()))
+    , kmLeafA (ctrl 'd') "Delete" (submitAndClose ?actx >> (return $ Confirmed ()))
     ]
  where
   submitAndClose ctx = do
@@ -94,7 +92,7 @@ instance AppComponent DateSelectOverlay () () where
       (VtyEvent (EvKey key mods)) -> do
         case kmzLookup keymapZipper key mods of
           NotFound -> handleFallback ev
-          LeafResult act _nxt -> act
+          LeafResult act _nxt -> runAppEventAction act
           SubmapResult _sm -> error "wtf submap?"
       _ -> handleFallback ev
    where

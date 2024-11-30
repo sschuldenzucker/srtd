@@ -8,7 +8,7 @@ import Brick.Widgets.Center
 import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
 import Control.Arrow (second)
 import Control.Monad (forM_, void)
-import Control.Monad.State (liftIO)
+import Control.Monad.State (MonadState, liftIO)
 import Data.CircularList qualified as CList
 import Data.List (intersperse)
 import Data.List.Zipper qualified as LZ
@@ -45,14 +45,14 @@ data AppState = AppState
   { asContext :: AppContext
   , -- SOMEDAY we may wanna keep these as MainTree so we can clone. Or 'new tab' should be a shortcut of MainTree, not sure.
 
-    asTabs :: LZ.Zipper (AppResourceName, SomeBrickComponent)
+    asTabs :: LZ.Zipper (AppResourceName, SomeAppComponent)
   -- ^ We make sure that `asTabs` is never after the end and in particular that it's nonempty.
   -- We store the resource name of the tab title (!) so we can find it again for mouse clicks.
   -- SOMEDAY I don't think we even have to store the resource name as state. We can just use the
   -- index in the list.
   , asNextTabID :: Int
   -- ^ "Unique ID" for the next tab being opened, for resource names.
-  , asOverlays :: [SomeBrickComponent]
+  , asOverlays :: [SomeAppComponent]
   , asHelpAlways :: Bool
   , asAttrMapRing :: CList.CList (String, AttrMap)
   }
@@ -115,7 +115,7 @@ main = do
           { asContext = AppContext modelServer appChan ztime
           , asTabs =
               let rname = Tab 0
-               in LZ.fromList [(TabTitleFor rname, SomeBrickComponent $ MainTree.make Vault model ztime rname)]
+               in LZ.fromList [(TabTitleFor rname, SomeAppComponent $ MainTree.make Vault model ztime rname)]
           , asNextTabID = 1
           , asOverlays = []
           , asHelpAlways = False
@@ -135,13 +135,15 @@ main = do
   glogL INFO "App did quit normally"
 
 myAppDraw :: AppState -> [Widget AppResourceName]
-myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ mainUIs
+myAppDraw state@(AppState {asTabs, asOverlays, asContext}) = [keyHelpUI] ++ map renderOverlay asOverlays ++ mainUIs
  where
   tab0 = snd $ LZ.cursor asTabs
   mainUIs =
-    let (w0, ovls0) = renderComponentWithOverlays tab0
+    let (w0, ovls0) =
+          let ?actx = asContext
+           in renderComponentWithOverlays tab0
      in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar asTabs <=> w0]
-  renderTabTitle :: (BrickComponent c, Ord n) => Bool -> n -> c -> Widget n
+  renderTabTitle :: (AppComponent c () (), Ord n) => Bool -> n -> c -> Widget n
   renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 25 $ txt (componentTitle c)
    where
     theAttrName = (if sel then tabBarAttr <> attrName "selected" else tabBarAttr) <> attrName "tab_title"
@@ -160,7 +162,9 @@ myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverl
       . Brick.vLimitPercent 75
       . borderWithLabel (padLeftRight 1 . txt $ title)
       $ w
-  renderOverlay o = wrapOverlay (componentTitle o) (renderComponent o)
+  renderOverlay o =
+    let ?actx = asContext
+     in wrapOverlay (componentTitle o) (renderComponent o)
   renderKeyHelp keymapName pairs =
     let configTable = surroundingBorder False . rowBorders False . columnBorders False
         inner = configTable $ table [[padRight (Pad 1) (txt keydesc), txt actdesc] | (keydesc, actdesc) <- pairs]
@@ -174,8 +178,8 @@ myAppDraw state@(AppState {asTabs, asOverlays}) = [keyHelpUI] ++ map renderOverl
      in if not isToplevel || (asHelpAlways state) then renderKeyHelp keymapName keydescs else emptyWidget
 
 myHandleEvent :: BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
-myHandleEvent ev =
-  dbgprint >> updateCurrentTime >> case ev of
+myHandleEvent ev = wrappingActions $
+  case ev of
     (VtyEvent (EvKey (KChar 'q') [MCtrl])) -> do
       liftIO (glogL INFO "quitting...")
       halt
@@ -188,8 +192,7 @@ myHandleEvent ev =
     (AppEvent (PopOverlay _)) -> do
       modify popOverlay
       -- This is some unclean design right here. Ideally the caller-callee relationship should specify return values. :/
-      AppState {asContext} <- get
-      zoom activeComponentL $ handleEvent asContext ev
+      void $ zoom activeComponentL $ handleEvent ev
     (AppEvent (PushOverlay o)) -> do
       modify $ pushOverlay o
     (AppEvent (PushTab t)) -> modify $ pushTab t
@@ -198,20 +201,26 @@ myHandleEvent ev =
     (AppEvent PrevTab) -> asTabsL %= lzCircLeft
     (MouseDown rname@(TabTitleFor _) Vty.BLeft [] _location) -> asTabsL %= lzFindBegin ((rname ==) . fst)
     (AppEvent (ModelUpdated _)) -> do
-      AppState {asContext} <- get
-      forComponentsM $ handleEvent asContext ev
+      forComponentsM $ void $ handleEvent ev
     (AppEvent Tick) -> do
-      AppState {asContext} <- get
-      forComponentsM $ handleEvent asContext ev
+      forComponentsM $ void $ handleEvent ev
     _ -> do
-      AppState {asContext} <- get
-      zoom activeComponentL $ handleEvent asContext ev
+      void $ zoom activeComponentL $ handleEvent ev
  where
+  -- NB explicit type required to bind the implicit parameter in the right place.
+  wrappingActions ::
+    ((?actx :: AppContext) => EventM AppResourceName AppState ()) -> EventM AppResourceName AppState ()
+  wrappingActions act = do
+    dbgprint
+    updateCurrentTime
+    AppState {asContext = actx} <- get
+    let ?actx = actx
+     in act
   dbgprint = liftIO $ glogL INFO $ "Received: " ++ show ev
   -- SOMEDAY could also just react to the tick event.
   updateCurrentTime = liftIO getZonedTime >>= assign (asContextL . acZonedTimeL)
 
-forComponentsM :: EventM AppResourceName SomeBrickComponent () -> EventM AppResourceName AppState ()
+forComponentsM :: EventM AppResourceName SomeAppComponent () -> EventM AppResourceName AppState ()
 forComponentsM act = do
   state@(AppState {asOverlays, asTabs}) <- get
   asOverlays' <- forM asOverlays $ \t -> nestEventM' t act
@@ -220,7 +229,7 @@ forComponentsM act = do
   put $ state {asOverlays = asOverlays', asTabs = asTabs'}
   return ()
 
-activeComponentL :: Lens' AppState SomeBrickComponent
+activeComponentL :: Lens' AppState SomeAppComponent
 -- There's probably some clever way to do this but idk. It's also trivial rn.
 activeComponentL = lens getter setter
  where
@@ -229,7 +238,7 @@ activeComponentL = lens getter setter
   setter state@(AppState {asOverlays = _ : os}) t' = state {asOverlays = t' : os}
   setter state@(AppState {asTabs}) t' = state {asTabs = lzModify (second $ const t') asTabs}
 
-pushOverlay :: (AppResourceName -> SomeBrickComponent) -> AppState -> AppState
+pushOverlay :: (AppResourceName -> SomeAppComponent) -> AppState -> AppState
 pushOverlay mk state@(AppState {asOverlays}) = state {asOverlays = mk ovlResourceName : asOverlays}
  where
   ovlResourceName = Overlay (length asOverlays)
@@ -239,7 +248,7 @@ popOverlay state@(AppState {asOverlays = _ : os}) = state {asOverlays = os}
 -- SOMEDAY could also just do nothing here. Source of crashes but only due to logic bugs though.
 popOverlay _ = error "No overlays"
 
-pushTab :: (AppResourceName -> SomeBrickComponent) -> AppState -> AppState
+pushTab :: (AppResourceName -> SomeAppComponent) -> AppState -> AppState
 pushTab mk state@(AppState {asTabs, asNextTabID}) = state {asTabs = asTabs', asNextTabID = asNextTabID + 1}
  where
   rname = Tab asNextTabID

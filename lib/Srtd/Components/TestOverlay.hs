@@ -17,7 +17,7 @@ keymap :: Keymap (AppEventAction TestOverlay () ())
 keymap =
   kmMake
     "Test Overlay"
-    [ kmLeaf (bind 'T') "Close" $ do
+    [ kmLeafA (bind 'T') "Close" $ do
         liftIO $ writeBChan (acAppChan ?actx) (PopOverlay ORNone)
         return $ Confirmed ()
     , kmSub (bind 'a') stickySubmap
@@ -28,9 +28,8 @@ stickySubmap =
   sticky $
     kmMake
       "Sticky Submap"
-      [ kmLeaf (bind 'a') "Noop" $ do
+      [ kmLeafA_ (bind 'a') "Noop" $ do
           liftIO $ glogL INFO "TestOverlay Noop triggered"
-          return $ Continue ()
       ]
 
 newTestOverlay :: TestOverlay
@@ -47,7 +46,7 @@ instance AppComponent TestOverlay () () where
     case kmzLookup kmz key mods of
       NotFound -> return $ Continue ()
       LeafResult act nxt -> do
-        res <- act
+        res <- runAppEventAction act
         put (TestOverlay nxt)
         return res
       SubmapResult nxt -> put (TestOverlay nxt) >> return (Continue ())
