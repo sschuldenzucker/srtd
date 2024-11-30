@@ -61,12 +61,11 @@ data MainTree = MainTree
   , mtResourceName :: AppResourceName
   -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
   , mtZonedTime :: ZonedTime
-  , mtKeymap :: KeymapZipper (AppContext -> EventM AppResourceName MainTree ())
+  , mtKeymap :: KeymapZipper (AppEventAction MainTree () ())
   , mtShowDetails :: Bool
   -- ^ Whether or not to show the details view. This is not implemented as a full overlay
   -- component for simplicity.
   }
-  deriving (Show)
 
 suffixLenses ''MainTree
 
@@ -570,26 +569,28 @@ instance AppComponent MainTree () () where
       isTopLevel <- use (mtKeymapL . to kmzIsToplevel)
       listRName <- use (mtListL . L.listNameL)
       case ev of
-        (AppEvent (ModelUpdated _)) -> pullNewModel ctx
+        (AppEvent (ModelUpdated _)) -> pullNewModel ctx >> return (Continue ())
         (AppEvent (PopOverlay (OREID eid))) -> do
           -- We do not distinguish between *who* returned or *why* rn. That's a bit of a hole but not needed right now.
           -- NB we really trust in synchronicity here b/c we don't reload the model. That's fine now but could be an issue later.
           mtListL %= scrollListToEID eid
+          return (Continue ())
         -- Code for keymap. NB this is a bit nasty, having some abstraction here would be good if we need it again.
         -- We also gotta be a bit careful not to overlap these in principle.
-        (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzResetRoot
-        (VtyEvent (EvKey KBS [])) | not isTopLevel -> mtKeymapL %= kmzUp
+        (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzResetRoot >> return (Continue ())
+        (VtyEvent (EvKey KBS [])) | not isTopLevel -> mtKeymapL %= kmzUp >> return (Continue ())
         -- Map Down to vi j and Up to vi k. This also handles basic mouse wheel scroll if mouse
         -- support is not activated (see Main.hs / brick mouse example)
         -- NB we don't receive these for mouse scroll if mouse support is activated. See below.
         -- NB the following are basically modifications to list. If we need more of these, we should
         -- make a function / wrapper.
-        (VtyEvent (EvKey KDown [])) -> handleEvent ctx (VtyEvent (EvKey (KChar 'j') []))
-        (VtyEvent (EvKey KUp [])) -> handleEvent ctx (VtyEvent (EvKey (KChar 'k') []))
+        (VtyEvent (EvKey KDown [])) -> handleEvent (VtyEvent (EvKey (KChar 'j') []))
+        (VtyEvent (EvKey KUp [])) -> handleEvent (VtyEvent (EvKey (KChar 'k') []))
         -- Mouse support
         (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
-          | rname' == listRName ->
+          | rname' == listRName -> do
               mtListL %= L.listMoveTo rown
+              return (Continue ())
         -- SOMEDAY ideally, we could actually scroll the list while keeping the selection the same
         -- (except if it would go out of bounds), but Brick lists don't provide that feature.
         -- Implementing this may be related to implementing a "scrolloff" type feature later. I
@@ -597,11 +598,13 @@ instance AppComponent MainTree () () where
         -- how it remembers its scroll position tbh. Something with viewports and Brick's 'visible'.
         -- I *think* we can just append the right visibility request (from Brick.Types.Internal).
         (MouseDown rname' BScrollDown [] _)
-          | rname' == listRName ->
+          | rname' == listRName -> do
               mtListL %= L.listMoveBy 3
+              return (Continue ())
         (MouseDown rname' BScrollUp [] _)
-          | rname' == listRName ->
+          | rname' == listRName -> do
               mtListL %= L.listMoveBy (-3)
+              return (Continue ())
         -- zoom mtListL $ L.listMoveByPages (0.3 :: Double)
         -- Keymap
         (VtyEvent e@(EvKey key mods)) -> do
@@ -613,12 +616,10 @@ instance AppComponent MainTree () () where
         (VtyEvent e) -> handleFallback e
         _miscEvents -> return ()
    where
-    -- SOMEDAY when I want mouse support, I prob have to revise this: this only interprets
-    -- keystroke events (Event, from vty), not BrickEvent. Possible I have to run *both* event
-    -- handlers. Really a shame we can't know if somethings was handled. - or can we somehow??
-    -- NB e.g., Editor handles the full BrickEvent type.
-    handleFallback e = zoom mtListL $ L.handleListEventVi (const $ return ()) e
-    updateZonedTime = mtZonedTimeL .= acZonedTime ctx
+    handleFallback e = do
+      zoom mtListL $ L.handleListEventVi (const $ return ()) e
+      return (Continue ())
+    updateZonedTime = mtZonedTimeL .= acZonedTime ?actx
 
   componentKeyDesc = kmzDesc . mtKeymap
 
