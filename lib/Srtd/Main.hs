@@ -1,4 +1,3 @@
-
 module Srtd.Main (main) where
 
 import Brick

@@ -1,4 +1,3 @@
-
 -- | A process that auto-saves the model.
 module Srtd.ModelSaver where
 

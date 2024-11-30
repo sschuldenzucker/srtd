@@ -1,4 +1,3 @@
-
 -- | Attributes. There's no deep reason this is separate other than to avoid cycles in the module graph.
 module Srtd.Attr where
 

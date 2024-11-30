@@ -1,4 +1,3 @@
-
 -- | Brick attributes
 module Srtd.AppAttr where
 

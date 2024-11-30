@@ -1,4 +1,3 @@
-
 module Srtd.Components.TestOverlay where
 
 import Brick

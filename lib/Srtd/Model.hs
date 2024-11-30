@@ -1,4 +1,3 @@
-
 -- | Model stuff.
 module Srtd.Model where
 

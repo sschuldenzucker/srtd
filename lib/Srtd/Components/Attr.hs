@@ -1,4 +1,3 @@
-
 -- | Some functions for rendering attrs in Brick.
 module Srtd.Components.Attr where
 

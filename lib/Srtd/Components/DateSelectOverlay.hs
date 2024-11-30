@@ -1,4 +1,3 @@
-
 module Srtd.Components.DateSelectOverlay where
 
 import Brick

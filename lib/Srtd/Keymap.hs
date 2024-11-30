@@ -1,4 +1,3 @@
-
 module Srtd.Keymap where
 
 import Brick (suffixLenses)
