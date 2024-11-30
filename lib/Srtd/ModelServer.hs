@@ -1,4 +1,3 @@
-{-# LANGUAGE ImplicitParams #-}
 
 {-| Synchronization framework for concurrent model access.
 
