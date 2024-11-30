@@ -1,3 +1,4 @@
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -43,21 +44,31 @@ newNodeOverlay cb initName title rname = NewNodeOverlay (editor editorRName (Jus
  where
   editorRName = EditorFor rname
 
-instance BrickComponent NewNodeOverlay where
+-- SOMEDAY flow of control/data should prob be different here.
+instance AppComponent NewNodeOverlay () () where
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
   renderComponent self = renderEditor (str . intercalate "\n") True (self ^. nnEditor)
 
-  handleEvent ctx ev = case ev of
-    (VtyEvent (EvKey KEsc [])) ->
-      liftIO $ writeBChan acAppChan (PopOverlay $ ORNone)
+  handleEvent ev = case ev of
+    (VtyEvent (EvKey KEsc [])) -> do
+      -- TODO we shouldn't have to send this via the global channel but instead Canceled should be
+      -- respected by the caller.
+      liftIO $
+        writeBChan
+          acAppChan
+          (PopOverlay $ ORNone)
+      return Canceled
     (VtyEvent (EvKey KEnter [])) -> do
       NewNodeOverlay {_nnEditor, _nnCallback} <- get
       -- `intercalate "\n"`, *not* `unlines` b/c that adds a trailing newline.
-      eid <- liftIO $ _nnCallback (intercalate "\n" $ getEditContents _nnEditor) ctx
+      eid <- liftIO $ _nnCallback (intercalate "\n" $ getEditContents _nnEditor) ?actx
       liftIO $ writeBChan acAppChan (PopOverlay $ OREID eid)
-    _ -> zoom nnEditor $ handleEditorEvent ev
+      return $ Confirmed ()
+    _ -> do
+      zoom nnEditor $ handleEditorEvent ev
+      return $ Continue ()
    where
-    AppContext {acAppChan} = ctx
+    AppContext {acAppChan} = ?actx
 
   componentKeyDesc self = KeyDesc (_nnTitle self) True [("esc", "cancel"), ("enter", "confirm")]
 

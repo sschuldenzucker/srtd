@@ -211,6 +211,7 @@ myHandleEvent ev =
       zoom activeComponentL $ handleEvent asContext ev
  where
   dbgprint = liftIO $ glogL INFO $ "Received: " ++ show ev
+  -- SOMEDAY could also just react to the tick event.
   updateCurrentTime = liftIO getZonedTime >>= assign (asContextL . acZonedTimeL)
 
 forComponentsM :: EventM AppResourceName SomeBrickComponent () -> EventM AppResourceName AppState ()

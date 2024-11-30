@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Srtd.Components.TestOverlay where
 
 import Brick
@@ -11,41 +9,49 @@ import Srtd.Component
 import Srtd.Keymap
 import Srtd.Log
 
-data TestOverlay = TestOverlay (KeymapZipper (AppContext -> EventM AppResourceName TestOverlay ()))
+data TestOverlay = TestOverlay (KeymapZipper (AppEventAction TestOverlay () ()))
 
 -- The following is more of a demonstration. Of course overkill here.
 
-keymap :: Keymap (AppContext -> EventM n TestOverlay ())
+keymap :: Keymap (AppEventAction TestOverlay () ())
 keymap =
   kmMake
     "Test Overlay"
-    [ kmLeaf (bind 'T') "Close" $ \(AppContext {acAppChan}) -> do
-        liftIO $ writeBChan acAppChan (PopOverlay ORNone)
+    [ kmLeaf (bind 'T') "Close" $ do
+        liftIO $ writeBChan (acAppChan ?actx) (PopOverlay ORNone)
+        return $ Confirmed ()
     , kmSub (bind 'a') stickySubmap
     ]
 
-stickySubmap :: Keymap (AppContext -> EventM n TestOverlay ())
+stickySubmap :: Keymap (AppEventAction TestOverlay () ())
 stickySubmap =
   sticky $
     kmMake
       "Sticky Submap"
-      [ kmLeaf (bind 'a') "Noop" (const $ liftIO $ glogL INFO "TestOverlay Noop triggered")
+      [ kmLeaf (bind 'a') "Noop" $ do
+          liftIO $ glogL INFO "TestOverlay Noop triggered"
+          return $ Continue ()
       ]
 
 newTestOverlay :: TestOverlay
 newTestOverlay = TestOverlay (keymapToZipper keymap)
 
-instance BrickComponent TestOverlay where
+instance AppComponent TestOverlay () () where
   renderComponent _ = str "Test Component. Press T to close."
 
-  handleEvent _ (VtyEvent (EvKey KEsc [])) = modify (\(TestOverlay kmz) -> TestOverlay (kmzResetRoot kmz))
-  handleEvent ctx (VtyEvent (EvKey key mods)) = do
+  handleEvent (VtyEvent (EvKey KEsc [])) = do
+    modify (\(TestOverlay kmz) -> TestOverlay (kmzResetRoot kmz))
+    return $ Canceled
+  handleEvent (VtyEvent (EvKey key mods)) = do
     (TestOverlay kmz) <- get
     case kmzLookup kmz key mods of
-      NotFound -> return ()
-      LeafResult act nxt -> act ctx >> put (TestOverlay nxt)
-      SubmapResult nxt -> put (TestOverlay nxt)
-  handleEvent _ _ = return ()
+      NotFound -> return $ Continue ()
+      LeafResult act nxt -> do
+        res <- act
+        put (TestOverlay nxt)
+        return res
+      SubmapResult nxt -> put (TestOverlay nxt) >> return (Continue ())
+  handleEvent _ = return $ Continue ()
 
   componentKeyDesc (TestOverlay kmz) = kmzDesc kmz
 

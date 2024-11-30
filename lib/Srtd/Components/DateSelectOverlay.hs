@@ -1,3 +1,6 @@
+{-# LANGUAGE ImplicitParams #-}
+-- Not sure why we need this one
+{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -56,16 +59,18 @@ dateSelectOverlay cb origValue tz title rname =
 
 -- SOMEDAY a nice calendar display of the selected month and key bindings to directly select dates
 
-keymap :: Keymap (AppContext -> EventM n DateSelectOverlay ())
+keymap :: Keymap (AppEventAction DateSelectOverlay () ())
 keymap =
   kmMake
     "Select Date"
-    [ kmLeaf (binding KEsc []) "Cancel" $ \ctx ->
-        liftIO $ writeBChan (acAppChan ctx) (PopOverlay $ ORNone)
-    , kmLeaf (binding KEnter []) "Confirm" $ \ctx -> do
+    [ kmLeaf (binding KEsc []) "Cancel" $ do
+        liftIO $ writeBChan (acAppChan ?actx) (PopOverlay $ ORNone)
+        return Canceled
+    , kmLeaf (binding KEnter []) "Confirm" $ do
         mv <- use dsValueL
-        when (isJust mv) $ submitAndClose ctx
-    , kmLeaf (ctrl 'd') "Delete" submitAndClose
+        when (isJust mv) $ submitAndClose ?actx
+        return $ Confirmed ()
+    , kmLeaf (ctrl 'd') "Delete" (submitAndClose ?actx >> (return $ Confirmed ()))
     ]
  where
   submitAndClose ctx = do
@@ -75,10 +80,11 @@ keymap =
     liftIO $ writeBChan (acAppChan ctx) (PopOverlay $ OREID eid)
 
 -- Trivial rn.
-keymapZipper :: KeymapZipper (AppContext -> EventM n DateSelectOverlay ())
+keymapZipper :: KeymapZipper (AppEventAction DateSelectOverlay () ())
 keymapZipper = keymapToZipper keymap
 
-instance BrickComponent DateSelectOverlay where
+-- TODO as always, we should pass control differently.
+instance AppComponent DateSelectOverlay () () where
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
   -- TODO make prettier, e.g., colors, spacing, padding, etc.
   renderComponent self = editUI <=> dateUI <=> origDateUI
@@ -89,21 +95,22 @@ instance BrickComponent DateSelectOverlay where
     renderDate date = maybe emptyWidget (str . prettyAbsolute (dsTimeZone self)) $ date
 
   -- NB we don't have sub-keymaps here atm, so don't need to handle as much as MainTree, for instance.
-  handleEvent ctx ev =
+  handleEvent ev =
     updateTimeZone >> case ev of
       (VtyEvent (EvKey key mods)) -> do
         case kmzLookup keymapZipper key mods of
           NotFound -> handleFallback ev
-          LeafResult act _nxt -> act ctx
+          LeafResult act _nxt -> act
           SubmapResult _sm -> error "wtf submap?"
       _ -> handleFallback ev
    where
     handleFallback ev' = do
       zoom dsEditorL $ handleEditorEvent ev'
       text <- (T.intercalate "\n" . getEditContents) <$> use dsEditorL
-      dsValueL .= parseInterpretHumanDateOrTime text (acZonedTime ctx)
+      dsValueL .= parseInterpretHumanDateOrTime text (acZonedTime ?actx)
+      return $ Continue ()
     -- Yeah time zones change really rarely but w/e.
-    updateTimeZone = dsTimeZoneL .= zonedTimeZone (acZonedTime ctx)
+    updateTimeZone = dsTimeZoneL .= zonedTimeZone (acZonedTime ?actx)
 
   componentKeyDesc self = kmzDesc keymapZipper & kdNameL .~ (dsTitle self)
 

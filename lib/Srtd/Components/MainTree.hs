@@ -541,7 +541,13 @@ renderItemDetails ztime lillabel@(eid, llabel) =
   padFirstCell (h : t) = padRight (Pad 2) h : t
   sectionHeaderAttr = attrName "section_header"
 
-instance BrickComponent MainTree where
+-- TODO WIP refactor this one to AppComponent (keybinds to AppEventAction type).
+-- Then, refactor everything *around* this, specifically:
+-- - We no longer need to store time just for rendering. Can pull from the implicit param
+-- - Control flow should use the return of handle event
+-- - Actually set ?actx somewhere I guess?!
+
+instance AppComponent MainTree () () where
   renderComponentWithOverlays
     s@MainTree
       { mtList
@@ -559,7 +565,7 @@ instance BrickComponent MainTree where
         (True, Just illabel) -> [("Item Details", renderItemDetails mtZonedTime illabel)]
         _ -> []
 
-  handleEvent ctx ev =
+  handleEvent ev =
     -- LATER when filters become more fancy and filter something wrt. the current time, this *may*
     -- need to process the Tick event and update its filter. (we probably don't wanna do this on
     -- \*every* event though to keep it usable, and maybe we don't even wanna process Tick in this

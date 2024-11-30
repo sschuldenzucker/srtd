@@ -1,4 +1,8 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 {-| A model defining a unified component interface. I have no idea why Brick doesn't include this.
@@ -20,10 +24,11 @@ import Srtd.ModelServer (ModelServer, MsgModelUpdated)
 -- I.e.: what they're calling; what they're expecting as a return value.
 data OverlayReturnValue = ORNone | OREID EID deriving (Show)
 
+-- TODO this we can refactor most of away.
 data AppMsg
   = PopOverlay OverlayReturnValue
-  | PushOverlay (AppResourceName -> SomeBrickComponent)
-  | PushTab (AppResourceName -> SomeBrickComponent)
+  | PushOverlay (AppResourceName -> SomeAppComponent)
+  | PushTab (AppResourceName -> SomeAppComponent)
   | -- SOMEDAY PopOverlay and PopTab should be reconciled into a generic "pop active" msg so views can safely "pop themselves".
     PopTab
   | NextTab
@@ -66,6 +71,18 @@ data AppContext = AppContext
   -- interactions, NOT for internal process coordination!
   }
 
+data AppEventReturn a b = Continue a | Confirmed b | Canceled
+
+type AppEventAction s a b =
+  (?actx :: AppContext) =>
+  EventM AppResourceName s (AppEventReturn a b)
+
+forgetAppEventReturnData :: AppEventReturn a b -> AppEventReturn () ()
+forgetAppEventReturnData = \case
+  Continue _ -> Continue ()
+  Confirmed _ -> Confirmed ()
+  Canceled -> Canceled
+
 -- Somehow TemplateHaskell breaks everything here. Perhaps b/c of the circularity.
 -- suffixLenses ''AppContext
 
@@ -77,23 +94,30 @@ acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 
 -- | A class of components. All Brick components (hopefully,,,) satisfy this.
 --
--- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented.
+-- Parameters:
 --
--- TODO rename to AppComponent b/c it's really specific to *this* app by now.
--- TODO maybe generalize over types if only to avoid circularities grrr
-class BrickComponent s where
+-- - `s` The state type of the component
+-- - `a` The type of intermediate results that is returned when the component remains visible.
+-- - `b` The type of final results when the component is closed.
+--
+-- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented.
+class AppComponent s a b | s -> a, s -> b where
   -- | Render this component to a widget. Like `appRender` for apps, or the many render functions.
-  renderComponent :: s -> Widget AppResourceName
+  renderComponent :: (?actx :: AppContext) => s -> Widget AppResourceName
   renderComponent = fst . renderComponentWithOverlays
 
   -- | Variant of `renderComponent` that lets us provide a list over overlays that should also be rendered.
   -- Overlays behave like Brick's 'appDraw', i.e. the first overlay is rendered at the top. Of form
   -- `(Title, Widget)`.
-  renderComponentWithOverlays :: s -> (Widget AppResourceName, [(Text, Widget AppResourceName)])
+  renderComponentWithOverlays ::
+    (?actx :: AppContext) => s -> (Widget AppResourceName, [(Text, Widget AppResourceName)])
   renderComponentWithOverlays = (,[]) . renderComponent
 
   -- | Handle an event. Like the `handleEvent` functions.
-  handleEvent :: AppContext -> BrickEvent AppResourceName AppMsg -> EventM AppResourceName s ()
+  --
+  -- The return value gives the caller an intermediate or final result and tells them what to do
+  -- with the component.
+  handleEvent :: BrickEvent AppResourceName AppMsg -> AppEventAction s a b
 
   -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
   componentKeyDesc :: s -> KeyDesc
@@ -101,21 +125,23 @@ class BrickComponent s where
   -- | Title of the component. Used in tabs and (should be used in) overlay titles.
   componentTitle :: s -> Text
 
-data SomeBrickComponent = forall s. (BrickComponent s) => SomeBrickComponent s
+-- | Wrapper that encapsulates any AppComponent and forgets results.
+data SomeAppComponent = forall s a b. (AppComponent s a b) => SomeAppComponent s
 
-instance BrickComponent SomeBrickComponent where
-  renderComponent (SomeBrickComponent s) = renderComponent s
-  renderComponentWithOverlays (SomeBrickComponent s) = renderComponentWithOverlays s
+instance AppComponent SomeAppComponent () () where
+  renderComponent (SomeAppComponent s) = renderComponent s
+  renderComponentWithOverlays (SomeAppComponent s) = renderComponentWithOverlays s
 
   -- This is a somewhat unhinged construction to deal with the existential quantification while
   -- using the `zoom` machinery. Wondering if there's a library function that just does what I want
   -- more directly (transform the state, keep all other layers intact)
-  handleEvent ctx ev = do
-    (SomeBrickComponent s) <- get
+  handleEvent ev = do
+    (SomeAppComponent s) <- get
     -- Alternatively, we could make the actual transform and use unsafeCoerce. But this seems to work fine.
-    let theLens = lens (const s) (const SomeBrickComponent)
-    zoom theLens $ handleEvent ctx ev
+    let theLens = lens (const s) (const SomeAppComponent)
+    res <- zoom theLens $ handleEvent ev
+    return $ forgetAppEventReturnData res
 
-  componentKeyDesc (SomeBrickComponent s) = componentKeyDesc s
+  componentKeyDesc (SomeAppComponent s) = componentKeyDesc s
 
-  componentTitle (SomeBrickComponent s) = componentTitle s
+  componentTitle (SomeAppComponent s) = componentTitle s
