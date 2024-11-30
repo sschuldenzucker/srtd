@@ -48,8 +48,6 @@ vAlignBottomLayer p =
     result <- render p
     c <- getContext
     let rHeight = result ^. imageL . to imageHeight
-        -- topPaddingAmount = max 0 $ (c ^. availHeightL - rHeight) `div` 2
-        -- TODO WIP Review, then use it for the help box
         topPaddingAmount = max 0 $ (c ^. availHeightL - rHeight)
         paddedImage = translateY topPaddingAmount $ result ^. imageL
         off = Location (0, topPaddingAmount)

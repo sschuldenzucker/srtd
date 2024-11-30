@@ -123,9 +123,6 @@ data ModelUpdateEnv = ModelUpdateEnv {mueTimeZone :: TimeZone}
 _forestMakeDerivedAttrs :: (?mue :: ModelUpdateEnv) => IdForest EID Attr -> IdForest EID Label
 _forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> (attr, makeNodeDerivedAttr mplabel clabels attr)
  where
-  -- TODO WIP re-write to use 'transformIdForestDownUp' and the "down" step is for updating 'daImpliedDates'.
-  -- Requires some thought how exactly these should be implied from the parent (always inherit or base on status/actionability?)
-  -- Also make this a test case for the structure of transformIdForestDownUp. Should it be more symmetic? Or can we hack it by making 'u' a closure? Or use a final mapping step? Add this to transformIdForestDownUp or separate fmap? Or mutual recursion after all?
   makeNodeDerivedAttr mplabel clabels attr =
     DerivedAttr
       { daChildActionability = forEmptyList None minimum . map glActionability $ clabels

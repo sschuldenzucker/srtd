@@ -253,20 +253,9 @@ moveSubtreeModeKeymap =
     kmMake
       "Move subtree mode"
       -- SOMEDAY clean up repetition
-      -- TODO WIP I think these moveSubtree (and moveSingle) things can take a cleanup with their destinations.
+      -- TODO I think these moveSubtree (and moveSingle) things can take a cleanup with their destinations. What are the most intuitive keys?
       -- Can we reduce the number of different options? E.g., ("next based on preorder relative to self", "next based on siblings relative to parent") - Prob think about indicating the *target* relative to sth.
-      [ -- TODO put this back in. Need to implement goNextPreorder etc. Also check if this structure makes sense actually.
-        -- ( kmLeaf (bind 'j') "Down" $
-        --     -- withRoot $ \root -> withCur $ \cur ->
-        --     --   modifyModel (moveSubtreeBelow' root cur toBeforeNextPreorder)
-        --     moveCurRelative goNextPreorder insBefore
-        -- ),
-        -- ( kmLeaf (bind 'k') "Up" $
-        --     -- withRoot $ \root -> withCur $ \cur ->
-        --     --   modifyModel (moveSubtreeBelow' root cur toAfterPrevPreorder)
-        --     moveCurRelative goPrevPreorder insAfter
-        -- ),
-        (kmLeafA_ (bind 'j') "Down" $ moveCurRelativeDynamic dtoNextPreorder)
+      [ (kmLeafA_ (bind 'j') "Down" $ moveCurRelativeDynamic dtoNextPreorder)
       , (kmLeafA_ (bind 'k') "Up" $ moveCurRelativeDynamic dtoPrevPreorder)
       , (kmLeafA_ (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter)
       , (kmLeafA_ (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore)
@@ -598,12 +587,6 @@ renderItemDetails ztime lillabel@(eid, llabel) =
   padFirstCell [] = []
   padFirstCell (h : t) = padRight (Pad 2) h : t
   sectionHeaderAttr = attrName "section_header"
-
--- TODO WIP refactor this one to AppComponent (keybinds to AppEventAction type).
--- Then, refactor everything *around* this, specifically:
--- - We no longer need to store time just for rendering. Can pull from the implicit param
--- - Control flow should use the return of handle event
--- - Actually set ?actx somewhere I guess?!
 
 instance AppComponent MainTree () () where
   renderComponentWithOverlays
