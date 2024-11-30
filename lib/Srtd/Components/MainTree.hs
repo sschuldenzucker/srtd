@@ -176,7 +176,7 @@ deleteKeymap =
   kmMake
     "Delete"
     -- TOOD some undo would be nice, lol.
-    [ (kmLeafA_ (bind 'D') "Subtree" $ withCur $ \cur -> modifyModelWithCtx (deleteSubtree cur))
+    [ (kmLeafA_ (bind 'D') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur))
     -- (kmLeaf (bind 's') "Single" $ withCur $ \cur -> modifyModel (deleteSingle cur))
     ]
 
@@ -291,7 +291,7 @@ _mkSortKeymap withFunc name =
   -- forgets about it and the code doesn't type check. Have to do this in both places.
   mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
     [kmLeafA_ (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
-  sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModelWithCtx (sorter ord root)
+  sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModel (sorter ord root)
   -- comparison function that puts notes first (which is what we usually want)
   compareActionabilityForSort :: Label -> Label -> Ordering
   compareActionabilityForSort l1 l2 = case (isNote l1, isNote l2) of
@@ -333,13 +333,13 @@ pushInsertNewItemRelToCur go = do
 
 setStatus :: (?actx :: AppContext) => Status -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
-  modifyModelWithCtx $
+  modifyModel $
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx) . (statusL .~ status')
      in modifyAttrByEID cur f
 
 touchLastStatusModified :: (?actx :: AppContext) => EventM n MainTree ()
 touchLastStatusModified = withCur $ \cur ->
-  modifyModelWithCtx $
+  modifyModel $
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx)
      in modifyAttrByEID cur f
 
@@ -694,7 +694,7 @@ moveCurRelative ::
   (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> EventM n MainTree ()
 moveCurRelative go ins = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
-  modifyModelWithCtx (moveSubtreeRelFromForest cur go ins forest)
+  modifyModel (moveSubtreeRelFromForest cur go ins forest)
 
 -- SOMEDAY ^^ Same applies. Also, these could all be unified.
 moveCurRelativeDynamic ::
@@ -703,15 +703,15 @@ moveCurRelativeDynamic ::
   EventM n MainTree ()
 moveCurRelativeDynamic dgo = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
-  modifyModelWithCtx (moveSubtreeRelFromForestDynamic cur dgo forest)
+  modifyModel (moveSubtreeRelFromForestDynamic cur dgo forest)
 
 -- | Modify the model. The modification function can also depend on `?actx` (most likely for the
 -- current time if needed).
-modifyModelWithCtx ::
+modifyModel ::
   (?actx :: AppContext) =>
   ((?mue :: ModelUpdateEnv, ?actx :: AppContext) => Model -> Model) ->
   EventM n MainTree ()
-modifyModelWithCtx f = do
+modifyModel f = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ do
