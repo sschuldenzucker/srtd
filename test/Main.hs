@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- SOMEDAY split these tests into separate modules
 
 module Main (main) where

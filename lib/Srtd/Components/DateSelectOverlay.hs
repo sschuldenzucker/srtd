@@ -1,9 +1,3 @@
-{-# LANGUAGE ImplicitParams #-}
--- Not sure why we need this one
-{-# LANGUAGE ImpredicativeTypes #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-
 module Srtd.Components.DateSelectOverlay where
 
 import Brick

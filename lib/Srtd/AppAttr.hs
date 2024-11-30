@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- | Brick attributes
 module Srtd.AppAttr where
 

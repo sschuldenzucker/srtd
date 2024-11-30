@@ -1,5 +1,3 @@
-{-# LANGUAGE ImplicitParams #-}
-
 {-| Synchronization framework for concurrent model access.
 
 There's not actually a server here but we *may* want to make it one later.

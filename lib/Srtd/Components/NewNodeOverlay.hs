@@ -1,7 +1,3 @@
-{-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-
 {-| Component for editing item names for new/existing items.
 
 TODO Rename. It's more of a generic name editing component.
