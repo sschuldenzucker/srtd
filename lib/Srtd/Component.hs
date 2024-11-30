@@ -1,4 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FunctionalDependencies #-}
 
 {-| A model defining a unified component interface. I have no idea why Brick doesn't include this.
 
