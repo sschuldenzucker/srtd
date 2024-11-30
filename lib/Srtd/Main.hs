@@ -115,7 +115,7 @@ main = do
           { asContext = AppContext modelServer appChan ztime
           , asTabs =
               let rname = Tab 0
-               in LZ.fromList [(TabTitleFor rname, SomeAppComponent $ MainTree.make Vault model ztime rname)]
+               in LZ.fromList [(TabTitleFor rname, SomeAppComponent $ MainTree.make Vault model rname)]
           , asNextTabID = 1
           , asHelpAlways = False
           , asAttrMapRing = attrMapRing
@@ -236,7 +236,7 @@ fixEmptyTabs = do
     actx <- use asContextL
     model <- liftIO $ getModel (acModelServer actx)
     modify $
-      pushTab (SomeAppComponent . MainTree.make Vault model (acZonedTime actx))
+      pushTab (SomeAppComponent . MainTree.make Vault model)
 
 activeTabL :: Lens' AppState SomeAppComponent
 -- There's probably some clever way to do this but idk. It's also trivial rn.

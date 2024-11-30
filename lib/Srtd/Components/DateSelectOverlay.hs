@@ -19,8 +19,6 @@ data DateSelectOverlay = DateSelectOverlay
   , dsValue :: Maybe DateOrTime
   -- ^ `Nothing` means invalid and `Just` means valid. Deletion is handled directly and not
   -- represented in the state.
-  -- TODO we don't need this anymore, we can just pull live from the context. I think.
-  , dsTimeZone :: TimeZone
   , dsOrigValue :: Maybe DateOrTime
   , dsTitle :: Text
   }
@@ -31,13 +29,12 @@ type MyAppEventAction = AppEventAction DateSelectOverlay () (Maybe DateOrTime)
 
 -- | NB the TimeZone is only required to render the *first* time before we receive an event (which is where it's updated).
 dateSelectOverlay ::
-  Maybe DateOrTime -> TimeZone -> Text -> AppResourceName -> DateSelectOverlay
-dateSelectOverlay origValue tz title rname =
+  Maybe DateOrTime -> Text -> AppResourceName -> DateSelectOverlay
+dateSelectOverlay origValue title rname =
   DateSelectOverlay
     { dsEditor = theEditor
     , dsValue = Nothing
     , dsOrigValue = origValue
-    , dsTimeZone = tz
     , dsTitle = title
     }
  where
@@ -76,11 +73,12 @@ instance AppComponent DateSelectOverlay () (Maybe DateOrTime) where
     editUI = renderEditor (txt . T.intercalate "\n") True (dsEditor self)
     dateUI = renderDate (dsValue self)
     origDateUI = renderDate (dsOrigValue self)
-    renderDate date = maybe emptyWidget (str . prettyAbsolute (dsTimeZone self)) $ date
+    renderDate date = maybe emptyWidget (str . prettyAbsolute tz) $ date
+    tz = zonedTimeZone . acZonedTime $ ?actx
 
   -- NB we don't have sub-keymaps here atm, so don't need to handle as much as MainTree, for instance.
   handleEvent ev =
-    updateTimeZone >> case ev of
+    case ev of
       (VtyEvent (EvKey key mods)) -> do
         case kmzLookup keymapZipper key mods of
           NotFound -> handleFallback ev
@@ -93,8 +91,6 @@ instance AppComponent DateSelectOverlay () (Maybe DateOrTime) where
       text <- (T.intercalate "\n" . getEditContents) <$> use dsEditorL
       dsValueL .= parseInterpretHumanDateOrTime text (acZonedTime ?actx)
       return $ Continue ()
-    -- Yeah time zones change really rarely but w/e.
-    updateTimeZone = dsTimeZoneL .= zonedTimeZone (acZonedTime ?actx)
 
   componentKeyDesc self = kmzDesc keymapZipper & kdNameL .~ (dsTitle self)
 

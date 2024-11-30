@@ -81,7 +81,6 @@ data MainTree = MainTree
   , mtList :: MyList
   , mtResourceName :: AppResourceName
   -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
-  , mtZonedTime :: ZonedTime
   , mtKeymap :: KeymapZipper (AppEventAction MainTree () ())
   , mtShowDetails :: Bool
   -- ^ Whether or not to show the details view. This is not implemented as a full overlay
@@ -172,9 +171,8 @@ rootKeymap =
     , ( kmLeafA_ (binding KEnter []) "Hoist" $ withCur $ \cur -> do
           rname <- mtResourceName <$> get
           model <- liftIO $ getModel (acModelServer ?actx)
-          ztime <- use mtZonedTimeL
           filters <- mtFilters <$> get
-          put $ makeWithFilters cur filters model ztime rname
+          put $ makeWithFilters cur filters model rname
       )
     , ( kmLeafA_ (binding KBS []) "De-hoist" $ do
           s <- get
@@ -183,9 +181,8 @@ rootKeymap =
             (parent, _) : _ -> do
               rname <- mtResourceName <$> get
               model <- liftIO $ getModel (acModelServer ?actx)
-              ztime <- use mtZonedTimeL
               filters <- mtFilters <$> get
-              put $ makeWithFilters parent filters model ztime rname & mtListL %~ scrollListToEID (mtRoot s)
+              put $ makeWithFilters parent filters model rname & mtListL %~ scrollListToEID (mtRoot s)
       )
     , (kmSub (bind ',') sortCurKeymap)
     , (kmSub (bind ';') sortRootKeymap)
@@ -241,14 +238,13 @@ editDateKeymap =
       ]
  where
   mkDateEditShortcut (kb, label, l0 :: AttrDateOrTimeLens) = kmLeafA_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
-    let tz = zonedTimeZone $ acZonedTime ?actx
-        cb date' = do
+    let cb date' = do
           let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runAttrDateOrTimeLens l0 .~ date')
           -- NB we don't *have* to use 'modifyModel' here b/c it doesn't have to be sync.
           liftIO $ modifyModelOnServer (acModelServer ?actx) (modifyAttrByEID cur f)
           mtListL %= scrollListToEID cur
           return $ Continue ()
-        mkDateEdit = dateSelectOverlay (attr ^. runAttrDateOrTimeLens l0) tz ("Edit " <> label)
+        mkDateEdit = dateSelectOverlay (attr ^. runAttrDateOrTimeLens l0) ("Edit " <> label)
      in pushOverlay mkDateEdit overlayNoop cb
 
 moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree () ())
@@ -403,19 +399,18 @@ cycleNextFilter = do
   mtFiltersL %= CList.rotR
   pullNewModel
 
-make :: EID -> Model -> ZonedTime -> AppResourceName -> MainTree
+make :: EID -> Model -> AppResourceName -> MainTree
 make root = makeWithFilters root (CList.fromList defaultFilters)
 
 -- | filters must not be empty.
-makeWithFilters :: EID -> CList.CList Filter -> Model -> ZonedTime -> AppResourceName -> MainTree
-makeWithFilters root filters model ztime rname =
+makeWithFilters :: EID -> CList.CList Filter -> Model -> AppResourceName -> MainTree
+makeWithFilters root filters model rname =
   MainTree
     { mtRoot = root
     , mtFilters = filters
     , mtSubtree = subtree
     , mtList = list
     , mtResourceName = rname
-    , mtZonedTime = ztime
     , mtKeymap = keymapToZipper rootKeymap
     , mtShowDetails = False
     , mtOverlay = Nothing
@@ -616,21 +611,21 @@ instance AppComponent MainTree () () where
       { mtList
       , mtSubtree = Subtree {rootLabel, breadcrumbs}
       , mtFilters
-      , mtZonedTime
       , mtShowDetails
       , mtOverlay
       } =
       (box, catMaybes [ovl, detailsOvl])
      where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
-      headrow = renderRoot mtZonedTime rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
-      box = headrow <=> L.renderList (renderRow mtZonedTime) True mtList
+      headrow = renderRoot now rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
+      box = headrow <=> L.renderList (renderRow now) True mtList
       detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
-        (True, Just illabel) -> Just ("Item Details", renderItemDetails mtZonedTime illabel)
+        (True, Just illabel) -> Just ("Item Details", renderItemDetails now illabel)
         _ -> Nothing
       ovl = case mtOverlay of
         Just (Overlay ol _ _) -> Just $ (componentTitle ol, renderComponent ol)
         Nothing -> Nothing
+      now = acZonedTime ?actx
 
   handleEvent ev =
     -- LATER when filters become more fancy and filter something wrt. the current time, this *may*
@@ -686,8 +681,7 @@ instance AppComponent MainTree () () where
         _miscEvents -> return (Continue ())
    where
     wrappingActions actMain = do
-      updateZonedTime
-      -- Global updates that should happen even if there's an active overlay
+      -- <<Global updates that should happen even if there's an active overlay would go here.>>
       case ev of
         (AppEvent (ModelUpdated _)) -> pullNewModel
         _ -> return ()
@@ -707,7 +701,6 @@ instance AppComponent MainTree () () where
     handleFallback e = do
       zoom mtListL $ L.handleListEventVi (const $ return ()) e
       return (Continue ())
-    updateZonedTime = mtZonedTimeL .= acZonedTime ?actx
 
   componentKeyDesc s = case mtOverlay s of
     Nothing -> kmzDesc . mtKeymap $ s
