@@ -176,7 +176,7 @@ deleteKeymap =
   kmMake
     "Delete"
     -- TOOD some undo would be nice, lol.
-    [ (kmLeafA_ (bind 'D') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur))
+    [ (kmLeafA_ (bind 'D') "Subtree" $ withCur $ \cur -> modifyModelWithCtx (deleteSubtree cur))
     -- (kmLeaf (bind 's') "Single" $ withCur $ \cur -> modifyModel (deleteSingle cur))
     ]
 
@@ -291,7 +291,7 @@ _mkSortKeymap withFunc name =
   -- forgets about it and the code doesn't type check. Have to do this in both places.
   mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
     [kmLeafA_ (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
-  sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModel (sorter ord root)
+  sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModelWithCtx (sorter ord root)
   -- comparison function that puts notes first (which is what we usually want)
   compareActionabilityForSort :: Label -> Label -> Ordering
   compareActionabilityForSort l1 l2 = case (isNote l1, isNote l2) of
@@ -694,7 +694,7 @@ moveCurRelative ::
   (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> EventM n MainTree ()
 moveCurRelative go ins = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
-  modifyModel (moveSubtreeRelFromForest cur go ins forest)
+  modifyModelWithCtx (moveSubtreeRelFromForest cur go ins forest)
 
 -- SOMEDAY ^^ Same applies. Also, these could all be unified.
 moveCurRelativeDynamic ::
@@ -703,24 +703,10 @@ moveCurRelativeDynamic ::
   EventM n MainTree ()
 moveCurRelativeDynamic dgo = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
-  modifyModel (moveSubtreeRelFromForestDynamic cur dgo forest)
+  modifyModelWithCtx (moveSubtreeRelFromForestDynamic cur dgo forest)
 
--- TODO eliminate duplication with modifyModelWithCtx
-modifyModel ::
-  (?actx :: AppContext) => ((?mue :: ModelUpdateEnv) => Model -> Model) -> EventM n MainTree ()
-modifyModel f = do
-  s@(MainTree {mtRoot, mtList}) <- get
-  let filter_ = mtFilter s
-  model' <- liftIO $ do
-    -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
-    -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
-    modifyModelOnServer (acModelServer ?actx) f
-    getModel (acModelServer ?actx)
-  let subtree = filterRun filter_ mtRoot model'
-  let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
-  put s {mtSubtree = subtree, mtList = list'}
-  return ()
-
+-- | Modify the model. The modification function can also depend on `?actx` (most likely for the
+-- current time if needed).
 modifyModelWithCtx ::
   (?actx :: AppContext) =>
   ((?mue :: ModelUpdateEnv, ?actx :: AppContext) => Model -> Model) ->
