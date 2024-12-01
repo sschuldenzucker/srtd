@@ -5,7 +5,9 @@ module Srtd.Model where
 import Brick (suffixLenses)
 import Data.Aeson
 import Data.Either (fromRight)
+import Data.Function (on)
 import Data.List (find, foldl', sortBy)
+import Data.Ord (comparing)
 import Data.Time (TimeZone)
 import Data.Tree
 import Data.UUID (UUID)
@@ -15,7 +17,18 @@ import Srtd.Attr
 import Srtd.Data.IdTree
 import Srtd.Data.TreeZipper
 import Srtd.ModelJSON qualified as ModelJSON
-import Srtd.Util (chooseMax, chooseMin, forEmptyList, mapForest, transformForestTopDown)
+import Srtd.Todo (todo)
+import Srtd.Util (
+  chooseMax,
+  chooseMin,
+  forEmptyList,
+  forestFlatten,
+  forestTreesWithBreadcrumbs,
+  leaf,
+  mapForest,
+  onForestChildren,
+  transformForestTopDown,
+ )
 
 -- import Data.UUID.V4 (nextRandom)
 
@@ -81,31 +94,10 @@ instance FromJSON DiskModel where
 
 -- * Generic Forest Helpers
 
-leaf :: a -> Tree a
-leaf x = Node x []
-
--- | Run forest modification function on the children of a tree.
-onTreeChildren :: ([Tree a] -> [Tree a]) -> Tree a -> Tree a
-onTreeChildren f (Node x children) = Node x (f children)
-
--- | Map forest modification function over each children of each tree. (go one level down)
-onForestChildren :: ([Tree a] -> [Tree a]) -> [Tree a] -> [Tree a]
-onForestChildren f = map (onTreeChildren f)
-
--- | All subtrees (with repetitions of children) with breadcrumbs (parents), in preorder.
-forestTreesWithBreadcrumbs :: Forest a -> [([a], Tree a)]
-forestTreesWithBreadcrumbs = concatMap (goTree [])
- where
-  goTree crumbs n@(Node x children) = (crumbs, n) : concatMap (goTree (x : crumbs)) children
-
--- | Preorder nodes with their respecive levels
-forestFlattenWithLevels :: Forest a -> [(Int, a)]
-forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
- where
-  extr (crumbs, (Node x _)) = (length crumbs, x)
-
 -- | Environment for updating the model, specifically for computing derived params. We pass this
 -- around as an implicit parameter.
+--
+-- SOMEDAY rename to ModelUpdateContext, ?mux
 data ModelUpdateEnv = ModelUpdateEnv {mueTimeZone :: TimeZone}
 
 -- For some reason, this has to be above `diskModelToModel`, otherwise it's not found.
@@ -169,6 +161,11 @@ data IdNotFoundError = IdNotFoundError deriving (Show)
 filterSubtree :: (LocalLabel -> Bool) -> Subtree -> Subtree
 filterSubtree p = stForestL %~ (filterIdForest p)
 
+flattenSubtreePreorder :: Subtree -> Subtree
+flattenSubtreePreorder = stForestL %~ (withIdForest $ forestFlatten)
+
+sortSubtreeBy cmp = stForestL %~ todo
+
 -- TODO we may not need this anymore
 forestFindTreeWithBreadcrumbs :: (Eq id) => id -> IdForest id a -> Maybe ([(id, a)], Tree (id, a))
 forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt) $ treesWithIdBreadcrumbs
@@ -221,36 +218,71 @@ modelGetSubtreeBelow i (Model forest) = forestGetSubtreeBelow i forest
 
 -- | A Filter applies various operations like - uh - filtering, sorting, and restructuring to
 -- a subtree.
---
--- SOMEDAY unclear if this is the right structure. Feels too general.
 data Filter = Filter
-  { filterName :: String
-  , filterRun :: EID -> Model -> Subtree
+  { fiName :: String
+  -- ^ Name to be displayed in the UI
+  , fiIncludeDone :: Bool
+  -- ^ Whether to include Done items. If False, we remove Done subtrees before deriving local attrs
+  -- and before applying 'fiPostprocess'.
+  --
+  -- These could be filtered out in 'fiPostprocess' but it's such a common thing to do that we have
+  -- a field for them (and also better performance to filter early)
+  , fiPostprocess :: STForest -> STForest
+  -- ^ Postprocessing function that can apply pretty much any transformation.
   }
 
 instance Show Filter where
-  show f = "<Filter " ++ filterName f ++ ">"
+  show f = "<Filter " ++ fiName f ++ ">"
+
+runFilter :: Filter -> EID -> Model -> Subtree
+runFilter (Filter {fiIncludeDone, fiPostprocess}) i m =
+  -- TODO this error is bad and creates a crash when multiple tabs are open and the root is deleted.
+  let st0 = fromRight (error "root EID not found") $ modelGetSubtreeBelow i m
+      -- TODO apply fiIncludeDone *before* deriving local attrs!
+      st1 = (if fiIncludeDone then id else filterSubtree pNotDone) st0
+      st2 = (stForestL %~ fiPostprocess) $ st1
+   in st2
+ where
+  pNotDone ((Attr {status}, _), _) = status /= Done
 
 -- ** Specific filters
 
--- | The identiy filter, returning its subtree unmodified.
---
--- SOMEDAY decide on error handling
-f_identity :: Filter
-f_identity = Filter "all" f
- where
-  f i m = fromRight (error "root EID not found") $ modelGetSubtreeBelow i m
+-- | Returns the full subtree without modification.
+f_all :: Filter
+f_all =
+  Filter
+    { fiName = "all"
+    , fiIncludeDone = True
+    , fiPostprocess = id
+    }
 
--- | Hide completed tasks, top-down
+-- | Hide completed subtrees, top-down
 --
 -- Note that all sub-items below a completed item are hidden. (this is usually desired)
-f_hide_completed :: Filter
-f_hide_completed =
-  let (Filter _ fi) = f_identity
-      fi' i m = filterSubtree p $ fi i m
-   in Filter "not done" fi'
+f_notDone :: Filter
+f_notDone =
+  Filter
+    { fiName = "not done"
+    , fiIncludeDone = False
+    , fiPostprocess = id
+    }
+
+-- | Flat list of all non-done child nodes, ordered by dates then actionability
+f_flatByDates :: Filter
+f_flatByDates =
+  Filter
+    { fiName = "flat, by dates"
+    , fiIncludeDone = False
+    , fiPostprocess = go
+    }
  where
-  p ((Attr {status}, _), _) = status /= Done
+  go = sortIdForestBy cmp False
+  cmp llabel1 llabel2 =
+    mconcat
+      [ (compareAttrDates tz `on` llImpliedDates) llabel1 llabel2
+      , comparing llActionability llabel1 llabel2
+      ]
+  tz = todo
 
 -- * Model modifications
 

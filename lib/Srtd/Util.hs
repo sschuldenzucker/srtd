@@ -134,6 +134,35 @@ transformTreeDownUpRec f = _go Nothing
 transformForestDownUpRec :: (Maybe b -> [b] -> a -> b) -> [Tree a] -> [Tree b]
 transformForestDownUpRec f = map (transformTreeDownUpRec f)
 
+leaf :: a -> Tree a
+leaf x = Node x []
+
+-- | Run forest modification function on the children of a tree.
+onTreeChildren :: ([Tree a] -> [Tree a]) -> Tree a -> Tree a
+onTreeChildren f (Node x children) = Node x (f children)
+
+-- | Map forest modification function over each children of each tree. (go one level down)
+onForestChildren :: ([Tree a] -> [Tree a]) -> [Tree a] -> [Tree a]
+onForestChildren f = map (onTreeChildren f)
+
+-- | All subtrees (with repetitions of children) with breadcrumbs (parents), in preorder.
+forestTreesWithBreadcrumbs :: Forest a -> [([a], Tree a)]
+forestTreesWithBreadcrumbs = concatMap (goTree [])
+ where
+  goTree crumbs n@(Node x children) = (crumbs, n) : concatMap (goTree (x : crumbs)) children
+
+-- | Preorder nodes with their respecive levels
+forestFlattenWithLevels :: Forest a -> [(Int, a)]
+forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
+ where
+  extr (crumbs, (Node x _)) = (length crumbs, x)
+
+-- | Flatten a forest to a single-level forest where all nodes are toplevel
+forestFlatten :: Forest a -> Forest a
+forestFlatten = map (dropChildren . snd) . forestTreesWithBreadcrumbs
+ where
+  dropChildren (Node x _) = Node x []
+
 -- * Lens helpers
 
 -- | Helper type to put lenses into data structures without `ImpredicativeTypes` or other weird &

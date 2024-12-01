@@ -7,12 +7,20 @@ To be imported qualified.
 module Srtd.Data.IdTree where
 
 import Control.Monad ((<=<))
+import Data.Function (on)
+import Data.List (sortBy)
 import Data.Maybe (fromMaybe)
 import Data.Tree
 import Data.Tree.Zipper (Full, TreePos)
 import Data.Tree.Zipper qualified as Z
 import Srtd.Data.TreeZipper
-import Srtd.Util (foldForest, mapForest, transformForestDownUp, transformForestDownUpRec)
+import Srtd.Util (
+  foldForest,
+  mapForest,
+  onForestChildren,
+  transformForestDownUp,
+  transformForestDownUpRec,
+ )
 
 newtype IdForest id attr = IdForest {idForest :: Forest (id, attr)}
   deriving (Show, Eq)
@@ -22,6 +30,7 @@ newtype IdForest id attr = IdForest {idForest :: Forest (id, attr)}
 withIdForest :: (Forest (id, attr) -> Forest (id', attr')) -> IdForest id attr -> IdForest id' attr'
 withIdForest f = IdForest . f . idForest
 
+-- SOMEDAY unused. I used to need this at some point. But not anymore.
 onIdForest :: (IdForest id attr -> IdForest id' attr') -> Forest (id, attr) -> Forest (id', attr')
 onIdForest f = idForest . f . IdForest
 
@@ -112,6 +121,14 @@ transformIdForestDownUpRec f = withIdForest $ transformForestDownUpRec _f
   _f mipar cirs (i, x) = (i, f (fmap snd mipar) (fmap snd cirs) x)
 
 -- go (i, x) cs = Node (i, go x [y | Node (_, y) _ <- cs]) cs
+
+-- * Sorting
+
+sortIdForestBy :: (a -> a -> Ordering) -> Bool -> IdForest id a -> IdForest id a
+sortIdForestBy cmp isDeep = withIdForest (if isDeep then deepSortBy (onAttr cmp) else sortBy (onAttr cmp))
+ where
+  onAttr cmp_ (Node (_i, x) _) (Node (_j, y) _) = cmp_ x y
+  deepSortBy cmp_ = onForestChildren (deepSortBy cmp_) . sortBy cmp_
 
 -- * Inserting nodes
 

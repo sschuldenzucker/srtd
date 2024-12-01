@@ -97,8 +97,9 @@ mtFilter = fromJust . CList.focus . mtFilters
 -- The first one is default selected.
 defaultFilters :: [Filter]
 defaultFilters =
-  [ f_hide_completed
-  , f_identity
+  [ f_notDone
+  , f_flatByDates
+  , f_all
   ]
 
 -- * Overlay infra
@@ -396,7 +397,7 @@ makeWithFilters root filters model rname =
     , mtOverlay = Nothing
     }
  where
-  subtree = filterRun (fromJust $ CList.focus filters) root model
+  subtree = runFilter (fromJust $ CList.focus filters) root model
   list = forestToBrickList (MainListFor rname) $ stForest subtree
 
 forestToBrickList :: AppResourceName -> STForest -> MyList
@@ -474,7 +475,7 @@ renderBreadcrumbsOnly ztime breadcrumbs = pathW
 renderFilters :: CList.CList Filter -> Widget n
 renderFilters fs = maybe emptyWidget go (CList.focus fs)
  where
-  go f = withDefAttr filterLabelAttr $ str (filterName f)
+  go f = withDefAttr filterLabelAttr $ str (fiName f)
 
 renderItemDetails :: ZonedTime -> LocalIdLabel -> Widget n
 renderItemDetails ztime (eid, llabel) =
@@ -762,7 +763,7 @@ modifyModelSync f = do
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
     modifyModelOnServer (acModelServer ?actx) f
     getModel (acModelServer ?actx)
-  let subtree = filterRun filter_ mtRoot model'
+  let subtree = runFilter filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
@@ -786,7 +787,7 @@ pullNewModel = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ getModel (acModelServer ?actx)
-  let subtree = filterRun filter_ mtRoot model'
+  let subtree = runFilter filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()

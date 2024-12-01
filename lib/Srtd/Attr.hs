@@ -360,6 +360,9 @@ llActionability (label, ldattr) = case (glActionability label, ldParentActionabi
   (a, Project) -> a
   (a, ap) -> max a ap
 
+llImpliedDates :: LocalLabel -> AttrDates
+llImpliedDates = daImpliedDates . snd . fst
+
 localIdLabel2IdLabel :: LocalIdLabel -> IdLabel
 localIdLabel2IdLabel = second fst
 
