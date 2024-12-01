@@ -87,6 +87,10 @@ type AttrDates = AttrDates_ (Maybe DateOrTime)
 noDates :: AttrDates
 noDates = AttrDates Nothing Nothing Nothing Nothing
 
+isDatesEmpty :: AttrDates_ (Maybe a) -> Bool
+isDatesEmpty (AttrDates Nothing Nothing Nothing Nothing) = True
+isDatesEmpty _ = False
+
 -- | Metadata container for each field of 'AttrDates'
 data AttrDatesFieldMeta = AttrDatesFieldMeta
   { adfmDateRule :: DateRule
@@ -352,6 +356,8 @@ type LocalLabel = (Label, LocalDerivedAttr)
 -- | Label in the local tree of items including the item ID
 type LocalIdLabel = (EID, LocalLabel)
 
+-- ** Convenience accessors
+
 llActionability :: LocalLabel -> Status
 llActionability (label, ldattr) = case (glActionability label, ldParentActionability ldattr) of
   -- SOMEDAY I've seen this patterns a few times now, perhaps abstract it or restructure.
@@ -362,6 +368,12 @@ llActionability (label, ldattr) = case (glActionability label, ldParentActionabi
 
 llImpliedDates :: LocalLabel -> AttrDates
 llImpliedDates = daImpliedDates . snd . fst
+
+llStatus :: LocalLabel -> Status
+llStatus = status . fst . fst
+
+llDates :: LocalLabel -> AttrDates
+llDates = dates . fst . fst
 
 localIdLabel2IdLabel :: LocalIdLabel -> IdLabel
 localIdLabel2IdLabel = second fst
