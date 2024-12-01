@@ -157,11 +157,17 @@ forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
  where
   extr (crumbs, (Node x _)) = (length crumbs, x)
 
--- | Flatten a forest to a single-level forest where all nodes are toplevel
+-- | Flatten a forest to a single-level forest where all nodes are toplevel. Preorder.
 forestFlatten :: Forest a -> Forest a
-forestFlatten = map (dropChildren . snd) . forestTreesWithBreadcrumbs
+forestFlatten = concatMap goTree
  where
-  dropChildren (Node x _) = Node x []
+  goTree (Node x children) = Node x [] : concatMap goTree children
+
+-- | Postorder variant of 'forestFlatten'
+forestFlattenPostorder :: Forest a -> Forest a
+forestFlattenPostorder = concatMap goTree
+ where
+  goTree (Node x children) = concatMap goTree children ++ [Node x []]
 
 -- * Lens helpers
 

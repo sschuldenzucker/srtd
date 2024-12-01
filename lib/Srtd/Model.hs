@@ -23,6 +23,7 @@ import Srtd.Util (
   chooseMin,
   forEmptyList,
   forestFlatten,
+  forestFlattenPostorder,
   forestTreesWithBreadcrumbs,
   leaf,
   mapForest,
@@ -280,15 +281,26 @@ f_notDone =
 f_flatByDates :: Filter
 f_flatByDates =
   Filter
-    { fiName = "flat, by dates"
+    { fiName = "flat, by simple urgency"
     , fiIncludeDone = False
     , fiPostprocess = go
     }
  where
   -- Need to mention the implicit param explicitly here for some reason, o/w it's not seeing it.
   go :: (?fctx :: FilterContext) => STForest -> STForest
-  go = sortIdForestBy cmp False . withIdForest forestFlatten
+  -- TODO also, we should show implied dates, especially in this view. (maybe only this one)
+  -- TODO also, refactor the rendering code for dates.
+  -- TODO the secondary sort should be by (actionability, status) so that Next is sorted before Project I think. (and Waiting??)
+  -- (projects that are ready have Next actionability, which is good, but not the whole story)
+  -- (sorting kinda unclear here; should project actually be less actionable than waiting?)
+  -- Using postorder so that parents show up below their children, which is typically what you want for "urgency".
+  go = sortIdForestBy cmp False . filterIdForest p . withIdForest forestFlattenPostorder
    where
+    -- We filter out non-actionable items here that are otherwise kinda in the way. We leave them
+    -- in the (unlikely) case that they have a date themselves, to be sure we're not missing anything
+    -- important.
+    -- NB this filter could be even more extreme I think. Any amount of filtering we want really.
+    p llabel = llStatus llabel /= None || not (isDatesEmpty $ llDates llabel)
     cmp llabel1 llabel2 =
       mconcat
         [ (compareAttrDates tz `on` llImpliedDates) llabel1 llabel2
