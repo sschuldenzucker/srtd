@@ -103,6 +103,8 @@ dateOrTimeToUTCTime dr tz (DateOnly d) = localTimeToUTC tz (interpretDateRule dr
 
 -- | 'compare'-like function. We don't provide an Ord instance for DateOrTime b/c it's subjective
 -- which is the right one in any given situation, and it also depends on the time zone.
+--
+-- SOMEDAY I think we can just map to UTCTime and compare??
 compareDateOrTime :: DateRule -> TimeZone -> DateOrTime -> DateOrTime -> Ordering
 compareDateOrTime _dr _tz (DateAndTime t1) (DateAndTime t2) = compare t1 t2
 compareDateOrTime _dr _tz (DateOnly d1) (DateOnly d2) = compare d1 d2

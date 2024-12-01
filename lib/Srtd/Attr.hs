@@ -1,20 +1,25 @@
+-- SOMEDAY it's not very nice we depend on Brick here. Copy the definition (I'm sure it's easy)
+-- SOMEDAY consistency check: remind <= schedule <= goalline <= deadline, if any
+
 -- | Attributes. There's no deep reason this is separate other than to avoid cycles in the module graph.
 module Srtd.Attr where
 
--- SOMEDAY it's not very nice we depend on Brick here. Copy the definition (I'm sure it's easy)
 import Brick (suffixLenses)
 import Control.Arrow (second)
+import Control.Monad (join, liftM2)
 import Data.Aeson
 import Data.Aeson.Types (typeMismatch)
 import Data.Function (on)
-import Data.Ord (comparing)
+import Data.Functor.Apply
+import Data.List (minimumBy)
+import Data.Maybe (fromMaybe)
 import Data.Text qualified as Text
 import Data.Time (TimeZone, UTCTime, getCurrentTime)
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
 import GHC.Generics
 import Lens.Micro.Platform
-import Srtd.Dates (DateOrTime, DateRule (..), compareDateOrTime)
+import Srtd.Dates (DateOrTime, DateRule (..), compareDateOrTime, dateOrTimeToUTCTime)
 import Srtd.Todo
 import Srtd.Util (ALens' (..), compareByNothingLast, unionMaybeWith)
 import System.IO.Unsafe (unsafePerformIO)
@@ -63,74 +68,79 @@ suffixLenses ''Status
 
 -- | Generic version of the AttrDates container.
 data AttrDates_ a = AttrDates
-  { -- SOMEDAY consistency check: remind <= schedule <= goalline <= deadline, if any
-    deadline :: Maybe a
-  , goalline :: Maybe a
-  , scheduled :: Maybe a
-  , remind :: Maybe a
+  { deadline :: a
+  , goalline :: a
+  , scheduled :: a
+  , remind :: a
   }
-  deriving (Show, Generic)
+  deriving (Show, Generic, Generic1, Functor)
+
+-- Not needed, we use the Generic1 instance instead.
+-- instance Apply AttrDates_ where
+--   (AttrDates af bf cf df) <.> (AttrDates a b c d) = AttrDates (af a) (bf b) (cf c) (df d)
 
 suffixLenses ''AttrDates_
 
 -- | Concrete instantiation of the dates
-type AttrDates = AttrDates_ DateOrTime
+type AttrDates = AttrDates_ (Maybe DateOrTime)
 
 noDates :: AttrDates
 noDates = AttrDates Nothing Nothing Nothing Nothing
 
 -- | Metadata container for each field of 'AttrDates'
-data AttrDatesFieldMeta a = AttrDatesFieldMeta
-  { adfmLens :: ALens' (AttrDates_ a) (Maybe a)
-  , adfmDateRule :: DateRule
+data AttrDatesFieldMeta = AttrDatesFieldMeta
+  { adfmDateRule :: DateRule
   }
 
--- | List of fields meta ordered by priority (i.e., the same order as in the data types)
-attrDatesMetaList :: [AttrDatesFieldMeta a]
-attrDatesMetaList =
-  -- TODO WIP the rest
-  [AttrDatesFieldMeta (ALens' deadlineL) EndOfDay]
+attrDatesMeta :: AttrDates_ AttrDatesFieldMeta
+attrDatesMeta =
+  AttrDates
+    { deadline = AttrDatesFieldMeta EndOfDay
+    , goalline = AttrDatesFieldMeta EndOfDay
+    , scheduled = AttrDatesFieldMeta EndOfDay
+    , remind = AttrDatesFieldMeta EndOfDay
+    }
 
-attrDates2UTCTime :: TimeZone -> AttrDates -> AttrDates_ UTCTime
-attrDates2UTCTime = todo
+attrDatesDateRules :: AttrDates_ DateRule
+attrDatesDateRules = fmap adfmDateRule attrDatesMeta
 
--- SOMEDAY there's a lot of code around here and Components/Attr.hs that mogrifies the dates
--- structure into a list of fields etc. Can we have some infra for this? Maybe with Barbies or
--- higgeldy something? Or generics? There's a `one-liner` library, maybe that one.
+-- | List in order of urgency. (= what's in the data type definition)
+--
+-- SOMEDAY can generics do this for me?
+attrDates2List :: AttrDates_ a -> [a]
+attrDates2List (AttrDates dl gl sd rm) = [dl, gl, sd, rm]
+
+attrDates2UTCTime :: TimeZone -> AttrDates -> AttrDates_ (Maybe UTCTime)
+attrDates2UTCTime tz = gliftF2 go attrDatesDateRules
+ where
+  go dr = fmap (dateOrTimeToUTCTime dr tz)
 
 -- | Compare lexicographically in order of seriousness.
 --
 -- Note that this is quite harsh, e.g., if d1 has a deadline in 6 months but d2 has a goalline
 -- tomorrow, d1 is sorted before d2.
 --
--- SOMEDAY unused.
+-- SOMEDAY unused except once below.
 compareAttrDatesLex :: TimeZone -> AttrDates -> AttrDates -> Ordering
-compareAttrDatesLex tz d1 d2 = mconcat [compareByNothingLast (compareDateOrTime dr tz) (f d1) (f d2) | (f, dr) <- fields]
+compareAttrDatesLex tz d1 d2 =
+  mconcat . attrDates2List $ gliftF3 go attrDatesDateRules d1 d2
  where
-  fields =
-    [ (deadline, EndOfDay)
-    , (goalline, EndOfDay)
-    , (scheduled, EndOfDay)
-    , (remind, BeginningOfDay)
-    ]
+  go dr = compareByNothingLast (compareDateOrTime dr tz)
 
 -- | Compare two dates by their earliest time and break ties by seriousness.
 --
 -- This means that a remind today will be before a deadline tomorrow but a deadline today will be
 -- before a remind today.
 compareAttrDates :: TimeZone -> AttrDates -> AttrDates -> Ordering
-compareAttrDates tz d1 d2 = todo
-
--- | Map a binary function over each element of 'AttrDates'
-mapAttrDates2 ::
-  (Maybe a -> Maybe b -> Maybe c) -> AttrDates_ a -> AttrDates_ b -> AttrDates_ c
-mapAttrDates2 f ad1 ad2 =
-  AttrDates
-    { deadline = f (deadline ad1) (deadline ad2)
-    , goalline = f (goalline ad1) (goalline ad2)
-    , scheduled = f (scheduled ad1) (scheduled ad2)
-    , remind = f (remind ad1) (remind ad2)
-    }
+compareAttrDates tz d1 d2 = mconcat [cmpByMins, cmpByLex]
+ where
+  cmpByMins = fromMaybe EQ $ liftM2 compare (attrDatesMinUTCTime d1) (attrDatesMinUTCTime d2)
+  attrDatesMinUTCTime :: AttrDates -> Maybe UTCTime
+  attrDatesMinUTCTime =
+    minimumBy (compareByNothingLast compare)
+      . attrDates2List
+      . gliftF2 (\dr -> fmap $ dateOrTimeToUTCTime dr tz) attrDatesDateRules
+  cmpByLex = compareAttrDatesLex tz d1 d2
 
 -- | Given a choice function, apply the correct beginning/end-of-day rule to each element to choose.
 -- (beginning for remind, end for everything else)
@@ -140,17 +150,9 @@ pointwiseChooseAttrDates ::
   AttrDates ->
   AttrDates ->
   AttrDates
-pointwiseChooseAttrDates ch tz ad1 ad2 =
-  AttrDates
-    { deadline = chooseWith EndOfDay deadline
-    , goalline = chooseWith EndOfDay goalline
-    , scheduled = chooseWith EndOfDay scheduled
-    , remind = chooseWith BeginningOfDay remind
-    }
+pointwiseChooseAttrDates ch tz = gliftF3 go attrDatesDateRules
  where
-  -- 'Just' values are always dominant! (doesn't matter what 'ch' does)
-  chooseWith dr f = (unionMaybeWith (chooseWith' dr) `on` f) ad1 ad2
-  chooseWith' dr d1 d2 = ch (compareDateOrTime dr tz d1 d2) d1 d2
+  go dr = unionMaybeWith $ \dt1 dt2 -> ch (compareDateOrTime dr tz dt1 dt2) dt1 dt2
 
 data AttrAutoDates = AttrAutoDates
   { created :: UTCTime
