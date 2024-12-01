@@ -13,7 +13,6 @@ import Data.CircularList qualified as CList
 import Data.List (intersperse)
 import Data.List.Zipper qualified as LZ
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
-import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Data.Time (getZonedTime)
@@ -31,11 +30,9 @@ import Srtd.Component
 import Srtd.Components.MainTree qualified as MainTree
 import Srtd.Keymap (KeyDesc (..))
 import Srtd.Log
-import Srtd.Model
 import Srtd.ModelSaver (startModelSaver)
 import Srtd.ModelServer
 import Srtd.Ticker
-import Srtd.Todo
 import System.Directory (listDirectory)
 import System.Exit (exitFailure)
 import System.FilePath
@@ -359,7 +356,7 @@ lzFindBegin p z =
  where
   -- Find the first following position where the predicate is true, or return the end position
   -- if none.
-  lzFind p z
-    | LZ.endp z = z
-    | p (LZ.cursor z) = z
-    | otherwise = lzFind p (LZ.right z)
+  lzFind p' z'
+    | LZ.endp z' = z'
+    | p' (LZ.cursor z') = z'
+    | otherwise = lzFind p' (LZ.right z')

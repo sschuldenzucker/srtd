@@ -1,13 +1,12 @@
 -- | Built on top of rose zipper, some helpers for move operations etc.
 module Srtd.Data.TreeZipper where
 
-import Control.Applicative (asum, (<|>))
+import Control.Applicative ((<|>))
 import Control.Monad ((<=<))
-import Data.List (find, sortBy, unfoldr)
+import Data.List (unfoldr)
 import Data.Maybe (listToMaybe)
 import Data.Tree.Zipper (Empty, Full, TreePos)
 import Data.Tree.Zipper qualified as Z
-import Srtd.Todo
 
 -- * Walker types
 
@@ -48,8 +47,8 @@ toBeforeNextPreorder eloc =
       <$> Z.parent eloc
  where
   -- Like toFirstChildOfNext but fails if there is no first child. This is intuitive for some use cases.
-  toBeforeFirstChildOfNext eloc = do
-    nxt <- Z.nextTree eloc
+  toBeforeFirstChildOfNext eloc' = do
+    nxt <- Z.nextTree eloc'
     fc <- Z.firstChild nxt
     return $ Z.prevSpace fc
 toAfterPrevPreorder eloc =
@@ -59,8 +58,8 @@ toAfterPrevPreorder eloc =
       <$> Z.parent eloc
  where
   -- Like toLastChildOfPrev but fails if there is no first child. This is intuitive for some use cases.
-  toAfterLastChildOfPrev eloc = do
-    nxt <- Z.prevTree eloc
+  toAfterLastChildOfPrev eloc' = do
+    nxt <- Z.prevTree eloc'
     fc <- Z.lastChild nxt
     return $ Z.nextSpace fc
 

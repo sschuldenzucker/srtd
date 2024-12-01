@@ -5,14 +5,12 @@ import Brick.Keybindings (binding, ctrl)
 import Brick.Widgets.Edit
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Time (TimeZone, ZonedTime (zonedTimeZone))
+import Data.Time (ZonedTime (zonedTimeZone))
 import Graphics.Vty (Event (..), Key (..))
 import Lens.Micro.Platform
-import Srtd.Attr (EID)
 import Srtd.Component
 import Srtd.Dates
 import Srtd.Keymap
-import Srtd.Todo
 
 data DateSelectOverlay = DateSelectOverlay
   { dsEditor :: Editor Text AppResourceName

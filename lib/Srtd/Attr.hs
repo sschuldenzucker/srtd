@@ -14,8 +14,7 @@ import Data.UUID qualified as UUID
 import GHC.Generics
 import Lens.Micro.Platform
 import Srtd.Dates (DateOrTime, DateRule (..), compareDateOrTime)
-import Srtd.Todo
-import Srtd.Util (compareByNothingLast, maybe2, unionMaybeWith)
+import Srtd.Util (unionMaybeWith)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- * Node ID (EID)

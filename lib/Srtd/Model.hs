@@ -3,30 +3,19 @@ module Srtd.Model where
 
 -- Really just a helper here. Should prob not import this for separation
 import Brick (suffixLenses)
-import Control.Applicative (asum, (<|>))
-import Control.Monad ((<=<))
 import Data.Aeson
 import Data.Either (fromRight)
-import Data.IntMap (IntMap)
-import Data.IntMap qualified as IntMap
-import Data.List (find, foldl', minimumBy, sortBy, unfoldr)
-import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
+import Data.List (find, foldl', sortBy)
 import Data.Time (TimeZone)
 import Data.Tree
-import Data.Tree.Zipper (Empty, Full, TreePos)
-import Data.Tree.Zipper qualified as Z
 import Data.UUID (UUID)
 import GHC.Generics
-import GHC.List (uncons)
 import Lens.Micro.Platform
 import Srtd.Attr
 import Srtd.Data.IdTree
 import Srtd.Data.TreeZipper
-import Srtd.Log
 import Srtd.ModelJSON qualified as ModelJSON
-import Srtd.Todo
 import Srtd.Util (chooseMax, chooseMin, forEmptyList, mapForest, transformForestTopDown)
-import System.IO.Unsafe (unsafePerformIO)
 
 -- import Data.UUID.V4 (nextRandom)
 
@@ -201,7 +190,7 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
     )
 
   stepParentActionability :: Status -> Status -> Status
-  stepParentActionability a pa = case (a, pa) of
+  stepParentActionability a_ pa_ = case (a_, pa_) of
     -- SOMEDAY this is a very ad-hoc solution. Think about the structure, also re the upwards derivation.
     -- Not super sure if this is the right way.
     (a, None) -> a

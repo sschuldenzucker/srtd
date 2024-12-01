@@ -13,7 +13,6 @@ import Data.Time.Calendar.Month
 import Data.Time.Calendar.WeekDate (toWeekDate)
 import Data.Void
 import GHC.Generics
-import Srtd.Todo
 import Srtd.Util (eitherToMaybe, maybeToEither, replacePrefix)
 import Text.Megaparsec
 import Text.Megaparsec.Char

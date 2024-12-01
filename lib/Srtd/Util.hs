@@ -5,7 +5,6 @@ import Control.Applicative (liftA2, (<|>))
 import Control.Monad ((<=<))
 import Data.List (isPrefixOf)
 import Data.Tree (Forest, Tree (..), foldTree)
-import Srtd.Todo (todo)
 
 maybeToEither :: a -> Maybe b -> Either a b
 maybeToEither err = maybe (Left err) Right

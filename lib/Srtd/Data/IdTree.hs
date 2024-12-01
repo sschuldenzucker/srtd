@@ -7,14 +7,11 @@ To be imported qualified.
 module Srtd.Data.IdTree where
 
 import Control.Monad ((<=<))
-import Data.List (find, sortBy, unfoldr)
 import Data.Maybe (fromMaybe)
 import Data.Tree
-import Data.Tree.Zipper (Empty, Full, TreePos)
+import Data.Tree.Zipper (Full, TreePos)
 import Data.Tree.Zipper qualified as Z
-import Lens.Micro.Platform
 import Srtd.Data.TreeZipper
-import Srtd.Todo
 import Srtd.Util (foldForest, mapForest, transformForestDownUp, transformForestDownUpRec)
 
 newtype IdForest id attr = IdForest {idForest :: Forest (id, attr)}

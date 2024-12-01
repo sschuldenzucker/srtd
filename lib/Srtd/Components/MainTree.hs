@@ -7,15 +7,14 @@ module Srtd.Components.MainTree (MainTree (..), make) where
 
 import Brick hiding (on)
 import Brick.BChan (writeBChan)
-import Brick.Keybindings (Binding, bind, ctrl)
+import Brick.Keybindings (bind, ctrl)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
 import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 import Data.CircularList qualified as CList
-import Data.Function (on)
-import Data.List (intercalate, intersperse)
+import Data.List (intersperse)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -47,7 +46,6 @@ import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
 import Srtd.ModelServer
-import Srtd.Todo
 import Srtd.Util
 import System.Hclip (setClipboard)
 import System.Process (callProcess)
@@ -483,7 +481,7 @@ renderFilters fs = maybe emptyWidget go (CList.focus fs)
   go f = withDefAttr filterLabelAttr $ str (filterName f)
 
 renderItemDetails :: ZonedTime -> LocalIdLabel -> Widget n
-renderItemDetails ztime lillabel@(eid, llabel) =
+renderItemDetails ztime (eid, llabel) =
   padLeftRight 1 $
     withDefAttr (attrName "item_details") $
       vBox
