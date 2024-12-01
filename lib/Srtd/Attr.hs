@@ -246,9 +246,9 @@ data DerivedAttr = DerivedAttr
   , daLatestAutodates :: AttrAutoDates
   -- ^ Point-wise latest autodates of the children and including this node.
   , daEarliestDates :: AttrDates
-  -- ^ Point-wise earliest dates of the children and including this node.
+  -- ^ Point-wise earliest dates of the children and including this node. Ignores 'Done' nodes.
   , daLatestDates :: AttrDates
-  -- ^ Point-wise latest dates of the children and including this node.
+  -- ^ Point-wise latest dates of the children and including this node. Ignores 'Done' nodes
   --
   -- NB This is probably not very useful.
   , daImpliedDates :: AttrDates

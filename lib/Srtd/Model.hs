@@ -120,11 +120,16 @@ _forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> 
       , daLatestAutodates =
           foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
       , daEarliestDates =
-          foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . map (daEarliestDates . snd) $ clabels
+          foldl'
+            (pointwiseChooseAttrDates chooseMin tz)
+            (dates attr)
+            [daEarliestDates d | (a, d) <- clabels, status a /= Done]
       , daLatestDates =
-          foldl' (pointwiseChooseAttrDates chooseMax tz) (dates attr) . map (daLatestDates . snd) $ clabels
-      , -- TODO should this actually *always* inherit from the parent? Or depend on status?
-        -- Writing this as fold to match the above, but `mplabel` is just a Maybe, not a list.
+          foldl'
+            (pointwiseChooseAttrDates chooseMax tz)
+            (dates attr)
+            [daLatestDates d | (a, d) <- clabels, status a /= Done]
+      , -- Writing this as fold to match the above, but `mplabel` is just a Maybe, not a list.
         daImpliedDates =
           foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . fmap (daImpliedDates . snd) $ mplabel
       }
