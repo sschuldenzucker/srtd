@@ -97,6 +97,10 @@ interpretDateRule :: DateRule -> Day -> LocalTime
 interpretDateRule BeginningOfDay = beginningOfDay
 interpretDateRule EndOfDay = endOfDay
 
+dateOrTimeToUTCTime :: DateRule -> TimeZone -> DateOrTime -> UTCTime
+dateOrTimeToUTCTime _ _ (DateAndTime t) = t
+dateOrTimeToUTCTime dr tz (DateOnly d) = localTimeToUTC tz (interpretDateRule dr d)
+
 -- | 'compare'-like function. We don't provide an Ord instance for DateOrTime b/c it's subjective
 -- which is the right one in any given situation, and it also depends on the time zone.
 compareDateOrTime :: DateRule -> TimeZone -> DateOrTime -> DateOrTime -> Ordering
