@@ -16,7 +16,7 @@ import GHC.Generics
 import Lens.Micro.Platform
 import Srtd.Dates (DateOrTime, DateRule (..), compareDateOrTime)
 import Srtd.Todo
-import Srtd.Util (compareByNothingLast, unionMaybeWith)
+import Srtd.Util (ALens' (..), compareByNothingLast, unionMaybeWith)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- * Node ID (EID)
@@ -61,23 +61,42 @@ suffixLenses ''Status
 
 -- ** Dates
 
-data AttrDates = AttrDates
+-- | Generic version of the AttrDates container.
+data AttrDates_ a = AttrDates
   { -- SOMEDAY consistency check: remind <= schedule <= goalline <= deadline, if any
-    deadline :: Maybe DateOrTime
-  , goalline :: Maybe DateOrTime
-  , scheduled :: Maybe DateOrTime
-  , remind :: Maybe DateOrTime
+    deadline :: Maybe a
+  , goalline :: Maybe a
+  , scheduled :: Maybe a
+  , remind :: Maybe a
   }
   deriving (Show, Generic)
 
-suffixLenses ''AttrDates
+suffixLenses ''AttrDates_
+
+-- | Concrete instantiation of the dates
+type AttrDates = AttrDates_ DateOrTime
 
 noDates :: AttrDates
 noDates = AttrDates Nothing Nothing Nothing Nothing
 
+-- | Metadata container for each field of 'AttrDates'
+data AttrDatesFieldMeta a = AttrDatesFieldMeta
+  { adfmLens :: ALens' (AttrDates_ a) (Maybe a)
+  , adfmDateRule :: DateRule
+  }
+
+-- | List of fields meta ordered by priority (i.e., the same order as in the data types)
+attrDatesMetaList :: [AttrDatesFieldMeta a]
+attrDatesMetaList =
+  -- TODO WIP the rest
+  [AttrDatesFieldMeta (ALens' deadlineL) EndOfDay]
+
+attrDates2UTCTime :: TimeZone -> AttrDates -> AttrDates_ UTCTime
+attrDates2UTCTime = todo
+
 -- SOMEDAY there's a lot of code around here and Components/Attr.hs that mogrifies the dates
 -- structure into a list of fields etc. Can we have some infra for this? Maybe with Barbies or
--- something?
+-- higgeldy something? Or generics? There's a `one-liner` library, maybe that one.
 
 -- | Compare lexicographically in order of seriousness.
 --
@@ -102,21 +121,15 @@ compareAttrDatesLex tz d1 d2 = mconcat [compareByNothingLast (compareDateOrTime 
 compareAttrDates :: TimeZone -> AttrDates -> AttrDates -> Ordering
 compareAttrDates tz d1 d2 = todo
 
-minDate :: TimeZone -> AttrDates -> Maybe DateOrTime
--- This is not so easy b/c of begin/end of of day rules. Perhaps switch to UTCTime for comparison?
-minDate tz d = todo
-
--- | Map a function over each element of 'AttrDates'
---
--- SOMEDAY Unused. Also, there's probably some generics trick to get this.
+-- | Map a binary function over each element of 'AttrDates'
 mapAttrDates2 ::
-  (Maybe DateOrTime -> Maybe DateOrTime -> Maybe DateOrTime) -> AttrDates -> AttrDates -> AttrDates
+  (Maybe a -> Maybe b -> Maybe c) -> AttrDates_ a -> AttrDates_ b -> AttrDates_ c
 mapAttrDates2 f ad1 ad2 =
   AttrDates
-    { deadline = (f `on` deadline) ad1 ad2
-    , goalline = (f `on` goalline) ad1 ad2
-    , scheduled = (f `on` scheduled) ad1 ad2
-    , remind = (f `on` remind) ad1 ad2
+    { deadline = f (deadline ad1) (deadline ad2)
+    , goalline = f (goalline ad1) (goalline ad2)
+    , scheduled = f (scheduled ad1) (scheduled ad2)
+    , remind = f (remind ad1) (remind ad2)
     }
 
 -- | Given a choice function, apply the correct beginning/end-of-day rule to each element to choose.
