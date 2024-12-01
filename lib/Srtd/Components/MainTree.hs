@@ -380,11 +380,12 @@ cycleNextFilter = do
   mtFiltersL %= CList.rotR
   pullNewModel
 
-make :: EID -> Model -> AppResourceName -> MainTree
+make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> MainTree
 make root = makeWithFilters root (CList.fromList defaultFilters)
 
 -- | filters must not be empty.
-makeWithFilters :: EID -> CList.CList Filter -> Model -> AppResourceName -> MainTree
+makeWithFilters ::
+  (?actx :: AppContext) => EID -> CList.CList Filter -> Model -> AppResourceName -> MainTree
 makeWithFilters root filters model rname =
   MainTree
     { mtRoot = root
@@ -397,8 +398,13 @@ makeWithFilters root filters model rname =
     , mtOverlay = Nothing
     }
  where
-  subtree = runFilter (fromJust $ CList.focus filters) root model
+  subtree = translateAppFilterContext $ runFilter (fromJust $ CList.focus filters) root model
   list = forestToBrickList (MainListFor rname) $ stForest subtree
+
+translateAppFilterContext :: (?actx :: AppContext) => ((?fctx :: FilterContext) => a) -> a
+translateAppFilterContext x =
+  let ?fctx = FilterContext {fcTimeZone = zonedTimeZone . acZonedTime $ ?actx}
+   in x
 
 forestToBrickList :: AppResourceName -> STForest -> MyList
 -- TODO when we have multiple tabs, MainList should be replaced by something that will actually be unique (take as an argument)
@@ -763,7 +769,7 @@ modifyModelSync f = do
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
     modifyModelOnServer (acModelServer ?actx) f
     getModel (acModelServer ?actx)
-  let subtree = runFilter filter_ mtRoot model'
+  let subtree = translateAppFilterContext $ runFilter filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
@@ -787,7 +793,7 @@ pullNewModel = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ getModel (acModelServer ?actx)
-  let subtree = runFilter filter_ mtRoot model'
+  let subtree = translateAppFilterContext $ runFilter filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()

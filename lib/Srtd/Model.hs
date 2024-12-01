@@ -216,6 +216,15 @@ modelGetSubtreeBelow i (Model forest) = forestGetSubtreeBelow i forest
 
 -- * Filters
 
+-- | Context for executing a filter.
+--
+-- SOMEDAY This is the same as ModelUpdateEnv but has a slightly different role (it's further away
+-- from the ModelServer). If we pull them even further apart (e.g. going async somewhat), we may want
+-- to review.
+data FilterContext = FilterContext
+  { fcTimeZone :: TimeZone
+  }
+
 -- | A Filter applies various operations like - uh - filtering, sorting, and restructuring to
 -- a subtree.
 data Filter = Filter
@@ -227,14 +236,14 @@ data Filter = Filter
   --
   -- These could be filtered out in 'fiPostprocess' but it's such a common thing to do that we have
   -- a field for them (and also better performance to filter early)
-  , fiPostprocess :: STForest -> STForest
+  , fiPostprocess :: (?fctx :: FilterContext) => STForest -> STForest
   -- ^ Postprocessing function that can apply pretty much any transformation.
   }
 
 instance Show Filter where
   show f = "<Filter " ++ fiName f ++ ">"
 
-runFilter :: Filter -> EID -> Model -> Subtree
+runFilter :: (?fctx :: FilterContext) => Filter -> EID -> Model -> Subtree
 runFilter (Filter {fiIncludeDone, fiPostprocess}) i m =
   -- TODO this error is bad and creates a crash when multiple tabs are open and the root is deleted.
   let st0 = fromRight (error "root EID not found") $ modelGetSubtreeBelow i m
@@ -276,13 +285,16 @@ f_flatByDates =
     , fiPostprocess = go
     }
  where
+  -- Need to mention the implicit param explicitly here for some reason, o/w it's not seeing it.
+  go :: (?fctx :: FilterContext) => STForest -> STForest
   go = sortIdForestBy cmp False
-  cmp llabel1 llabel2 =
-    mconcat
-      [ (compareAttrDates tz `on` llImpliedDates) llabel1 llabel2
-      , comparing llActionability llabel1 llabel2
-      ]
-  tz = todo
+   where
+    cmp llabel1 llabel2 =
+      mconcat
+        [ (compareAttrDates tz `on` llImpliedDates) llabel1 llabel2
+        , comparing llActionability llabel1 llabel2
+        ]
+    tz = fcTimeZone ?fctx
 
 -- * Model modifications
 

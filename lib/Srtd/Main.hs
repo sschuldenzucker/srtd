@@ -107,12 +107,14 @@ main = do
 
   model <- getModel modelServer
   ztime <- getZonedTime
+  let actx = AppContext modelServer appChan ztime
   let appState =
         AppState
-          { asContext = AppContext modelServer appChan ztime
+          { asContext = actx
           , asTabs =
               let rname = Tab 0
-               in LZ.fromList [(TabTitleFor rname, SomeAppComponent $ MainTree.make Vault model rname)]
+               in let ?actx = actx
+                   in LZ.fromList [(TabTitleFor rname, SomeAppComponent $ MainTree.make Vault model rname)]
           , asNextTabID = 1
           , asHelpAlways = False
           , asAttrMapRing = attrMapRing
@@ -232,6 +234,7 @@ fixEmptyTabs = do
   pushDefaultTab = do
     actx <- use asContextL
     model <- liftIO $ getModel (acModelServer actx)
+    let ?actx = actx
     modify $
       pushTab (SomeAppComponent . MainTree.make Vault model)
 
