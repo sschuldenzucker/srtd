@@ -7,6 +7,7 @@ import Control.Arrow (second)
 import Data.Aeson
 import Data.Aeson.Types (typeMismatch)
 import Data.Function (on)
+import Data.Ord (comparing)
 import Data.Text qualified as Text
 import Data.Time (TimeZone, UTCTime, getCurrentTime)
 import Data.UUID (UUID)
@@ -14,7 +15,8 @@ import Data.UUID qualified as UUID
 import GHC.Generics
 import Lens.Micro.Platform
 import Srtd.Dates (DateOrTime, DateRule (..), compareDateOrTime)
-import Srtd.Util (unionMaybeWith)
+import Srtd.Todo
+import Srtd.Util (compareByNothingLast, unionMaybeWith)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- * Node ID (EID)
@@ -72,6 +74,37 @@ suffixLenses ''AttrDates
 
 noDates :: AttrDates
 noDates = AttrDates Nothing Nothing Nothing Nothing
+
+-- SOMEDAY there's a lot of code around here and Components/Attr.hs that mogrifies the dates
+-- structure into a list of fields etc. Can we have some infra for this? Maybe with Barbies or
+-- something?
+
+-- | Compare lexicographically in order of seriousness.
+--
+-- Note that this is quite harsh, e.g., if d1 has a deadline in 6 months but d2 has a goalline
+-- tomorrow, d1 is sorted before d2.
+--
+-- SOMEDAY unused.
+compareAttrDatesLex :: TimeZone -> AttrDates -> AttrDates -> Ordering
+compareAttrDatesLex tz d1 d2 = mconcat [compareByNothingLast (compareDateOrTime dr tz) (f d1) (f d2) | (f, dr) <- fields]
+ where
+  fields =
+    [ (deadline, EndOfDay)
+    , (goalline, EndOfDay)
+    , (scheduled, EndOfDay)
+    , (remind, BeginningOfDay)
+    ]
+
+-- | Compare two dates by their earliest time and break ties by seriousness.
+--
+-- This means that a remind today will be before a deadline tomorrow but a deadline today will be
+-- before a remind today.
+compareAttrDates :: TimeZone -> AttrDates -> AttrDates -> Ordering
+compareAttrDates tz d1 d2 = todo
+
+minDate :: TimeZone -> AttrDates -> Maybe DateOrTime
+-- This is not so easy b/c of begin/end of of day rules. Perhaps switch to UTCTime for comparison?
+minDate tz d = todo
 
 -- | Map a function over each element of 'AttrDates'
 --
