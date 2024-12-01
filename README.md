@@ -1,6 +1,17 @@
 
 # Srtd - A task management app for humans
 
+## Setup
+
+Use cabal (`cabal build`).
+
+Tested with the following ecosystem:
+
+- GHC 9.4.8
+- cabal 3.10.3.0
+- HLS 2.7.0.0
+- GHCup 0.1.30.0
+
 ## Themes
 
 A theme is a toml file. Every theme defines three toplevel keys (all of which are required):
