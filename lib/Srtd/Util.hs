@@ -5,6 +5,7 @@ import Control.Applicative (liftA2, (<|>))
 import Control.Monad ((<=<))
 import Data.List (isPrefixOf)
 import Data.Tree (Forest, Tree (..), foldTree)
+import Lens.Micro.Platform (Lens')
 
 maybeToEither :: a -> Maybe b -> Either a b
 maybeToEither err = maybe (Left err) Right
@@ -132,3 +133,11 @@ transformTreeDownUpRec f = _go Nothing
 -- | See 'transformTreeDownUpRec'.
 transformForestDownUpRec :: (Maybe b -> [b] -> a -> b) -> [Tree a] -> [Tree b]
 transformForestDownUpRec f = map (transformTreeDownUpRec f)
+
+-- * Lens helpers
+
+-- | Helper type to put lenses into data structures without `ImpredicativeTypes` or other weird &
+-- dangerous options. (for some reason, `RankNTypes` is not enough for this.)
+newtype ALens' a b = ALens' {runALens' :: Lens' a b}
+
+-- We could define instances for Category and a combo function with Lens', but we don't use it rn.

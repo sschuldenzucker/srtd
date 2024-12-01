@@ -218,28 +218,24 @@ setStatusKeymap =
     , kmLeafA_ (bind 't') "Touch" touchLastStatusModified
     ]
 
--- | Helper newtype to be able to pass lenses around to functions without having to enable some
--- crazy type-level hackery. (ImpredicativeTypes no bueno. RankNTypes is not enough)
-newtype AttrDateOrTimeLens = AttrDateOrTimeLens {runAttrDateOrTimeLens :: Lens' Attr (Maybe DateOrTime)}
-
 editDateKeymap :: Keymap (AppEventAction MainTree () ())
 editDateKeymap =
   kmMake
     "Edit date"
     $ map mkDateEditShortcut
-    $ [ (bind 'd', "Deadline", AttrDateOrTimeLens $ datesL . deadlineL)
-      , (bind 'g', "Goalline", AttrDateOrTimeLens $ datesL . goallineL)
-      , (bind 's', "Scheduled", AttrDateOrTimeLens $ datesL . scheduledL)
-      , (bind 'r', "Remind", AttrDateOrTimeLens $ datesL . remindL)
+    $ [ (bind 'd', "Deadline", ALens' $ datesL . deadlineL)
+      , (bind 'g', "Goalline", ALens' $ datesL . goallineL)
+      , (bind 's', "Scheduled", ALens' $ datesL . scheduledL)
+      , (bind 'r', "Remind", ALens' $ datesL . remindL)
       ]
  where
-  mkDateEditShortcut (kb, label, l0 :: AttrDateOrTimeLens) = kmLeafA_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
+  mkDateEditShortcut (kb, label, l0) = kmLeafA_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
     let cb date' = do
-          let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runAttrDateOrTimeLens l0 .~ date')
+          let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runALens' l0 .~ date')
           modifyModelAsync $ modifyAttrByEID cur f
           mtListL %= scrollListToEID cur
           return $ Continue ()
-        mkDateEdit = dateSelectOverlay (attr ^. runAttrDateOrTimeLens l0) ("Edit " <> label)
+        mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
      in pushOverlay mkDateEdit overlayNoop cb
 
 moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree () ())
