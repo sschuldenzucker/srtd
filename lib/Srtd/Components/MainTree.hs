@@ -126,7 +126,7 @@ rootKeymap =
               let oldName = name curAttr
               let cb name' = do
                     let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
-                    liftIO $ modifyModelOnServer (acModelServer ?actx) (modifyAttrByEID cur f)
+                    modifyModelAsync $ modifyAttrByEID cur f
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
                     mtListL %= scrollListToEID cur
                     return (Continue ())
@@ -202,8 +202,7 @@ deleteKeymap =
   kmMake
     "Delete"
     -- TOOD some undo would be nice, lol.
-    [ (kmLeafA_ (bind 'D') "Subtree" $ withCur $ \cur -> modifyModel (deleteSubtree cur))
-    -- (kmLeaf (bind 's') "Single" $ withCur $ \cur -> modifyModel (deleteSingle cur))
+    [ (kmLeafA_ (bind 'D') "Subtree" $ withCur $ \cur -> modifyModelAsync (deleteSubtree cur))
     ]
 
 setStatusKeymap :: Keymap (AppEventAction MainTree () ())
@@ -240,8 +239,7 @@ editDateKeymap =
   mkDateEditShortcut (kb, label, l0 :: AttrDateOrTimeLens) = kmLeafA_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
     let cb date' = do
           let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runAttrDateOrTimeLens l0 .~ date')
-          -- NB we don't *have* to use 'modifyModel' here b/c it doesn't have to be sync.
-          liftIO $ modifyModelOnServer (acModelServer ?actx) (modifyAttrByEID cur f)
+          modifyModelAsync $ modifyAttrByEID cur f
           mtListL %= scrollListToEID cur
           return $ Continue ()
         mkDateEdit = dateSelectOverlay (attr ^. runAttrDateOrTimeLens l0) ("Edit " <> label)
@@ -306,7 +304,7 @@ _mkSortKeymap withFunc name =
   -- forgets about it and the code doesn't type check. Have to do this in both places.
   mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
     [kmLeafA_ (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
-  sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModel (sorter ord root)
+  sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModelAsync (sorter ord root)
   -- comparison function that puts notes first (which is what we usually want)
   compareActionabilityForSort :: Label -> Label -> Ordering
   compareActionabilityForSort l1 l2 = case (isNote l1, isNote l2) of
@@ -361,11 +359,11 @@ pushInsertNewItemRelToCur go = do
   let cb name = do
         let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ ?actx) name
         uuid <- liftIO nextRandom
-        -- NB we *have* to use 'modifyModel' here b/c that will reload the model synchronously so we
+        -- NB we *have* to use 'modifyModelSync' here b/c that will reload the model synchronously so we
         -- find the new EID below.
         -- SOMEDAY When this is async, we should just wait for the EID to appear in a ModelUpdated
         -- message.
-        modifyModel $ insertNewNormalWithNewId uuid attr tgt' go'
+        modifyModelSync $ insertNewNormalWithNewId uuid attr tgt' go'
         let eid = EIDNormal uuid
         mtListL %= scrollListToEID eid
         return (Continue ())
@@ -373,13 +371,13 @@ pushInsertNewItemRelToCur go = do
 
 setStatus :: (?actx :: AppContext) => Status -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
-  modifyModel $
+  modifyModelAsync $
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx) . (statusL .~ status')
      in modifyAttrByEID cur f
 
 touchLastStatusModified :: (?actx :: AppContext) => EventM n MainTree ()
 touchLastStatusModified = withCur $ \cur ->
-  modifyModel $
+  modifyModelAsync $
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx)
      in modifyAttrByEID cur f
 
@@ -745,7 +743,7 @@ moveCurRelative ::
   (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> EventM n MainTree ()
 moveCurRelative go ins = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
-  modifyModel (moveSubtreeRelFromForest cur go ins forest)
+  modifyModelAsync (moveSubtreeRelFromForest cur go ins forest)
 
 -- SOMEDAY ^^ Same applies. Also, these could all be unified.
 moveCurRelativeDynamic ::
@@ -754,18 +752,16 @@ moveCurRelativeDynamic ::
   EventM n MainTree ()
 moveCurRelativeDynamic dgo = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
-  modifyModel (moveSubtreeRelFromForestDynamic cur dgo forest)
+  modifyModelAsync (moveSubtreeRelFromForestDynamic cur dgo forest)
 
--- | Modify the model and *synchronously* pull the new model. Important for adding nodes.
+-- | Modify the model and *synchronously* pull the new model. Currently required when adding nodes.
 --
--- SOMEDAY Synchronicity is a design issue really. We also don't need it often (only for adding nodes rn).
---
--- TODO make an async function and remove the updating. Also improves perf.
-modifyModel ::
+-- SOMEDAY Synchronicity is a design issue really.
+modifyModelSync ::
   (?actx :: AppContext) =>
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
   EventM n MainTree ()
-modifyModel f = do
+modifyModelSync f = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ do
@@ -777,6 +773,20 @@ modifyModel f = do
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
   return ()
+
+-- | Modify the model asynchronously, i.e., *without* pulling a new model immediately. We get a
+-- 'ModelUpdated' event and will pull a new model then. This is fine for most applications.
+--
+-- NB: It's not actually async right now b/c ModelServer doesn't operate async, but it could be in
+-- the future.
+--
+-- NB: We currently *don't* change our focus based on the modified node. This is probably ok and
+-- what the user expects, but should then be reviewed, if we ever get async here.
+modifyModelAsync ::
+  (?actx :: AppContext) =>
+  ((?mue :: ModelUpdateEnv) => Model -> Model) ->
+  EventM n MainTree ()
+modifyModelAsync f = liftIO $ modifyModelOnServer (acModelServer ?actx) f
 
 pullNewModel :: (?actx :: AppContext) => EventM n MainTree ()
 pullNewModel = do
