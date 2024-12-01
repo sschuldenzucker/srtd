@@ -287,7 +287,7 @@ f_flatByDates =
  where
   -- Need to mention the implicit param explicitly here for some reason, o/w it's not seeing it.
   go :: (?fctx :: FilterContext) => STForest -> STForest
-  go = sortIdForestBy cmp False
+  go = sortIdForestBy cmp False . withIdForest forestFlatten
    where
     cmp llabel1 llabel2 =
       mconcat
