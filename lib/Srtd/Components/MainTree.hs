@@ -28,8 +28,7 @@ import Lens.Micro.Platform
 import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
--- TODO clean up that name clash
-import Srtd.Component hiding (Overlay)
+import Srtd.Component
 import Srtd.Component qualified as Component
 import Srtd.Components.Attr (
   mostUrgentDateAttr,
