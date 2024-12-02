@@ -67,6 +67,8 @@ allStyles =
   , ("dim", dim)
   , ("bold", bold)
   , ("italic", italic)
+  , ("normal", defaultStyleMask)
+  , ("", defaultStyleMask)
   ]
 
 parseStyle1 :: Text -> Either Text Style
