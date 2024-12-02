@@ -39,6 +39,8 @@ secondary_cursor_insert = "#7da87e"
 
 # muted versions of main colors, by srs
 red1 = "#a65e73"
+yellow1 = "#9e8f6f"
+green1 = "#6a9066"
 
 [defaultAttr]
 bg = "base"
@@ -101,9 +103,23 @@ fg = "text"
 "date.remind.overdue" = {fg = "yellow"}
 
 # TODO another instance of the current attr mechanism being incredibly inconvenient
+# Actually, this one is fine, the problem is "selected" above.
 "date.indirect" = {fg = "overlay1", style = "italic"}
 
-"date.indirect.deadline.overdue" = {fg = "red1", style = "italic,underline"}
+"date.indirect.deadline" = {style = "italic,underline"}
+"date.indirect.deadline.today" = {fg = "yellow1"}
+"date.indirect.deadline.tomorrow" = {fg = "green1"}
+"date.indirect.indirect.deadline.overdue" = {fg = "red1"}
+
+"date.indirect.goalline.today" = {fg = "yellow1"}
+"date.indirect.goalline.tomorrow" = {fg = "green1"}
+"date.indirect.goalline.overdue" = {fg = "red1"}
+
+"date.indirect.scheduled.today" = {fg = "yellow1"}
+"date.indirect.scheduled.overdue" = {fg = "red1"}
+
+"date.indirect.remind.today" = {fg = "green1"}
+"date.indirect.remind.overdue" = {fg = "yellow1"}
 
 # "date.deadline" = {style = "underline"}
 # "date.deadline.today" = {fg = "yellow", style = "underline"}
