@@ -19,7 +19,7 @@ A theme is a toml file. Every theme defines three toplevel keys (all of which ar
 - `theme` is a mapping from Brick's hierarchical attr names to a map of optional keys:
   - `fg`: Maps to keys in `palette`
   - `bg`: Maps to keys in `palette`
-  - `style`: Maps to Brick style names.
+  - `style`: Maps to Brick style names. Can be a comma-separated (without whitespace) string of styles to apply multiple.
 - `defaultAttr` specifies the toplevel (default) attrs, like keys in `theme`.
 - `palette` is a mapping from free-form color names to color codes.
 

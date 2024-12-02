@@ -8,6 +8,7 @@ module Srtd.AppTheme where
 
 import Brick (AttrName, attrName)
 import Brick.Themes
+import Data.Bits ((.|.))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
@@ -30,7 +31,6 @@ data ThemeFile = ThemeFile
   deriving (FromValue) via GenericTomlTable ThemeFile
 
 data MyAttr = MyAttr
-  -- SOMEDAY currently, one can only set one style, though multiple would in principle be supported (e.g. bold-italic)
   { style :: Maybe Text
   , fg :: Maybe Text
   , bg :: Maybe Text
@@ -69,8 +69,14 @@ allStyles =
   , ("italic", italic)
   ]
 
+parseStyle1 :: Text -> Either Text Style
+parseStyle1 s = maybe (Left $ "Unknown style: " <> s) Right $ lookup s allStyles
+
+parseStyles :: [Text] -> Either Text Style
+parseStyles = fmap (foldl (.|.) defaultStyleMask) . mapM parseStyle1
+
 parseStyle :: Text -> Either Text Style
-parseStyle s = maybe (Left $ "Unknown style: " <> s) Right $ lookup s allStyles
+parseStyle = parseStyles . T.split (== ',')
 
 myAttrToAttr :: Palette -> MyAttr -> Either Text Attr
 myAttrToAttr palette MyAttr {style, fg, bg} = do

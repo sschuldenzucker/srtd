@@ -84,6 +84,7 @@ fg = "text"
 "selected.status.open" = {fg = "sapphire"}
 
 # TODO 'bold' doesn't really work. (but italic and underline do)
+# Seems to be a kitty issue. I once saw a TUI demo where it *did* work, though!
 "date.deadline" = {style = "underline"}
 "date.deadline.today" = {fg = "yellow", style = "underline"}
 "date.deadline.tomorrow" = {fg = "green", style = "underline"}
@@ -102,8 +103,7 @@ fg = "text"
 # TODO another instance of the current attr mechanism being incredibly inconvenient
 "date.indirect" = {fg = "overlay1", style = "italic"}
 
-# EXPERIMENTAL
-"date.indirect.deadline.overdue" = {fg = "red1", style = "italic"}
+"date.indirect.deadline.overdue" = {fg = "red1", style = "italic,underline"}
 
 # "date.deadline" = {style = "underline"}
 # "date.deadline.today" = {fg = "yellow", style = "underline"}
