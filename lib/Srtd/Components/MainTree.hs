@@ -422,7 +422,11 @@ renderRow
   sel
   ( lvl
     , _
-    , llabel@((Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}, _), _)
+    , llabel@( ( Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}
+                , DerivedAttr {daImpliedDates}
+                )
+              , _
+              )
     ) =
     withSelAttr sel $
       hBox $
@@ -435,7 +439,7 @@ renderRow
    where
     -- The first level doesn't take indent b/c deadlines are enough rn.
     indentW = str (concat (replicate (lvl + 1) "    "))
-    dateW = renderMostUrgentDate ztime sel dates
+    dateW = renderMostUrgentDate ztime sel dates daImpliedDates
     lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
     statusW = renderStatus sel status (llActionability llabel)
     nameW = strTruncateAvailable name
@@ -452,29 +456,35 @@ renderRoot ztime glabel@(rootAttr, _) breadcrumbs =
 -- SOMEDAY annoying these are two duplicate functions.
 
 renderBreadcrumbs :: ZonedTime -> Label -> [IdLabel] -> Widget n
-renderBreadcrumbs ztime (rootAttr, _) breadcrumbs = pathW
+renderBreadcrumbs ztime rootLabel breadcrumbs = pathW
  where
-  pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootAttr : map (fst . snd) breadcrumbs
-  wrapBreadcrumbWidget attr w =
-    let battr = mostUrgentDateAttr ztime False (dates attr)
+  pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootLabel : map snd breadcrumbs
+  wrapBreadcrumbWidget (attr, dattr) w =
+    let battr = mostUrgentDateAttr ztime False (dates attr) (daImpliedDates dattr)
      in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
-  mkBreadcrumbW attr =
+  mkBreadcrumbW label@(attr, dattr) =
     hBox
       [ str (name attr)
-      , maybe emptyWidget (wrapBreadcrumbWidget attr) (renderMostUrgentDateMaybe ztime False (dates attr))
+      , maybe
+          emptyWidget
+          (wrapBreadcrumbWidget label)
+          (renderMostUrgentDateMaybe ztime False (dates attr) (daImpliedDates dattr))
       ]
 
 renderBreadcrumbsOnly :: ZonedTime -> [IdLabel] -> Widget n
 renderBreadcrumbsOnly ztime breadcrumbs = pathW
  where
-  pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ map (fst . snd) breadcrumbs
-  wrapBreadcrumbWidget attr w =
-    let battr = mostUrgentDateAttr ztime False (dates attr)
+  pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ map snd breadcrumbs
+  wrapBreadcrumbWidget (attr, dattr) w =
+    let battr = mostUrgentDateAttr ztime False (dates attr) (daImpliedDates dattr)
      in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
-  mkBreadcrumbW attr =
+  mkBreadcrumbW label@(attr, dattr) =
     hBox
       [ str (name attr)
-      , maybe emptyWidget (wrapBreadcrumbWidget attr) (renderMostUrgentDateMaybe ztime False (dates attr))
+      , maybe
+          emptyWidget
+          (wrapBreadcrumbWidget label)
+          (renderMostUrgentDateMaybe ztime False (dates attr) (daImpliedDates dattr))
       ]
 
 -- Currently we only render the currently selected filter.

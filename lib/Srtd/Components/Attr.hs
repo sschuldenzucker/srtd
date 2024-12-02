@@ -2,11 +2,16 @@
 module Srtd.Components.Attr where
 
 import Brick hiding (on)
+import Data.Composition ((.:))
 import Data.Function (on)
+import Data.Functor.Apply (gliftF2, gliftF3)
 import Data.List (sortBy)
 import Data.Maybe (catMaybes, listToMaybe)
-import Data.Time (ZonedTime (..))
+import Data.Ord (comparing)
+import Data.Ord qualified as Ord
+import Data.Time (TimeZone, ZonedTime (..))
 import Lens.Micro.Platform
+import Safe (minimumByMay)
 import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
@@ -16,53 +21,57 @@ import Srtd.Dates
 
 -- TODO We use `withDefAttr` for selected in the context where this is rendered, therefore we *can* actually make it status.waiting.selected where .selected is optional. Do that! Makes cleaner theme files.
 
--- SOMEDAY we can prob find something more elegant using barbies or something. Or maybe not idk.
--- NB in principle we also need different ordering for different kinds of things. E.g., remind is begin-of-day but deadline is end-of-day.
-data Labeled a = Labeled
-  { lblValue :: a
-  , lblAttrName :: String
-  , lblShortLabel :: String
+data DateRenderMeta = DateRenderMeta
+  { drmAttrName :: String
+  , drmShortLabel :: String
   }
-  deriving (Show, Functor, Foldable, Traversable)
 
-suffixLenses ''Labeled
+dateRenderMeta :: AttrDates_ DateRenderMeta
+dateRenderMeta =
+  AttrDates
+    { deadline = DateRenderMeta "deadline" "D"
+    , goalline = DateRenderMeta "goalline" "G"
+    , scheduled = DateRenderMeta "scheduled" "S"
+    , remind = DateRenderMeta "remind" "R"
+    }
 
-lbl :: a -> String -> String -> Labeled a
-lbl = Labeled
+data LabeledDateOrTime = LabeledDateOrTime
+  { ldtValue :: DateOrTime
+  , ldtIsIndirect :: Bool
+  , ldtMeta :: DateRenderMeta
+  , ldtDateRule :: DateRule
+  }
 
--- Order matters. First have highest priority if equally urgent
-labeledDateLenses :: [Labeled (AttrDates -> Maybe DateOrTime)]
-labeledDateLenses =
-  [ lbl deadline "deadline" "D"
-  , lbl goalline "goalline" "G"
-  , lbl scheduled "scheduled" "S"
-  , lbl remind "remind" "R"
-  ]
+compareLabeledDateOrTime :: TimeZone -> LabeledDateOrTime -> LabeledDateOrTime -> Ordering
+compareLabeledDateOrTime tz ld1 ld2 =
+  mconcat
+    [ comparing (\ld -> dateOrTimeToUTCTime (ldtDateRule ld) tz (ldtValue ld)) ld1 ld2
+    , -- This makes direct values come first, which is what we want here.
+      comparing ldtIsIndirect ld1 ld2
+    ]
 
--- NB this only uses the time zone component rn, but this may change.
-mostUrgentDateLabeled :: ZonedTime -> AttrDates -> Maybe (Labeled DateOrTime)
--- TODO I think this sorting is kinda broken? Sign error? Also, it should be either beginning or end
--- of day depending on what it is.
-mostUrgentDateLabeled (ZonedTime _ tz) =
-  listToMaybe
-    . sortBy (compareDateOrTime EndOfDay tz `on` lblValue)
-    . catMaybeVals
-    . applyDates
+dates2LabeledList :: Bool -> AttrDates -> [LabeledDateOrTime]
+dates2LabeledList isIndirect = catMaybes . attrDates2List . gliftF3 mkLabeled dateRenderMeta attrDatesDateRules
  where
-  applyDates dates = map (lblValueL %~ ($ dates)) labeledDateLenses
-  catMaybeVals = catMaybes . map (traverse id)
+  mkLabeled _ _ Nothing = Nothing
+  mkLabeled meta dr (Just d) = Just $ LabeledDateOrTime d isIndirect meta dr
 
-renderLabeledDate :: ZonedTime -> Bool -> Labeled DateOrTime -> Widget n
-renderLabeledDate now sel ldt = withAttr (dateAttrForLabeled now sel ldt) (str label)
+mostUrgentDateLabeled :: TimeZone -> AttrDates -> AttrDates -> Maybe LabeledDateOrTime
+mostUrgentDateLabeled tz dates indates = minimumByMay (compareLabeledDateOrTime tz) ldates
  where
-  label = lblShortLabel ldt ++ " " ++ prettyRelativeMed now (lblValue ldt)
+  ldates = dates2LabeledList False dates ++ dates2LabeledList True indates
 
-dateAttrForLabeled :: ZonedTime -> Bool -> Labeled DateOrTime -> AttrName
-dateAttrForLabeled now sel ldt = rootattr <> kindattr <> subattr <> selattr
+renderLabeledDate :: ZonedTime -> Bool -> LabeledDateOrTime -> Widget n
+renderLabeledDate now sel ld = withAttr (dateAttrForLabeled now sel ld) (str label)
  where
-  dt = lblValue ldt
-  rootattr = attrName "date"
-  kindattr = attrName . lblAttrName $ ldt
+  label = (drmShortLabel . ldtMeta) ld ++ " " ++ prettyRelativeMed now (ldtValue ld)
+
+dateAttrForLabeled :: ZonedTime -> Bool -> LabeledDateOrTime -> AttrName
+dateAttrForLabeled now sel ld = rootattr <> kindattr <> subattr <> selattr
+ where
+  dt = ldtValue ld
+  rootattr = attrName "date" <> (if ldtIsIndirect ld then attrName "indirect" else mempty)
+  kindattr = attrName . drmAttrName . ldtMeta $ ld
   subattr
     | dt `isBefore` now = attrName "overdue"
     | dt `isTodayOf` now = attrName "today"
@@ -72,18 +81,25 @@ dateAttrForLabeled now sel ldt = rootattr <> kindattr <> subattr <> selattr
   selattr = if sel then attrName "selected" else mempty
 
 -- | Only get the attr of the most urgent date
-mostUrgentDateAttr :: ZonedTime -> Bool -> AttrDates -> AttrName
-mostUrgentDateAttr now sel dates = maybe mempty (dateAttrForLabeled now sel) (mostUrgentDateLabeled now dates)
+--
+-- SOMEDAY this could take some refactoring. (the callers of this specifically)
+mostUrgentDateAttr :: ZonedTime -> Bool -> AttrDates -> AttrDates -> AttrName
+mostUrgentDateAttr now sel dates indates = maybe mempty (dateAttrForLabeled now sel) (mostUrgentDateLabeled tz dates indates)
+ where
+  tz = zonedTimeZone now
 
-renderMostUrgentDate :: ZonedTime -> Bool -> AttrDates -> Widget n
-renderMostUrgentDate now sel dates =
-  setWidth 13 . maybe almostEmptyWidget (renderLabeledDate now sel) . mostUrgentDateLabeled now $
-    dates
+renderMostUrgentDate :: ZonedTime -> Bool -> AttrDates -> AttrDates -> Widget n
+renderMostUrgentDate now sel =
+  setWidth 13 . maybe almostEmptyWidget (renderLabeledDate now sel) .: mostUrgentDateLabeled tz
+ where
+  tz = zonedTimeZone now
 
 -- | Variant of 'renderMostUrgentDate' that does not have a fixed width, but minimal, and returns
 -- 'Nothing' if there's nothing to display.
-renderMostUrgentDateMaybe :: ZonedTime -> Bool -> AttrDates -> Maybe (Widget n)
-renderMostUrgentDateMaybe now sel dates = fmap (renderLabeledDate now sel) . mostUrgentDateLabeled now $ dates
+renderMostUrgentDateMaybe :: ZonedTime -> Bool -> AttrDates -> AttrDates -> Maybe (Widget n)
+renderMostUrgentDateMaybe now sel = fmap (renderLabeledDate now sel) .: mostUrgentDateLabeled tz
+ where
+  tz = zonedTimeZone now
 
 renderPastDate :: ZonedTime -> Bool -> DateOrTime -> Widget n
 -- SOMEDAY styling options (`withAttr`), but I'm not using them rn.

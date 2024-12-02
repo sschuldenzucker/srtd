@@ -37,6 +37,9 @@ secondary_cursor = "#b5a6a8"
 secondary_cursor_normal = "#878ec0"
 secondary_cursor_insert = "#7da87e"
 
+# muted versions of main colors, by srs
+red1 = "#a65e73"
+
 [defaultAttr]
 bg = "base"
 fg = "text"
@@ -95,4 +98,25 @@ fg = "text"
 
 "date.remind.today" = {fg = "green"}
 "date.remind.overdue" = {fg = "yellow"}
+
+# TODO another instance of the current attr mechanism being incredibly inconvenient
+"date.indirect" = {fg = "overlay1", style = "italic"}
+
+# EXPERIMENTAL
+"date.indirect.deadline.overdue" = {fg = "red1", style = "italic"}
+
+# "date.deadline" = {style = "underline"}
+# "date.deadline.today" = {fg = "yellow", style = "underline"}
+# "date.deadline.tomorrow" = {fg = "green", style = "underline"}
+# "date.deadline.overdue" = {fg = "red", style = "underline"}
+
+# "date.goalline.today" = {fg = "yellow"}
+# "date.goalline.tomorrow" = {fg = "green"}
+# "date.goalline.overdue" = {fg = "red"}
+
+# "date.scheduled.today" = {fg = "yellow"}
+# "date.scheduled.overdue" = {fg = "red"}
+
+# "date.remind.today" = {fg = "green"}
+# "date.remind.overdue" = {fg = "yellow"}
 
