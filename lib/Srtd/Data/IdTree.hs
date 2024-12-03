@@ -29,9 +29,6 @@ onIdForest f = idForest . f . IdForest
 instance Functor (IdForest id) where
   fmap f = withIdForest $ mapForest $ \(i, x) -> (i, f x)
 
--- TODO WIP Move the abstract machienery from Model here, and prob also unify it.
--- Start with the find-by-id methods
-
 -- * Convenience data extraction
 
 zGetId :: TreePos Full (id, a) -> id
