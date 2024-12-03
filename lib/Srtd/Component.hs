@@ -47,8 +47,6 @@ data AppResourceName
   | EditorFor AppResourceName
   deriving (Eq, Ord, Show)
 
--- SOMEDAY consider passing this as an implicit parameter. Especially if we include "normal" app config in here.
--- (not sure if this would *actually* be cleaner: We then have to carry the type annotation around.)
 data AppContext = AppContext
   { acModelServer :: ModelServer
   , acAppChan :: BChan AppMsg
