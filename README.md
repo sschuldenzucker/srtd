@@ -5,12 +5,21 @@
 
 Use cabal (`cabal build`).
 
+There are three packages:
+- The `srtd` library
+- The `srtd` executable. (run using `cabal run srtd`)
+- The `srtd-test` suite. (run using `cabal run srtd-test`)
+
 Tested with the following ecosystem:
 
 - GHC 9.4.8
 - cabal 3.10.3.0
 - HLS 2.7.0.0
 - GHCup 0.1.30.0
+
+## Running
+
+`cabal run srtd` and Ctrl+/ to show keyboard shortcuts. Writes to `srtd.json` in the current directory. Autosaves.
 
 ## Themes
 
