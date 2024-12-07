@@ -155,6 +155,6 @@ kmLeafA b n x = kmLeaf b n (AppEventAction x)
 kmLeafA_ ::
   Binding ->
   Text ->
-  ((?actx :: AppContext) => EventM AppResourceName s a) ->
+  ((?actx :: AppContext) => EventM AppResourceName s ()) ->
   (Binding, KeymapItem (AppEventAction s () b))
 kmLeafA_ b n x = kmLeafA b n (x >> return (Continue ()))
