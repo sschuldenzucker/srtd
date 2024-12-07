@@ -196,7 +196,9 @@ myHandleEvent ev = wrappingActions $
       res <- zoom activeTabL $ handleEvent ev
       case res of
         Continue () -> return ()
-        _ -> popTabAction
+        -- See the AppComponent instance of MainTree
+        Confirmed () -> popTabOrQuitAction
+        Canceled -> popTabAction
  where
   -- NB explicit type required to bind the implicit parameter in the right place.
   wrappingActions ::
@@ -257,6 +259,13 @@ popTab = asTabsL %~ lzDeleteLeft
 
 popTabAction :: EventM AppResourceName AppState ()
 popTabAction = modify popTab >> fixEmptyTabs
+
+-- | Like `popTabAction` but halt when the last tab was closed.
+popTabOrQuitAction :: EventM AppResourceName AppState ()
+popTabOrQuitAction = do
+  modify popTab
+  isNoTabs <- LZ.emptyp <$> use asTabsL
+  when isNoTabs halt
 
 -- not sure if this is quite right but maybe it's enough. If we're missing cursors, we should prob revise.
 myChooseCursor ::

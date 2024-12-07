@@ -140,8 +140,7 @@ rootKeymap =
             writeBChan (acAppChan ?actx) $
               PushTab (\rname -> SomeAppComponent $ setResourceName rname state)
       )
-    , ( kmLeafA (bind 'Q') "Close tab" $
-          return Canceled
+    , ( kmLeafA (bind 'q') "Close tab / quit" $ return $ Confirmed ()
       )
     , ( kmLeafA_ (bind ']') "Next tab" $
           liftIO $
@@ -193,7 +192,6 @@ rootKeymap =
     , (kmSub (bind 'd') editDateKeymap)
     , -- , (kmLeafA_ (bind ' ') "Toggle details overlay" (mtShowDetailsL %= not))
       (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
-    , (kmLeafA_ (bind 'q') "Quit" halt)
     ]
 
 deleteKeymap :: Keymap (AppEventAction MainTree () ())
@@ -597,6 +595,10 @@ renderItemDetails ztime (eid, llabel) =
   padFirstCell (h : t) = padRight (Pad 2) h : t
   sectionHeaderAttr = attrName "section_header"
 
+-- | We use `Confirmed ()` to indicate that the user *asked* to exit and `Canceled ()` to indicate
+-- that there was some kind of issue and the tab had to close (e.g., the parent was deleted.)
+--
+-- SOMEDAY that's a bit nasty.
 instance AppComponent MainTree () () where
   renderComponentWithOverlays
     s@MainTree
