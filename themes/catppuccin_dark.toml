@@ -109,7 +109,7 @@ fg = "text"
 "date.indirect.deadline" = {style = "italic,underline"}
 "date.indirect.deadline.today" = {fg = "yellow1"}
 "date.indirect.deadline.tomorrow" = {fg = "green1"}
-"date.indirect.indirect.deadline.overdue" = {fg = "red1"}
+"date.indirect.deadline.overdue" = {fg = "red1"}
 
 "date.indirect.goalline.today" = {fg = "yellow1"}
 "date.indirect.goalline.tomorrow" = {fg = "green1"}
