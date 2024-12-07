@@ -196,6 +196,7 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
   stepParentActionability a_ pa_ = case (a_, pa_) of
     -- SOMEDAY this is a very ad-hoc solution. Think about the structure, also re the upwards derivation.
     -- Not super sure if this is the right way.
+    -- NB it's also kinda inconsistent with glActionability and stuff. Maybe we wanna step against glActionability, not status?
     (a, None) -> a
     (None, pa) -> pa
     (a, Project) -> a

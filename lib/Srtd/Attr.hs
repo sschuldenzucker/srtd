@@ -332,6 +332,10 @@ type IdLabel = (EID, Label)
 glActionability :: Label -> Status
 glActionability (attr, dattr) = case (status attr, daChildActionability dattr) of
   (None, a) -> a
+  -- This a little bit inconsistent but we typically *mean* this.
+  -- Con: there's no way to pause a WIP task to next now.
+  -- SOMEDAY handle this using the new "force" status.
+  (Next, WIP) -> WIP
   (Project, a) -> a
   (s, _) -> s
 
@@ -363,6 +367,7 @@ llActionability (label, ldattr) = case (glActionability label, ldParentActionabi
   -- SOMEDAY I've seen this patterns a few times now, perhaps abstract it or restructure.
   -- See also 'addLocalDerivedAttrs' in Model and 'glActionability' above. It's duplicated with there.
   (a, None) -> a
+  (WIP, Next) -> WIP
   (a, Project) -> a
   (a, ap) -> max a ap
 
