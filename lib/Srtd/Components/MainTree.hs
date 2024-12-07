@@ -191,7 +191,8 @@ rootKeymap =
     , (kmSub (bind 'o') openExternallyKeymap)
     , (kmLeafA_ (bind '.') "Next filter" cycleNextFilter)
     , (kmSub (bind 'd') editDateKeymap)
-    , (kmLeafA_ (bind ' ') "Toggle details overlay" (mtShowDetailsL %= not))
+    , -- , (kmLeafA_ (bind ' ') "Toggle details overlay" (mtShowDetailsL %= not))
+      (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
     , (kmLeafA_ (bind 'q') "Quit" halt)
     ]
 

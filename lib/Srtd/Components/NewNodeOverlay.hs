@@ -13,11 +13,6 @@ import Lens.Micro.Platform
 import Srtd.Component
 import Srtd.Keymap (KeyDesc (..))
 
--- SOMEDAY instead of this half-assed continuation passing style, maybe we can find something that's:
--- - Either actual CPS
--- - Or this could just return the String and then the caller has to deal with it
--- - Or this just does its modification and then the caller has to deal with it.
-
 data NewNodeOverlay = NewNodeOverlay
   { _nnEditor :: Editor String AppResourceName
   , _nnTitle :: Text

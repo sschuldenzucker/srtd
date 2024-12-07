@@ -25,7 +25,6 @@ suffixLenses ''DateSelectOverlay
 
 type MyAppEventAction = AppEventAction DateSelectOverlay () (Maybe DateOrTime)
 
--- | NB the TimeZone is only required to render the *first* time before we receive an event (which is where it's updated).
 dateSelectOverlay ::
   Maybe DateOrTime -> Text -> AppResourceName -> DateSelectOverlay
 dateSelectOverlay origValue title rname =

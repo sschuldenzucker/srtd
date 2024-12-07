@@ -12,6 +12,15 @@ Tested with the following ecosystem:
 - HLS 2.7.0.0
 - GHCup 0.1.30.0
 
+There are three packages:
+- The `srtd` library
+- The `srtd` executable. (run using `cabal run srtd`)
+- The `srtd-test` suite. (run using `cabal run srtd-test`)
+
+## Running
+
+`cabal run srtd` and Ctrl+/ to show keyboard shortcuts. Writes to `srtd.json` in the current directory. Autosaves.
+
 ## Themes
 
 A theme is a toml file. Every theme defines three toplevel keys (all of which are required):
