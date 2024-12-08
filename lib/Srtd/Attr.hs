@@ -6,7 +6,7 @@ module Srtd.Attr where
 
 import Brick (suffixLenses)
 import Control.Arrow (second)
-import Control.Monad (join, liftM2)
+import Control.Monad (liftM2)
 import Data.Aeson
 import Data.Aeson.Types (typeMismatch)
 import Data.Function (on)
@@ -20,8 +20,7 @@ import Data.UUID qualified as UUID
 import GHC.Generics
 import Lens.Micro.Platform
 import Srtd.Dates (DateOrTime, DateRule (..), compareDateOrTime, dateOrTimeToUTCTime)
-import Srtd.Todo
-import Srtd.Util (ALens' (..), compareByNothingLast, unionMaybeWith)
+import Srtd.Util (compareByNothingLast, unionMaybeWith)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- * Node ID (EID)

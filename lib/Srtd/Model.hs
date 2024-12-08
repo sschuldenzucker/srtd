@@ -4,7 +4,6 @@ module Srtd.Model where
 -- Really just a helper here. Should prob not import this for separation
 import Brick (suffixLenses)
 import Data.Aeson
-import Data.Either (fromRight)
 import Data.Function (on)
 import Data.List (find, foldl', sortBy)
 import Data.Ord (comparing)
@@ -17,7 +16,6 @@ import Srtd.Attr
 import Srtd.Data.IdTree
 import Srtd.Data.TreeZipper
 import Srtd.ModelJSON qualified as ModelJSON
-import Srtd.Todo (todo)
 import Srtd.Util (
   chooseMax,
   chooseMin,
@@ -179,7 +177,7 @@ addLocalDerivedAttrs :: MForest -> STForest
 addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
  where
   _go Nothing (i, label) = (i, (label, LocalDerivedAttr {ldParentActionability = None, ldBreadcrumbs = []}))
-  _go (Just plilabel@(_i, (plabel@(parAttr, parDAttr), parLDAttr))) (i, label) =
+  _go (Just plilabel@(_i, (plabel@(_parAttr, _parDAttr), parLDAttr))) (i, label) =
     ( i
     ,
       ( label

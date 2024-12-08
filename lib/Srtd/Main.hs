@@ -105,7 +105,6 @@ main = do
 
   _ <- startTicker 60 $ writeBChan appChan Tick
 
-  model <- getModel modelServer
   ztime <- getZonedTime
   let actx = AppContext modelServer appChan ztime
   let appState =
