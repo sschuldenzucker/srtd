@@ -165,8 +165,6 @@ filterSubtree p = stForestL %~ (filterIdForest p)
 flattenSubtreePreorder :: Subtree -> Subtree
 flattenSubtreePreorder = stForestL %~ (withIdForest $ forestFlatten)
 
-sortSubtreeBy cmp = stForestL %~ todo
-
 -- TODO we may not need this anymore
 forestFindTreeWithBreadcrumbs :: (Eq id) => id -> IdForest id a -> Maybe ([(id, a)], Tree (id, a))
 forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt) $ treesWithIdBreadcrumbs
