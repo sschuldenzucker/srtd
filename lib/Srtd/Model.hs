@@ -179,12 +179,13 @@ addLocalDerivedAttrs :: MForest -> STForest
 addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
  where
   _go Nothing (i, label) = (i, (label, LocalDerivedAttr {ldParentActionability = None, ldBreadcrumbs = []}))
-  _go (Just plilabel@(_i, ((parAttr, _parDAttr), parLDAttr))) (i, label) =
+  _go (Just plilabel@(_i, (plabel@(parAttr, parDAttr), parLDAttr))) (i, label) =
     ( i
     ,
       ( label
       , LocalDerivedAttr
-          { ldParentActionability = stepParentActionability (status parAttr) (ldParentActionability parLDAttr)
+          { ldParentActionability =
+              stepParentActionability (glActionability plabel) (ldParentActionability parLDAttr)
           , ldBreadcrumbs = plilabel : ldBreadcrumbs parLDAttr
           }
       )

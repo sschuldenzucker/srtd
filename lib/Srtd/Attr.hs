@@ -337,6 +337,11 @@ glActionability (attr, dattr) = case (status attr, daChildActionability dattr) o
   -- SOMEDAY handle this using the new "force" status.
   (Next, WIP) -> WIP
   (Project, a) -> a
+  -- This makes Open items semi-transparent: they're transparent to Next etc. tasks but also stand
+  -- for their own (likely project blockers). This is *different* from Project nodes, which are
+  -- fully transparent!
+  -- SOMEDAY we could also make it transparent to Later but I'm not right now.
+  (Open, a) | a <= Open -> a
   (s, _) -> s
 
 -- * Local Derived Attr
