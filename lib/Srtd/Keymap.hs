@@ -53,6 +53,9 @@ keymapToZipper = KeymapZipper []
 kmMake :: Text -> [(Binding, KeymapItem a)] -> Keymap a
 kmMake name kvs = Keymap name False (Map.fromList kvs) []
 
+kmAddItems :: Keymap a -> [(Binding, KeymapItem a)] -> Keymap a
+kmAddItems km pairs = km {kmMap = Map.union (kmMap km) (Map.fromList pairs)}
+
 sticky :: Keymap a -> Keymap a
 sticky km = km {kmSticky = True}
 

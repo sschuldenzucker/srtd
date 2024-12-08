@@ -211,13 +211,13 @@ rootKeymap =
                 Left _err -> return Canceled
                 Right res -> put (res & mtListL %~ scrollListToEID (mtRoot s)) >> return (Continue ())
       )
-    , (kmSub (bind ',') sortCurKeymap)
-    , (kmSub (bind ';') sortRootKeymap)
+    , (kmSub (bind ';') sortKeymap)
     , (kmLeafA_ (bind 'h') "Go to parent" (modify (mtGoSubtreeFromCur goParent)))
     , (kmLeafA_ (bind 'J') "Go to next sibling" (modify (mtGoSubtreeFromCur goNextSibling)))
     , (kmLeafA_ (bind 'K') "Go to prev sibling" (modify (mtGoSubtreeFromCur goPrevSibling)))
     , (kmSub (bind 't') setStatusKeymap)
     , (kmSub (bind 'o') openExternallyKeymap)
+    , (kmLeafA (bind ',') "Prev filter" $ notFoundToAER_ cyclePrevFilter)
     , (kmLeafA (bind '.') "Next filter" $ notFoundToAER_ cycleNextFilter)
     , (kmSub (bind 'd') editDateKeymap)
     , -- , (kmLeafA_ (bind ' ') "Toggle details overlay" (mtShowDetailsL %= not))
@@ -307,8 +307,11 @@ openExternallyKeymap =
 sortRootKeymap :: Keymap (AppEventAction MainTree () ())
 sortRootKeymap = _mkSortKeymap withRoot "Sort root by"
 
-sortCurKeymap :: Keymap (AppEventAction MainTree () ())
-sortCurKeymap = _mkSortKeymap withCur "Sort selected by"
+sortKeymap :: Keymap (AppEventAction MainTree () ())
+sortKeymap =
+  kmAddItems
+    (_mkSortKeymap withCur "Sort by")
+    [kmSub (bind 'R') sortRootKeymap]
 
 -- | Either `withCur` or `withRoot`. Used to unify sorting.
 type WithFunc =
@@ -413,6 +416,11 @@ touchLastStatusModified = withCur $ \cur ->
 cycleNextFilter :: (?actx :: AppContext) => EventMOrNotFound n MainTree ()
 cycleNextFilter = do
   mtFiltersL %= CList.rotR
+  pullNewModel
+
+cyclePrevFilter :: (?actx :: AppContext) => EventMOrNotFound n MainTree ()
+cyclePrevFilter = do
+  mtFiltersL %= CList.rotL
   pullNewModel
 
 make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
