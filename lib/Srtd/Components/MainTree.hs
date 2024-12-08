@@ -12,7 +12,9 @@ import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
 import Control.Monad (when)
+import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans (lift)
 import Data.CircularList qualified as CList
 import Data.List (intersperse)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe)
@@ -53,6 +55,27 @@ import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
 import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 
 type MyList = L.List AppResourceName (Int, EID, LocalLabel)
+
+-- | Type of computations that update the subtree synchronously (and may fail because of that).
+--
+-- SOMEDAY we may wanna change the result type in AppComponent to be a transformer instead of a
+-- fixed return type. Could make it more ergonomic to write handlers. OTOH, the additional flexibility
+-- in the computation isn't really needed right now. (only in `wrappingActions` below, maybe)
+type EventMOrNotFound n s a = ExceptT IdNotFoundError (EventM n s) a
+
+-- | Convert exception handling.
+notFoundToAER_ :: EventMOrNotFound n s () -> EventM n s (AppEventReturn () ())
+notFoundToAER_ act = notFoundToAER $ act >> return (Continue ())
+
+-- | Merge exception handling.
+--
+-- An exception is treated equivalent to returning 'Canceled'.
+notFoundToAER :: EventMOrNotFound n s (AppEventReturn a b) -> EventM n s (AppEventReturn a b)
+notFoundToAER act = do
+  eres <- runExceptT act
+  case eres of
+    Left _err -> return Canceled
+    Right res -> return res
 
 -- | A class for overlays. Two callbacks define interruptible computations. Note that this doesn't
 -- store state of the computation *itself*.
@@ -165,21 +188,27 @@ rootKeymap =
     , -- (kmSub (bind 'm') moveSingleModeKeymap),
       (kmSub (bind 'M') moveSubtreeModeKeymap)
     , (kmSub (bind 'D') deleteKeymap)
-    , ( kmLeafA_ (binding KEnter []) "Hoist" $ withCur $ \cur -> do
+    , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse (return $ Continue ()) $ \cur -> do
           rname <- mtResourceName <$> get
           model <- liftIO $ getModel (acModelServer ?actx)
           filters <- mtFilters <$> get
-          put $ makeWithFilters cur filters model rname
+          let eres = makeWithFilters cur filters model rname
+          case eres of
+            Left _err -> return Canceled
+            Right res -> put res >> return (Continue ())
       )
-    , ( kmLeafA_ (binding KBS []) "De-hoist" $ do
+    , ( kmLeafA (binding KBS []) "De-hoist" $ do
           s <- get
           case s ^. mtSubtreeL . breadcrumbsL of
-            [] -> return ()
+            [] -> return (Continue ())
             (parent, _) : _ -> do
               rname <- mtResourceName <$> get
               model <- liftIO $ getModel (acModelServer ?actx)
               filters <- mtFilters <$> get
-              put $ makeWithFilters parent filters model rname & mtListL %~ scrollListToEID (mtRoot s)
+              let eres = makeWithFilters parent filters model rname
+              case eres of
+                Left _err -> return Canceled
+                Right res -> put (res & mtListL %~ scrollListToEID (mtRoot s)) >> return (Continue ())
       )
     , (kmSub (bind ',') sortCurKeymap)
     , (kmSub (bind ';') sortRootKeymap)
@@ -188,7 +217,7 @@ rootKeymap =
     , (kmLeafA_ (bind 'K') "Go to prev sibling" (modify (mtGoSubtreeFromCur goPrevSibling)))
     , (kmSub (bind 't') setStatusKeymap)
     , (kmSub (bind 'o') openExternallyKeymap)
-    , (kmLeafA_ (bind '.') "Next filter" cycleNextFilter)
+    , (kmLeafA (bind '.') "Next filter" $ notFoundToAER_ cycleNextFilter)
     , (kmSub (bind 'd') editDateKeymap)
     , -- , (kmLeafA_ (bind ' ') "Toggle details overlay" (mtShowDetailsL %= not))
       (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
@@ -356,10 +385,16 @@ pushInsertNewItemRelToCur go = do
         -- find the new EID below.
         -- SOMEDAY When this is async, we should just wait for the EID to appear in a ModelUpdated
         -- message.
-        modifyModelSync $ insertNewNormalWithNewId uuid attr tgt' go'
-        let eid = EIDNormal uuid
-        mtListL %= scrollListToEID eid
-        return (Continue ())
+        -- The following handles the error when our root was just deleted.
+        -- SOMEDAY handle the error when the root is ok, but the parent below we wanna insert was
+        -- deleted. Currently, nothing happens (which is fine but should be reported)
+        eok <- runExceptT $ modifyModelSync $ insertNewNormalWithNewId uuid attr tgt' go'
+        case eok of
+          Left _err -> return Canceled
+          Right () -> do
+            let eid = EIDNormal uuid
+            mtListL %= scrollListToEID eid
+            return (Continue ())
   pushOverlay (newNodeOverlay "" "New Item") overlayNoop cb
 
 setStatus :: (?actx :: AppContext) => Status -> EventM n MainTree ()
@@ -374,31 +409,36 @@ touchLastStatusModified = withCur $ \cur ->
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx)
      in modifyAttrByEID cur f
 
-cycleNextFilter :: (?actx :: AppContext) => EventM n MainTree ()
+cycleNextFilter :: (?actx :: AppContext) => EventMOrNotFound n MainTree ()
 cycleNextFilter = do
   mtFiltersL %= CList.rotR
   pullNewModel
 
-make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> MainTree
+make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
 make root = makeWithFilters root (CList.fromList defaultFilters)
 
 -- | filters must not be empty.
 makeWithFilters ::
-  (?actx :: AppContext) => EID -> CList.CList Filter -> Model -> AppResourceName -> MainTree
-makeWithFilters root filters model rname =
-  MainTree
-    { mtRoot = root
-    , mtFilters = filters
-    , mtSubtree = subtree
-    , mtList = list
-    , mtResourceName = rname
-    , mtKeymap = keymapToZipper rootKeymap
-    , mtShowDetails = False
-    , mtOverlay = Nothing
-    }
- where
-  subtree = translateAppFilterContext $ runFilter (fromJust $ CList.focus filters) root model
-  list = forestToBrickList (MainListFor rname) $ stForest subtree
+  (?actx :: AppContext) =>
+  EID ->
+  CList.CList Filter ->
+  Model ->
+  AppResourceName ->
+  Either IdNotFoundError MainTree
+makeWithFilters root filters model rname = do
+  subtree <- translateAppFilterContext $ runFilter (fromJust $ CList.focus filters) root model
+  let list = forestToBrickList (MainListFor rname) $ stForest subtree
+  return
+    MainTree
+      { mtRoot = root
+      , mtFilters = filters
+      , mtSubtree = subtree
+      , mtList = list
+      , mtResourceName = rname
+      , mtKeymap = keymapToZipper rootKeymap
+      , mtShowDetails = False
+      , mtOverlay = Nothing
+      }
 
 translateAppFilterContext :: (?actx :: AppContext) => ((?fctx :: FilterContext) => a) -> a
 translateAppFilterContext x =
@@ -674,24 +714,26 @@ instance AppComponent MainTree () () where
         (VtyEvent e) -> handleFallback e
         _miscEvents -> return (Continue ())
    where
-    wrappingActions actMain = do
+    wrappingActions actMain = notFoundToAER $ do
       -- <<Global updates that should happen even if there's an active overlay would go here.>>
       case ev of
         (AppEvent (ModelUpdated _)) -> pullNewModel
         _ -> return ()
 
       -- Now pass the event to either the overlay or to our main function.
-      mol <- use mtOverlayL
-      case mol of
-        Just (Overlay ol onContinue onConfirm) -> do
-          -- SOMEDAY all of this wants some abstraction I think
-          (ol', res) <- nestEventM ol (handleEvent ev)
-          mtOverlayL .= Just (Overlay ol' onContinue onConfirm)
-          case res of
-            Continue x -> onContinue x
-            Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
-            Canceled -> mtOverlayL .= Nothing >> return (Continue ())
-        Nothing -> actMain
+      -- (these don't raise errors anymore)
+      lift $ do
+        mol <- use mtOverlayL
+        case mol of
+          Just (Overlay ol onContinue onConfirm) -> do
+            -- SOMEDAY all of this wants some abstraction I think
+            (ol', res) <- nestEventM ol (handleEvent ev)
+            mtOverlayL .= Just (Overlay ol' onContinue onConfirm)
+            case res of
+              Continue x -> onContinue x
+              Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
+              Canceled -> mtOverlayL .= Nothing >> return (Continue ())
+          Nothing -> actMain
     handleFallback e = do
       zoom mtListL $ L.handleListEventVi (const $ return ()) e
       return (Continue ())
@@ -718,13 +760,17 @@ mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _))
 mtCurWithAttr :: MainTree -> Maybe LocalIdLabel
 mtCurWithAttr (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, attr)) -> (i, attr))
 
-withCur ::
-  (?actx :: AppContext) => (EID -> EventM n MainTree ()) -> EventM n MainTree ()
-withCur go = do
+withCurOrElse ::
+  (?actx :: AppContext) => EventM n MainTree a -> (EID -> EventM n MainTree a) -> EventM n MainTree a
+withCurOrElse dflt go = do
   s <- get
   case mtCur s of
     Just cur -> go cur
-    Nothing -> return ()
+    Nothing -> dflt
+
+withCur ::
+  (?actx :: AppContext) => (EID -> EventM n MainTree ()) -> EventM n MainTree ()
+withCur = withCurOrElse (return ())
 
 withCurWithAttr ::
   (LocalIdLabel -> EventM n MainTree ()) -> EventM n MainTree ()
@@ -773,7 +819,8 @@ moveCurRelativeDynamic dgo = withCur $ \cur -> do
 modifyModelSync ::
   (?actx :: AppContext) =>
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
-  EventM n MainTree ()
+  -- This is `ExceptT IdNotFoundError (EventM n MainTree) ()` but I'm not using it that much.
+  EventMOrNotFound n MainTree ()
 modifyModelSync f = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
@@ -782,10 +829,9 @@ modifyModelSync f = do
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
     modifyModelOnServer (acModelServer ?actx) f
     getModel (acModelServer ?actx)
-  let subtree = translateAppFilterContext $ runFilter filter_ mtRoot model'
+  subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
-  return ()
 
 -- | Modify the model asynchronously, i.e., *without* pulling a new model immediately. We get a
 -- 'ModelUpdated' event and will pull a new model then. This is fine for most applications.
@@ -801,15 +847,14 @@ modifyModelAsync ::
   EventM n MainTree ()
 modifyModelAsync f = liftIO $ modifyModelOnServer (acModelServer ?actx) f
 
-pullNewModel :: (?actx :: AppContext) => EventM n MainTree ()
+pullNewModel :: (?actx :: AppContext) => EventMOrNotFound n MainTree ()
 pullNewModel = do
   s@(MainTree {mtRoot, mtList}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ getModel (acModelServer ?actx)
-  let subtree = translateAppFilterContext $ runFilter filter_ mtRoot model'
+  subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
   let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
-  return ()
 
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \(_, eid', _) -> eid' == eid
@@ -833,6 +878,8 @@ mtGoSubtreeFromCur go mt = fromMaybe mt mres
     return $ mt & mtListL %~ scrollListToEID par
 
 -- | Toplevel app resource name, including all contained resources. This is a "cloning" routine.
+--
+-- TODO also handle overlays. To do this, AppComponent needs a function, which is prob a good idea.
 setResourceName :: AppResourceName -> MainTree -> MainTree
 setResourceName rname state =
   state

@@ -111,10 +111,8 @@ main = do
   let appState =
         AppState
           { asContext = actx
-          , asTabs =
-              let rname = Tab 0
-               in let ?actx = actx
-                   in LZ.fromList [(TabTitleFor rname, SomeAppComponent $ MainTree.make Vault model rname)]
+          , -- Set to the default tab upon init action.
+            asTabs = LZ.empty
           , asNextTabID = 1
           , asHelpAlways = False
           , asAttrMapRing = attrMapRing
@@ -231,14 +229,23 @@ eachTabHandleEvent ev = do
 fixEmptyTabs :: EventM AppResourceName AppState ()
 fixEmptyTabs = do
   tabs <- use asTabsL
-  when (LZ.emptyp tabs) pushDefaultTab
- where
-  pushDefaultTab = do
-    actx <- use asContextL
-    model <- liftIO $ getModel (acModelServer actx)
-    let ?actx = actx
-    modify $
-      pushTab (SomeAppComponent . MainTree.make Vault model)
+  when (LZ.emptyp tabs) setDefaultTab
+
+-- | Only valid when there are no tabs. Then sets the default tabs (or exits if something is *really* wrong)
+setDefaultTab :: EventM AppResourceName AppState ()
+setDefaultTab = do
+  actx <- use asContextL
+  model <- liftIO $ getModel (acModelServer actx)
+  let ?actx = actx
+  rname <- getFreshTabRName
+  let emt = MainTree.make Vault model rname
+  case emt of
+    Left _err -> do
+      liftIO $ glogL ERROR "'Vault' node not found. Something is horribly wrong. Exiting."
+      -- TODO use a proper exit code, not 0. (needs to be part of AppState I think)
+      halt
+    Right mt -> do
+      asTabsL .= (LZ.fromList [(TabTitleFor rname, SomeAppComponent mt)])
 
 activeTabL :: Lens' AppState SomeAppComponent
 -- There's probably some clever way to do this but idk. It's also trivial rn.
@@ -252,6 +259,13 @@ pushTab mk state@(AppState {asTabs, asNextTabID}) = state {asTabs = asTabs', asN
  where
   rname = Tab asNextTabID
   asTabs' = LZ.insert (TabTitleFor rname, mk rname) . LZ.right $ asTabs
+
+-- | You prob wanna use 'pushTab' instead.
+getFreshTabRName :: EventM AppResourceName AppState AppResourceName
+getFreshTabRName = do
+  tabID <- use asNextTabIDL
+  asNextTabIDL += 1
+  return $ Tab tabID
 
 -- | Remove active tab and go to previous or else next. You must call 'fixEmptyTabs' afterwards!
 popTab :: AppState -> AppState
@@ -282,12 +296,14 @@ myChooseAttrMap state = case CList.focus $ asAttrMapRing state of
   -- Only relevant when there are no themes. This shouldn't really happen.
   Nothing -> error "No themes?!?"
 
-myAppStartEvent :: EventM n s ()
+myAppStartEvent :: EventM AppResourceName AppState ()
 myAppStartEvent = do
   -- Set up mouse support. For some reason we have to do this here, not in 'main'.
   -- See Brick's `MouseDemo.hs`
   vty <- getVtyHandle
   liftIO $ Vty.setMode (Vty.outputIface vty) Vty.Mouse True
+
+  setDefaultTab
 
 app :: App AppState AppMsg AppResourceName
 app =

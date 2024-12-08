@@ -244,14 +244,14 @@ data Filter = Filter
 instance Show Filter where
   show f = "<Filter " ++ fiName f ++ ">"
 
-runFilter :: (?fctx :: FilterContext) => Filter -> EID -> Model -> Subtree
-runFilter (Filter {fiIncludeDone, fiPostprocess}) i m =
-  -- TODO this error is bad and creates a crash when multiple tabs are open and the root is deleted.
-  let st0 = fromRight (error "root EID not found") $ modelGetSubtreeBelow i m
-      -- TODO apply fiIncludeDone *before* deriving local attrs!
-      st1 = (if fiIncludeDone then id else filterSubtree pNotDone) st0
-      st2 = (stForestL %~ fiPostprocess) $ st1
-   in st2
+runFilter :: (?fctx :: FilterContext) => Filter -> EID -> Model -> Either IdNotFoundError Subtree
+runFilter (Filter {fiIncludeDone, fiPostprocess}) i m = do
+  st0 <- modelGetSubtreeBelow i m
+  let
+    -- TODO apply fiIncludeDone *before* deriving local attrs!
+    st1 = (if fiIncludeDone then id else filterSubtree pNotDone) st0
+    st2 = (stForestL %~ fiPostprocess) $ st1
+  return st2
  where
   pNotDone ((Attr {status}, _), _) = status /= Done
 

@@ -3,6 +3,7 @@ module Srtd.Util where
 
 import Control.Applicative (liftA2, (<|>))
 import Control.Monad ((<=<))
+import Control.Monad.Except
 import Data.List (isPrefixOf)
 import Data.Tree (Forest, Tree (..), foldTree)
 import Lens.Micro.Platform (Lens')
@@ -176,3 +177,9 @@ forestFlattenPostorder = concatMap goTree
 newtype ALens' a b = ALens' {runALens' :: Lens' a b}
 
 -- We could define instances for Category and a combo function with Lens', but we don't use it rn.
+
+-- * Monad helpers
+
+-- | Lift an Either value into the monad computation of an 'ExceptT'.
+pureET :: (Monad m) => Either e a -> ExceptT e m a
+pureET ev = (ExceptT $ return ev)
