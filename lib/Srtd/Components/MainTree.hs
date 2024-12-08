@@ -121,6 +121,7 @@ mtFilter = fromJust . CList.focus . mtFilters
 defaultFilters :: [Filter]
 defaultFilters =
   [ f_notDone
+  , f_deepByDates
   , f_flatByDates
   , f_all
   ]

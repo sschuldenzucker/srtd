@@ -16,6 +16,7 @@ import Srtd.Attr
 import Srtd.Data.IdTree
 import Srtd.Data.TreeZipper
 import Srtd.ModelJSON qualified as ModelJSON
+import Srtd.Todo
 import Srtd.Util (
   chooseMax,
   chooseMin,
@@ -302,6 +303,26 @@ f_flatByDates =
     cmp llabel1 llabel2 =
       mconcat
         [ (compareAttrDates tz `on` llImpliedDates) llabel1 llabel2
+        , comparing llActionability llabel1 llabel2
+        ]
+    tz = fcTimeZone ?fctx
+
+-- | Hierarchy-preserving non-done child nodes but deep-sort like `f_flatByDates`
+f_deepByDates :: Filter
+f_deepByDates =
+  Filter
+    { fiName = "by simple urgency"
+    , fiIncludeDone = False
+    , fiPostprocess = go
+    }
+ where
+  -- Need to mention the implicit param explicitly here for some reason, o/w it's not seeing it.
+  go :: (?fctx :: FilterContext) => STForest -> STForest
+  go = sortIdForestBy cmp True
+   where
+    cmp llabel1 llabel2 =
+      mconcat
+        [ (compareAttrDates tz `on` llEarliestImpliedOrChildDates tz) llabel1 llabel2
         , comparing llActionability llabel1 llabel2
         ]
     tz = fcTimeZone ?fctx

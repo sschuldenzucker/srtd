@@ -20,7 +20,7 @@ import Data.UUID qualified as UUID
 import GHC.Generics
 import Lens.Micro.Platform
 import Srtd.Dates (DateOrTime, DateRule (..), compareDateOrTime, dateOrTimeToUTCTime)
-import Srtd.Util (compareByNothingLast, unionMaybeWith)
+import Srtd.Util (chooseMin, compareByNothingLast, unionMaybeWith)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- * Node ID (EID)
@@ -377,6 +377,12 @@ llActionability (label, ldattr) = case (glActionability label, ldParentActionabi
 
 llImpliedDates :: LocalLabel -> AttrDates
 llImpliedDates = daImpliedDates . snd . fst
+
+llEarliestChildDates :: ((a, DerivedAttr), b) -> AttrDates
+llEarliestChildDates = daEarliestDates . snd . fst
+
+llEarliestImpliedOrChildDates :: TimeZone -> LocalLabel -> AttrDates
+llEarliestImpliedOrChildDates tz llabel = pointwiseChooseAttrDates chooseMin tz (llImpliedDates llabel) (llEarliestChildDates llabel)
 
 llStatus :: LocalLabel -> Status
 llStatus = status . fst . fst
