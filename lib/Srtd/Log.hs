@@ -11,6 +11,8 @@ import System.Log.Handler (setFormatter)
 import System.Log.Handler.Simple
 import System.Log.Logger hiding (getLogger)
 
+defaultLogLevel = INFO
+
 -- | Setup global "Srtd" logger.
 setupLogger :: IO ()
 setupLogger = do
@@ -25,7 +27,7 @@ setupLogger = do
   let formatter = simpleLogFormatter "[$time $loggername $prio] $msg"
   let fileH' = setFormatter fileH formatter
   updateGlobalLogger rootLoggerName removeHandler
-  updateGlobalLogger rootLoggerName (setLevel DEBUG . addHandler fileH')
+  updateGlobalLogger rootLoggerName (setLevel defaultLogLevel . addHandler fileH')
 
 -- | Log a message using the global logger.
 glogL :: Priority -> String -> IO ()

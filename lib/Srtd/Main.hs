@@ -173,7 +173,7 @@ myHandleEvent :: BrickEvent AppResourceName AppMsg -> EventM AppResourceName App
 myHandleEvent ev = wrappingActions $
   case ev of
     (VtyEvent (EvKey (KChar 'q') [MCtrl])) -> do
-      liftIO (glogL INFO "quitting...")
+      liftIO (glogL DEBUG "quitting...")
       halt
     -- Toggle: Always show overlay. (o/w only at the top level)
     -- TODO I have no idea why Ctrl+/ is registered as Ctrl+_ but here we are.
@@ -206,7 +206,7 @@ myHandleEvent ev = wrappingActions $
     AppState {asContext = actx} <- get
     let ?actx = actx
      in act
-  dbgprint = liftIO $ glogL INFO $ "Received: " ++ show ev
+  dbgprint = liftIO $ glogL DEBUG $ "Received: " ++ show ev
   -- SOMEDAY could also just react to the tick event.
   updateCurrentTime = liftIO getZonedTime >>= assign (asContextL . acZonedTimeL)
 
