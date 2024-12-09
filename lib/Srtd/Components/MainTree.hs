@@ -220,8 +220,7 @@ rootKeymap =
     , (kmLeafA (bind ',') "Prev filter" $ notFoundToAER_ cyclePrevFilter)
     , (kmLeafA (bind '.') "Next filter" $ notFoundToAER_ cycleNextFilter)
     , (kmSub (bind 'd') editDateKeymap)
-    , -- , (kmLeafA_ (bind ' ') "Toggle details overlay" (mtShowDetailsL %= not))
-      (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
+    , (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
     ]
 
 deleteKeymap :: Keymap (AppEventAction MainTree () ())
