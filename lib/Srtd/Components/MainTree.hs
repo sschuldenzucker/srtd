@@ -675,13 +675,8 @@ instance AppComponent MainTree () () where
     -- \*every* event though to keep it usable, and maybe we don't even wanna process Tick in this
     -- way. If it ever matters, manual reload may be better.)
     wrappingActions $ do
-      isTopLevel <- use (mtKeymapL . to kmzIsToplevel)
       listRName <- use (mtListL . L.listNameL)
       case ev of
-        -- Code for keymap. NB this is a bit nasty, having some abstraction here would be good if we need it again.
-        -- We also gotta be a bit careful not to overlap these in principle.
-        (VtyEvent (EvKey KEsc [])) | not isTopLevel -> mtKeymapL %= kmzResetRoot >> return (Continue ())
-        (VtyEvent (EvKey KBS [])) | not isTopLevel -> mtKeymapL %= kmzUp >> return (Continue ())
         -- Map Down to vi j and Up to vi k. This also handles basic mouse wheel scroll if mouse
         -- support is not activated (see Main.hs / brick mouse example)
         -- NB we don't receive these for mouse scroll if mouse support is activated. See below.
@@ -712,13 +707,27 @@ instance AppComponent MainTree () () where
         -- Keymap
         (VtyEvent e@(EvKey key mods)) -> do
           keymap <- use mtKeymapL
+          liftIO $ glogL DEBUG $ "handle a key from keymap"
           case kmzLookup keymap key mods of
-            NotFound -> handleFallback e
+            NotFound -> case ev of
+              -- Code for keymap. We handle this here so that we can bind Backspace in a submap
+              -- (and also Esc, though that's a bit too funky for my taste). NB this is a bit nasty,
+              -- having some abstraction here would be good if we need it again.
+              -- SOMEDAY slightly inconsistent: if the user should expect BS to always go up, we
+              -- shouldn't bind it to anything else.
+              (VtyEvent (EvKey KEsc [])) -> mtKeymapL %= kmzResetRoot >> return (Continue ())
+              (VtyEvent (EvKey KBS [])) -> mtKeymapL %= kmzUp >> return (Continue ())
+              _ -> do
+                liftIO $ glogL DEBUG "handle fallback"
+                handleFallback e
             LeafResult act nxt -> do
+              liftIO $ glogL DEBUG "handle leaf"
               res <- runAppEventAction act
               mtKeymapL .= nxt
               return res
-            SubmapResult sm -> mtKeymapL .= sm >> return (Continue ())
+            SubmapResult sm -> do
+              liftIO $ glogL DEBUG "handle submap"
+              mtKeymapL .= sm >> return (Continue ())
         (VtyEvent e) -> handleFallback e
         _miscEvents -> return (Continue ())
    where
