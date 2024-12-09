@@ -34,7 +34,7 @@ import Srtd.ModelSaver (startModelSaver)
 import Srtd.ModelServer
 import Srtd.Ticker
 import System.Directory (listDirectory)
-import System.Exit (exitFailure)
+import System.Exit (ExitCode (..), exitFailure, exitWith)
 import System.FilePath
 import Toml qualified
 
@@ -52,6 +52,9 @@ data AppState = AppState
   -- ^ "Unique ID" for the next tab being opened, for resource names.
   , asHelpAlways :: Bool
   , asAttrMapRing :: CList.CList (String, AttrMap)
+  , asExitCode :: ExitCode
+  -- ^ Used to pass the desired shell exit code back through the event loop. Only set in combination
+  -- with 'halt'.
   }
 
 suffixLenses ''AppState
@@ -115,6 +118,7 @@ main = do
           , asNextTabID = 1
           , asHelpAlways = False
           , asAttrMapRing = attrMapRing
+          , asExitCode = ExitSuccess
           }
 
   -- let buildVty = Graphics.Vty.CrossPlatform.mkVty Graphics.Vty.Config.defaultConfig
@@ -126,8 +130,12 @@ main = do
   --     (Just appChan)
   --     app
   --     appState
-  void $ customMainWithDefaultVty (Just appChan) app appState
-  glogL INFO "App did quit normally"
+  (s, _vty) <- customMainWithDefaultVty (Just appChan) app appState
+  let exitCode = asExitCode s
+  case exitCode of
+    ExitSuccess -> glogL INFO "App did quit normally"
+    ExitFailure c -> glogL ERROR ("App did quit with error: exit code " ++ show c)
+  exitWith exitCode
 
 myAppDraw :: AppState -> [Widget AppResourceName]
 myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
@@ -241,7 +249,7 @@ setDefaultTab = do
   case emt of
     Left _err -> do
       liftIO $ glogL ERROR "'Vault' node not found. Something is horribly wrong. Exiting."
-      -- TODO use a proper exit code, not 0. (needs to be part of AppState I think)
+      asExitCodeL .= ExitFailure 1
       halt
     Right mt -> do
       asTabsL .= (LZ.fromList [(TabTitleFor rname, SomeAppComponent mt)])
