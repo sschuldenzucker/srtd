@@ -221,6 +221,7 @@ rootKeymap =
     , (kmLeafA (bind '.') "Next filter" $ notFoundToAER_ cycleNextFilter)
     , (kmSub (bind 'd') editDateKeymap)
     , (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
+    , (kmSub (bind 'g') goKeymap)
     ]
 
 deleteKeymap :: Keymap (AppEventAction MainTree () ())
@@ -337,6 +338,34 @@ _mkSortKeymap withFunc name =
     (True, True) -> EQ
     _ -> compare (glActionability l1) (glActionability l2)
   isNote l = (status . fst $ l) == None && glActionability l == None
+
+goKeymap :: Keymap (AppEventAction MainTree () ())
+goKeymap =
+  kmMake
+    "Go to"
+    -- We need to redefine 'g' b/c we just overwrote the default binding from list.
+    [ kmLeafA_ (bind 'g') "Top" $ mtListL %= L.listMoveToBeginning
+    , -- For completeness
+      kmLeafA_ (bind 'e') "End" $ mtListL %= L.listMoveToEnd
+    , ( kmLeafA (binding KBS []) "De-hoist, keep pos" $ do
+          -- SOMEDAY some code duplication vs the other de-hoist.
+          s <- get
+          case s ^. mtSubtreeL . breadcrumbsL of
+            [] -> return (Continue ())
+            (parent, _) : _ -> do
+              rname <- mtResourceName <$> get
+              model <- liftIO $ getModel (acModelServer ?actx)
+              filters <- mtFilters <$> get
+              let eres = makeWithFilters parent filters model rname
+              -- This is to stay at the current position, but if the subtree is empty, it
+              -- should still do something for ergonomics, so we instead behave like the regular
+              -- "de-hoist".
+              let tgt = fromMaybe (mtRoot s) (mtCur s)
+              case eres of
+                Left _err -> return Canceled
+                Right res -> put (res & mtListL %~ scrollListToEID tgt) >> return (Continue ())
+      )
+    ]
 
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String
