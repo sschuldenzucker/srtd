@@ -25,7 +25,7 @@ setupLogger = do
   let formatter = simpleLogFormatter "[$time $loggername $prio] $msg"
   let fileH' = setFormatter fileH formatter
   updateGlobalLogger rootLoggerName removeHandler
-  updateGlobalLogger rootLoggerName (setLevel INFO . addHandler fileH')
+  updateGlobalLogger rootLoggerName (setLevel DEBUG . addHandler fileH')
 
 -- | Log a message using the global logger.
 glogL :: Priority -> String -> IO ()
