@@ -391,6 +391,8 @@ searchKeymap =
         )
       , (kmLeafA_ (bind 'n') "Next match" $ searchForRxAction Forward False)
       , (kmLeafA_ (bind 'N') "Prev match" $ searchForRxAction Backward False)
+      , (kmLeafA_ (bind 'l') "Clear" $ mtSearchRxL .= Nothing)
+      , (kmLeafA_ (ctrl 'l') "Clear" $ mtSearchRxL .= Nothing)
       -- TODO next match same level. Use the list (checking breadcrumbs and level) or use the tree?
       ]
 
