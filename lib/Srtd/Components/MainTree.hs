@@ -382,9 +382,11 @@ searchKeymap =
       [ ( kmLeafA_ (bind '/') "Search" $
             let
               onContinue = aerVoid . assign mtSearchRxL
-              onConfirm rx = do
+              onConfirm (rx, ctype) = do
                 assign mtSearchRxL (Just rx)
-                searchForRxAction Forward True
+                case ctype of
+                  RegularConfirm -> searchForRxAction Forward True
+                  AltConfirm -> searchForRxSiblingAction Forward
                 aerContinue
              in
               pushOverlay regexSearchEntryOverlay onContinue onConfirm
