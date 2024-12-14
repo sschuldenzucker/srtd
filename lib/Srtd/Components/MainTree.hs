@@ -146,12 +146,11 @@ rootKeymap =
           case mtCurWithAttr state of
             Just (cur, ((curAttr, _), _)) -> do
               let oldName = name curAttr
-              let cb name' = do
+              let cb name' = aerVoid $ do
                     let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
                     modifyModelAsync $ modifyAttrByEID cur f
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
                     mtListL %= scrollListToEID cur
-                    aerContinue
               pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb
             Nothing -> return ()
       )
@@ -260,11 +259,10 @@ editDateKeymap =
       ]
  where
   mkDateEditShortcut (kb, label, l0) = kmLeafA_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
-    let cb date' = do
+    let cb date' = aerVoid $ do
           let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runALens' l0 .~ date')
           modifyModelAsync $ modifyAttrByEID cur f
           mtListL %= scrollListToEID cur
-          aerContinue
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
      in pushOverlay mkDateEdit overlayNoop cb
 
@@ -715,9 +713,7 @@ instance AppComponent MainTree () () where
         (VtyEvent (EvKey KUp [])) -> handleEvent (VtyEvent (EvKey (KChar 'k') []))
         -- Mouse support
         (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
-          | rname' == listRName -> do
-              mtListL %= L.listMoveTo rown
-              aerContinue
+          | rname' == listRName -> aerVoid $ mtListL %= L.listMoveTo rown
         -- SOMEDAY ideally, we could actually scroll the list while keeping the selection the same
         -- (except if it would go out of bounds), but Brick lists don't provide that feature.
         -- Implementing this may be related to implementing a "scrolloff" type feature later. I
@@ -725,13 +721,9 @@ instance AppComponent MainTree () () where
         -- how it remembers its scroll position tbh. Something with viewports and Brick's 'visible'.
         -- I *think* we can just append the right visibility request (from Brick.Types.Internal).
         (MouseDown rname' BScrollDown [] _)
-          | rname' == listRName -> do
-              mtListL %= L.listMoveBy 3
-              aerContinue
+          | rname' == listRName -> aerVoid $ mtListL %= L.listMoveBy 3
         (MouseDown rname' BScrollUp [] _)
-          | rname' == listRName -> do
-              mtListL %= L.listMoveBy (-3)
-              aerContinue
+          | rname' == listRName -> aerVoid $ mtListL %= L.listMoveBy (-3)
         -- zoom mtListL $ L.listMoveByPages (0.3 :: Double)
         -- Keymap
         (VtyEvent e@(EvKey key mods)) -> do
@@ -744,8 +736,8 @@ instance AppComponent MainTree () () where
               -- having some abstraction here would be good if we need it again.
               -- SOMEDAY slightly inconsistent: if the user should expect BS to always go up, we
               -- shouldn't bind it to anything else.
-              (VtyEvent (EvKey KEsc [])) -> mtKeymapL %= kmzResetRoot >> aerContinue
-              (VtyEvent (EvKey KBS [])) -> mtKeymapL %= kmzUp >> aerContinue
+              (VtyEvent (EvKey KEsc [])) -> aerVoid $ mtKeymapL %= kmzResetRoot
+              (VtyEvent (EvKey KBS [])) -> aerVoid $ mtKeymapL %= kmzUp
               _ -> do
                 liftIO $ glogL DEBUG "handle fallback"
                 handleFallback e
@@ -756,7 +748,8 @@ instance AppComponent MainTree () () where
               return res
             SubmapResult sm -> do
               liftIO $ glogL DEBUG "handle submap"
-              mtKeymapL .= sm >> aerContinue
+              mtKeymapL .= sm
+              aerContinue
         (VtyEvent e) -> handleFallback e
         _miscEvents -> aerContinue
    where
