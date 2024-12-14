@@ -230,6 +230,8 @@ rootKeymap =
     , (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
     , (kmSub (bind 'g') goKeymap)
     , (kmSub (bind 'f') searchKeymap)
+    -- SOMEDAY bind '/' to directly go to search. A bit of duplication b/c ESC should *not* go to
+    -- the submenu in this case.
     ]
 
 deleteKeymap :: Keymap (AppEventAction MainTree () ())
@@ -372,6 +374,7 @@ goKeymap =
       )
     ]
 
+searchKeymap :: Keymap (AppEventAction MainTree () b)
 searchKeymap =
   sticky $
     kmMake
@@ -388,7 +391,7 @@ searchKeymap =
         )
       , (kmLeafA_ (bind 'n') "Next match" $ searchForRxAction Forward False)
       , (kmLeafA_ (bind 'N') "Prev match" $ searchForRxAction Backward False)
-      -- TODO next match same level
+      -- TODO next match same level. Use the list (checking breadcrumbs and level) or use the tree?
       ]
 
 -- SOMEDAY these should be moved to another module.
@@ -568,6 +571,9 @@ renderRow
     statusW = renderStatus sel status (llActionability llabel)
     nameW = case mrx of
       Nothing -> strTruncateAvailable name
+      -- SOMEDAY kinda bad performance that we re-match on every draw. If this becomes an issue, we
+      -- could cache 'chunks' as part of the list. (the list entries would have a different data
+      -- type then, needs some work but is fine)
       Just rx ->
         -- SOMEDAY this shouldn't be necessary; we should always use Text.
         let tname = T.pack name
