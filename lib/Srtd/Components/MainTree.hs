@@ -481,7 +481,6 @@ translateAppFilterContext x =
    in x
 
 forestToBrickList :: AppResourceName -> STForest -> MyList
--- TODO when we have multiple tabs, MainList should be replaced by something that will actually be unique (take as an argument)
 forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
  where
   contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels . idForest $ forest
