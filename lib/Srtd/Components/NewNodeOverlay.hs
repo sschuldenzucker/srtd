@@ -38,7 +38,7 @@ instance AppComponent NewNodeOverlay () String where
       return $ Confirmed res
     _ -> do
       zoom nnEditor $ handleEditorEvent ev
-      return $ Continue ()
+      aerContinue
 
   componentKeyDesc self = KeyDesc (_nnTitle self) True [("esc", "cancel"), ("enter", "confirm")]
 

@@ -65,7 +65,7 @@ type EventMOrNotFound n s a = ExceptT IdNotFoundError (EventM n s) a
 
 -- | Convert exception handling.
 notFoundToAER_ :: EventMOrNotFound n s () -> EventM n s (AppEventReturn () ())
-notFoundToAER_ act = notFoundToAER $ act >> return (Continue ())
+notFoundToAER_ = notFoundToAER . aerVoid
 
 -- | Merge exception handling.
 --
@@ -92,7 +92,7 @@ data Overlay = forall s a b. (AppComponent s a b) => Overlay
 
 -- | Helper to use for 'olOnContinue' or 'olOnConfirm' when you want to ignore these events.
 overlayNoop :: (Monad m) => p -> m (AppEventReturn () b)
-overlayNoop _ = return (Continue ())
+overlayNoop _ = aerContinue
 
 data MainTree = MainTree
   { mtRoot :: EID
@@ -151,7 +151,7 @@ rootKeymap =
                     modifyModelAsync $ modifyAttrByEID cur f
                     -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
                     mtListL %= scrollListToEID cur
-                    return (Continue ())
+                    aerContinue
               pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb
             Nothing -> return ()
       )
@@ -189,19 +189,19 @@ rootKeymap =
     , -- (kmSub (bind 'm') moveSingleModeKeymap),
       (kmSub (bind 'M') moveSubtreeModeKeymap)
     , (kmSub (bind 'D') deleteKeymap)
-    , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse (return $ Continue ()) $ \cur -> do
+    , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse aerContinue $ \cur -> do
           rname <- mtResourceName <$> get
           model <- liftIO $ getModel (acModelServer ?actx)
           filters <- mtFilters <$> get
           let eres = makeWithFilters cur filters model rname
           case eres of
             Left _err -> return Canceled
-            Right res -> put res >> return (Continue ())
+            Right res -> put res >> aerContinue
       )
     , ( kmLeafA (binding KBS []) "De-hoist" $ do
           s <- get
           case s ^. mtSubtreeL . breadcrumbsL of
-            [] -> return (Continue ())
+            [] -> aerContinue
             (parent, _) : _ -> do
               rname <- mtResourceName <$> get
               model <- liftIO $ getModel (acModelServer ?actx)
@@ -209,7 +209,7 @@ rootKeymap =
               let eres = makeWithFilters parent filters model rname
               case eres of
                 Left _err -> return Canceled
-                Right res -> put (res & mtListL %~ scrollListToEID (mtRoot s)) >> return (Continue ())
+                Right res -> put (res & mtListL %~ scrollListToEID (mtRoot s)) >> aerContinue
       )
     , (kmSub (bind ';') sortKeymap)
     , (kmLeafA_ (bind 'h') "Go to parent" (modify (mtGoSubtreeFromCur goParent)))
@@ -264,7 +264,7 @@ editDateKeymap =
           let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runALens' l0 .~ date')
           modifyModelAsync $ modifyAttrByEID cur f
           mtListL %= scrollListToEID cur
-          return $ Continue ()
+          aerContinue
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
      in pushOverlay mkDateEdit overlayNoop cb
 
@@ -351,7 +351,7 @@ goKeymap =
           -- SOMEDAY some code duplication vs the other de-hoist.
           s <- get
           case s ^. mtSubtreeL . breadcrumbsL of
-            [] -> return (Continue ())
+            [] -> aerContinue
             (parent, _) : _ -> do
               rname <- mtResourceName <$> get
               model <- liftIO $ getModel (acModelServer ?actx)
@@ -363,7 +363,7 @@ goKeymap =
               let tgt = fromMaybe (mtRoot s) (mtCur s)
               case eres of
                 Left _err -> return Canceled
-                Right res -> put (res & mtListL %~ scrollListToEID tgt) >> return (Continue ())
+                Right res -> put (res & mtListL %~ scrollListToEID tgt) >> aerContinue
       )
     ]
 
@@ -426,7 +426,7 @@ pushInsertNewItemRelToCur go = do
           Right () -> do
             let eid = EIDNormal uuid
             mtListL %= scrollListToEID eid
-            return (Continue ())
+            aerContinue
   pushOverlay (newNodeOverlay "" "New Item") overlayNoop cb
 
 setStatus :: (?actx :: AppContext) => Status -> EventM n MainTree ()
@@ -717,7 +717,7 @@ instance AppComponent MainTree () () where
         (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
           | rname' == listRName -> do
               mtListL %= L.listMoveTo rown
-              return (Continue ())
+              aerContinue
         -- SOMEDAY ideally, we could actually scroll the list while keeping the selection the same
         -- (except if it would go out of bounds), but Brick lists don't provide that feature.
         -- Implementing this may be related to implementing a "scrolloff" type feature later. I
@@ -727,11 +727,11 @@ instance AppComponent MainTree () () where
         (MouseDown rname' BScrollDown [] _)
           | rname' == listRName -> do
               mtListL %= L.listMoveBy 3
-              return (Continue ())
+              aerContinue
         (MouseDown rname' BScrollUp [] _)
           | rname' == listRName -> do
               mtListL %= L.listMoveBy (-3)
-              return (Continue ())
+              aerContinue
         -- zoom mtListL $ L.listMoveByPages (0.3 :: Double)
         -- Keymap
         (VtyEvent e@(EvKey key mods)) -> do
@@ -744,8 +744,8 @@ instance AppComponent MainTree () () where
               -- having some abstraction here would be good if we need it again.
               -- SOMEDAY slightly inconsistent: if the user should expect BS to always go up, we
               -- shouldn't bind it to anything else.
-              (VtyEvent (EvKey KEsc [])) -> mtKeymapL %= kmzResetRoot >> return (Continue ())
-              (VtyEvent (EvKey KBS [])) -> mtKeymapL %= kmzUp >> return (Continue ())
+              (VtyEvent (EvKey KEsc [])) -> mtKeymapL %= kmzResetRoot >> aerContinue
+              (VtyEvent (EvKey KBS [])) -> mtKeymapL %= kmzUp >> aerContinue
               _ -> do
                 liftIO $ glogL DEBUG "handle fallback"
                 handleFallback e
@@ -756,9 +756,9 @@ instance AppComponent MainTree () () where
               return res
             SubmapResult sm -> do
               liftIO $ glogL DEBUG "handle submap"
-              mtKeymapL .= sm >> return (Continue ())
+              mtKeymapL .= sm >> aerContinue
         (VtyEvent e) -> handleFallback e
-        _miscEvents -> return (Continue ())
+        _miscEvents -> aerContinue
    where
     wrappingActions actMain = notFoundToAER $ do
       -- <<Global updates that should happen even if there's an active overlay would go here.>>
@@ -778,11 +778,11 @@ instance AppComponent MainTree () () where
             case res of
               Continue x -> onContinue x
               Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
-              Canceled -> mtOverlayL .= Nothing >> return (Continue ())
+              Canceled -> mtOverlayL .= Nothing >> aerContinue
           Nothing -> actMain
     handleFallback e = do
       zoom mtListL $ L.handleListEventVi (const $ return ()) e
-      return (Continue ())
+      aerContinue
 
   componentKeyDesc s = case mtOverlay s of
     Nothing -> kmzDesc . mtKeymap $ s

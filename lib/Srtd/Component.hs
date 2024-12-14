@@ -157,4 +157,13 @@ kmLeafA_ ::
   Text ->
   ((?actx :: AppContext) => EventM AppResourceName s ()) ->
   (Binding, KeymapItem (AppEventAction s () b))
-kmLeafA_ b n x = kmLeafA b n (x >> return (Continue ()))
+-- NB this is one of the few cases where we can't make this point-free b/c the definition of
+-- 'aerVoid' doesn't include the `?actx` constraint.
+kmLeafA_ b n x = kmLeafA b n (aerVoid x)
+
+aerContinue :: (Monad m) => m (AppEventReturn () b)
+aerContinue = return $ Continue ()
+
+-- | Variant of 'void' for the (common) case where there's no intermediate result.
+aerVoid :: (Monad m) => m a -> m (AppEventReturn () b)
+aerVoid act = act >> aerContinue

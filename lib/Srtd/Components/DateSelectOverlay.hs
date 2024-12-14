@@ -47,7 +47,7 @@ keymap =
         case mv of
           -- We do *nothing* if we the current date is not valid! The user can't confirm then (I
           -- think this is the expected interaction).
-          Nothing -> return $ Continue ()
+          Nothing -> aerContinue
           Just v -> return $ Confirmed (Just v)
     , kmLeafA (ctrl 'd') "Delete" (return $ Confirmed Nothing)
     ]
@@ -87,7 +87,7 @@ instance AppComponent DateSelectOverlay () (Maybe DateOrTime) where
       zoom dsEditorL $ handleEditorEvent ev'
       text <- (T.intercalate "\n" . getEditContents) <$> use dsEditorL
       dsValueL .= parseInterpretHumanDateOrTime text (acZonedTime ?actx)
-      return $ Continue ()
+      aerContinue
 
   componentKeyDesc self = kmzDesc keymapZipper & kdNameL .~ (dsTitle self)
 
