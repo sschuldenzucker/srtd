@@ -396,6 +396,11 @@ llDates = dates . fst . fst
 localIdLabel2IdLabel :: LocalIdLabel -> IdLabel
 localIdLabel2IdLabel = second fst
 
+-- SOMEDAY all these accessors tell me that we should prob make LocalLabel etc. actual data structures instead of tuples.
+
+llBreadcrumbs :: LocalLabel -> [LocalIdLabel]
+llBreadcrumbs = ldBreadcrumbs . snd
+
 -- SOMEDAY these unused?
 
 llEarliestChildAutodates :: LocalLabel -> AttrAutoDates

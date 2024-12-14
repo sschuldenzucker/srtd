@@ -7,7 +7,7 @@ module Srtd.Components.MainTree (MainTree (..), make) where
 
 import Brick hiding (on)
 import Brick.BChan (writeBChan)
-import Brick.Keybindings (bind, ctrl)
+import Brick.Keybindings (bind, ctrl, meta)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
@@ -391,9 +391,11 @@ searchKeymap =
         )
       , (kmLeafA_ (bind 'n') "Next match" $ searchForRxAction Forward False)
       , (kmLeafA_ (bind 'N') "Prev match" $ searchForRxAction Backward False)
+      , (kmLeafA_ (meta 'n') "Next sibling match" $ searchForRxSiblingAction Forward)
+      , -- SOMEDAY it's pretty fucking annoying that we can't bind alt-shift (b/c it's occupied by aerospace)
+        (kmLeafA_ (ctrl 'n') "Next sibling match" $ searchForRxSiblingAction Backward)
       , (kmLeafA_ (bind 'l') "Clear" $ mtSearchRxL .= Nothing)
       , (kmLeafA_ (ctrl 'l') "Clear" $ mtSearchRxL .= Nothing)
-      -- TODO next match same level. Use the list (checking breadcrumbs and level) or use the tree?
       ]
 
 -- SOMEDAY these should be moved to another module.
@@ -523,6 +525,22 @@ searchForRxAction dir curOk = do
   case mrx of
     Nothing -> return ()
     Just rx -> mtListL %= searchForRx dir curOk rx
+
+-- SOMEDAY if this is slow, we might instead go via the tree. Note that this has wrap-around, though.
+searchForRxSiblingAction :: SearchDirection -> EventM n MainTree ()
+searchForRxSiblingAction dir = do
+  mrx <- gets mtSearchRx
+  mCurAttr <- gets mtCurWithAttr
+  st <- gets mtSubtree
+  case (mrx, mCurAttr) of
+    (Just rx, Just (_i, curllabel)) ->
+      let curpar = stParentEID st curllabel
+       in mtListL %= searchForRxNextSibling dir rx curpar st
+    _ -> return ()
+ where
+  searchForRxNextSibling Forward rx curpar st = L.listFindBy (p rx curpar st)
+  searchForRxNextSibling Backward rx curpar st = L.listFindBackwardsBy (p rx curpar st)
+  p rx curpar st itm@(_lvl, _i, llabel) = stParentEID st llabel == curpar && matchesRx rx itm
 
 -- | Usage: `searchForRx direction doNothingIfCurrentMatches`
 searchForRx :: SearchDirection -> Bool -> Regex -> MyList -> MyList

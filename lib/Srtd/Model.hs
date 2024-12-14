@@ -214,6 +214,12 @@ forestGetSubtreeBelow tgt forest = case forestFindTreeWithBreadcrumbs tgt forest
 modelGetSubtreeBelow :: EID -> Model -> Either IdNotFoundError Subtree
 modelGetSubtreeBelow i (Model forest) = forestGetSubtreeBelow i forest
 
+-- | Given a subtree and a LocalLabel that is part of that forest, get the parent. Otherwise, returns a wrong result.
+stParentEID :: Subtree -> LocalLabel -> EID
+stParentEID st llabel = case llBreadcrumbs llabel of
+  ((i, _) : _) -> i
+  [] -> root st
+
 -- * Filters
 
 -- | Context for executing a filter.
