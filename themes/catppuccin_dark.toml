@@ -61,6 +61,11 @@ fg = "text"
 # SOMEDAY maybe a bit too subtle.
 "selected" = {bg = "surface1"}
 
+# And another instance of why the attr system sucks
+# SOMEDAY we may wanna choose something around the overlay/surface colors to optimize readability.
+"text_match" = {bg = "overlay0"}
+"selected.text_match" = {bg = "overlay0"}
+
 "status.next" = {fg = "green"}
 "status.waiting" = {fg = "pink"}
 "status.project" = {fg = "green"}
@@ -136,3 +141,4 @@ fg = "text"
 # "date.remind.today" = {fg = "green"}
 # "date.remind.overdue" = {fg = "yellow"}
 
+"search_entry.error" = {fg = "red"}

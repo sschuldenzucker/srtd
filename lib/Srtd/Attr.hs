@@ -384,6 +384,9 @@ llEarliestChildDates = daEarliestDates . snd . fst
 llEarliestImpliedOrChildDates :: TimeZone -> LocalLabel -> AttrDates
 llEarliestImpliedOrChildDates tz llabel = pointwiseChooseAttrDates chooseMin tz (llImpliedDates llabel) (llEarliestChildDates llabel)
 
+llName :: LocalLabel -> String
+llName = name . fst . fst
+
 llStatus :: LocalLabel -> Status
 llStatus = status . fst . fst
 

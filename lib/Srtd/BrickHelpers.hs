@@ -11,6 +11,16 @@ strTruncateAvailable s =
   let (Widget _ _ r) = (str s)
    in Widget Greedy Fixed r
 
+-- | Generalized version of 'strTruncateAvailable'. Flaky. You *have* to check if this actually
+-- works for your widget!
+--
+-- SOMEDAY unused. I guess many widgets (like hBox) actually have this behavior. Perhaps we can also
+-- replace 'strTruncateAvailable' by just hBox?
+truncateAvailable :: Widget n -> Widget n
+truncateAvailable w =
+  let (Widget _ _ r) = w
+   in Widget Greedy Fixed r
+
 -- | Set widget to a fixed width
 setWidth :: Int -> Widget n -> Widget n
 setWidth w = hLimit w . padRight Max

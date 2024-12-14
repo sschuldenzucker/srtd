@@ -5,8 +5,14 @@ import Control.Applicative (liftA2, (<|>))
 import Control.Monad ((<=<))
 import Control.Monad.Except
 import Data.List (isPrefixOf)
+import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Tree (Forest, Tree (..), foldTree)
 import Lens.Micro.Platform (Lens')
+import Text.Regex.TDFA
+import Text.Regex.TDFA.Text ()
+
+-- Enables regex support for Text
 
 maybeToEither :: a -> Maybe b -> Either a b
 maybeToEither err = maybe (Left err) Right
@@ -47,6 +53,9 @@ chooseMin c x y = if c == GT then y else x
 chooseMax c x y = if c == LT then y else x
 
 -- * List helpers
+
+for :: [a] -> (a -> b) -> [b]
+for = flip map
 
 -- | If you use this for String, that's a good indicator you should probably be using Text instead.
 replacePrefix :: (Eq a) => [a] -> [a] -> [a] -> [a]
@@ -183,3 +192,20 @@ newtype ALens' a b = ALens' {runALens' :: Lens' a b}
 -- | Lift an Either value into the monad computation of an 'ExceptT'.
 pureET :: (Monad m) => Either e a -> ExceptT e m a
 pureET ev = (ExceptT $ return ev)
+
+-- * Regex helpers
+
+regexSplitWithMatches :: Regex -> Text -> [(Bool, Text)]
+regexSplitWithMatches regex input = go 0 matches
+ where
+  matches = getAllMatches (match regex input)
+  go pos [] =
+    if pos < T.length input
+      then [(False, T.drop pos input)]
+      else []
+  go pos ((start, len) : rest) =
+    let before_ = T.take (start - pos) (T.drop pos input)
+        matched = T.take len (T.drop start input)
+     in (if not (T.null before_) then [(False, before_)] else [])
+          ++ [(True, matched)]
+          ++ go (start + len) rest

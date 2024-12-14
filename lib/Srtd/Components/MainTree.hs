@@ -29,6 +29,7 @@ import Lens.Micro.Platform
 import Srtd.AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
+import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
 import Srtd.Component qualified as Component
 import Srtd.Components.Attr (
@@ -40,6 +41,7 @@ import Srtd.Components.Attr (
  )
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
+import Srtd.Components.RegexSearchEntryOverlay
 import Srtd.Components.TestOverlay (newTestOverlay)
 import Srtd.Data.IdTree
 import Srtd.Data.TreeZipper
@@ -48,10 +50,12 @@ import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
 import Srtd.ModelServer
+import Srtd.Todo
 import Srtd.Util
 import System.Hclip (setClipboard)
 import System.Process (callProcess)
-import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), (=~))
+import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), RegexLike (..), (=~))
+import Text.Regex.TDFA.Common (Regex)
 import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 
 type MyList = L.List AppResourceName (Int, EID, LocalLabel)
@@ -94,6 +98,8 @@ data Overlay = forall s a b. (AppComponent s a b) => Overlay
 overlayNoop :: (Monad m) => p -> m (AppEventReturn () b)
 overlayNoop _ = aerContinue
 
+data SearchDirection = Forward | Backward
+
 data MainTree = MainTree
   { mtRoot :: EID
   , mtFilters :: CList.CList Filter
@@ -109,6 +115,8 @@ data MainTree = MainTree
   -- ^ Active overlay, if any. If this is 'Just', events are forwarded to the overlay.
   --
   -- SOMEDAY do I want to make a wrapper for "things that have overlays" that *consistenly* handles everything?
+  , mtSearchRx :: Maybe Regex
+  -- ^ Regex to use for highlighting and search
   }
 
 suffixLenses ''MainTree
@@ -221,6 +229,7 @@ rootKeymap =
     , (kmSub (bind 'd') editDateKeymap)
     , (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
     , (kmSub (bind 'g') goKeymap)
+    , (kmSub (bind 'f') searchKeymap)
     ]
 
 deleteKeymap :: Keymap (AppEventAction MainTree () ())
@@ -363,6 +372,25 @@ goKeymap =
       )
     ]
 
+searchKeymap =
+  sticky $
+    kmMake
+      "Find mode"
+      [ ( kmLeafA_ (bind '/') "Search" $
+            let
+              onContinue = aerVoid . assign mtSearchRxL
+              onConfirm rx = do
+                assign mtSearchRxL (Just rx)
+                searchForRxAction Forward True
+                aerContinue
+             in
+              pushOverlay regexSearchEntryOverlay onContinue onConfirm
+        )
+      , (kmLeafA_ (bind 'n') "Next match" $ searchForRxAction Forward False)
+      , (kmLeafA_ (bind 'N') "Prev match" $ searchForRxAction Backward False)
+      -- TODO next match same level
+      ]
+
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String
 findFirstURL s = listToMaybe $ getAllTextMatches (s =~ urlPattern :: AllTextMatches [] String)
@@ -471,6 +499,7 @@ makeWithFilters root filters model rname = do
       , mtKeymap = keymapToZipper rootKeymap
       , mtShowDetails = False
       , mtOverlay = Nothing
+      , mtSearchRx = Nothing
       }
 
 translateAppFilterContext :: (?actx :: AppContext) => ((?fctx :: FilterContext) => a) -> a
@@ -483,13 +512,37 @@ forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
  where
   contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels . idForest $ forest
 
-withSelAttr :: Bool -> Widget n -> Widget n
-withSelAttr True = withDefAttr selectedItemRowAttr
-withSelAttr False = id
+searchForRxAction dir curOk = do
+  mrx <- use mtSearchRxL
+  case mrx of
+    Nothing -> return ()
+    Just rx -> mtListL %= searchForRx dir curOk rx
 
-renderRow :: ZonedTime -> Bool -> (Int, a, LocalLabel) -> Widget n
+-- | Usage: `searchForRx direction doNothingIfCurrentMatches`
+searchForRx :: SearchDirection -> Bool -> Regex -> MyList -> MyList
+searchForRx _ True rx l | matchesRxCurrent rx l = l
+searchForRx Forward _ rx l = L.listFindBy (matchesRx rx) l
+searchForRx Backward _ rx l = L.listFindBackwardsBy (matchesRx rx) l
+
+matchesRx :: Regex -> (Int, EID, LocalLabel) -> Bool
+matchesRx rx (_lvl, _i, llabel) = matchTest rx (llName llabel)
+
+matchesRxCurrent :: Regex -> MyList -> Bool
+matchesRxCurrent rx l = case L.listSelectedElement l of
+  Just (_ix, (_lvl, _i, llabel)) | matchTest rx (llName llabel) -> True
+  _ -> False
+
+withSelAttr :: Bool -> Widget n -> Widget n
+withSelAttr = withDefAttrIf selectedItemRowAttr
+
+withDefAttrIf :: AttrName -> Bool -> Widget n -> Widget n
+withDefAttrIf a True = withDefAttr a
+withDefAttrIf a False = id
+
+renderRow :: ZonedTime -> Maybe Regex -> Bool -> (Int, a, LocalLabel) -> Widget n
 renderRow
   ztime
+  mrx
   sel
   ( lvl
     , _
@@ -513,7 +566,17 @@ renderRow
     dateW = renderMostUrgentDate ztime sel dates daImpliedDates
     lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
     statusW = renderStatus sel status (llActionability llabel)
-    nameW = strTruncateAvailable name
+    nameW = case mrx of
+      Nothing -> strTruncateAvailable name
+      Just rx ->
+        -- SOMEDAY this shouldn't be necessary; we should always use Text.
+        let tname = T.pack name
+            chunksMatches = regexSplitWithMatches rx tname
+            chunks = for chunksMatches $ \(isMatch, s) -> withDefAttrIf matchedTextAttr isMatch (txt s)
+         in -- NB we don't need 'truncateAvailable' here. I think when it's in an hBox, it automatically does this.
+            hBox chunks
+    -- Just another instance of why the attr system kinda sucks.
+    matchedTextAttr = if sel then attrName "selected" <> attrName "text_match" else attrName "text_match"
 
 -- SOMEDAY also deadline for the root (if any)?
 renderRoot :: ZonedTime -> Label -> [IdLabel] -> Widget n
@@ -679,12 +742,13 @@ instance AppComponent MainTree () () where
       , mtFilters
       , mtShowDetails
       , mtOverlay
+      , mtSearchRx
       } =
       (box, catMaybes [ovl, detailsOvl])
      where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
       headrow = renderRoot now rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
-      box = headrow <=> L.renderList (renderRow now) True mtList
+      box = headrow <=> L.renderList (renderRow now mtSearchRx) True mtList
       detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
         (True, Just illabel) -> Just ("Item Details", renderItemDetails now illabel)
         _ -> Nothing

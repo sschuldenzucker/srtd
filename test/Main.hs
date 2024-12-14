@@ -12,6 +12,8 @@ import Srtd.Util
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Megaparsec as Parsec
+import Text.Regex.TDFA
+import Text.Regex.TDFA.Text (compile)
 
 unit_additionTest :: TestTree
 unit_additionTest =
@@ -217,8 +219,28 @@ testTransformIdForestDownUpRec =
   fst3 (x, _, _) = x
   snd3 (_, x, _) = x
 
+regexTests =
+  testGroup
+    "Test regex helpers"
+    [testRegexSplitWithMatches]
+
+testRegexSplitWithMatches =
+  testGroup
+    "Test regexSplitWithMatches"
+    [ testCase "1" $
+        let (Right rx) = compile defaultCompOpt defaultExecOpt "oo"
+            res = regexSplitWithMatches rx "foofoobar"
+            expd = [(False, "f"), (True, "oo"), (False, "f"), (True, "oo"), (False, "bar")]
+         in res @?= expd
+    , testCase "2" $
+        let (Right rx) = compile (defaultCompOpt {caseSensitive = False}) defaultExecOpt "o+"
+            res = regexSplitWithMatches rx "foOfOoBar"
+            expd = [(False, "f"), (True, "oO"), (False, "f"), (True, "Oo"), (False, "Bar")]
+         in res @?= expd
+    ]
+
 tests :: TestTree
-tests = testGroup "Tests" [testTests, dateTests, treeTests]
+tests = testGroup "Tests" [testTests, dateTests, treeTests, regexTests]
 
 main :: IO ()
 main = defaultMain tests

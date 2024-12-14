@@ -60,6 +60,9 @@ fg = "text"
 # SOMEDAY maybe a bit too subtle.
 "selected" = {bg = "surface1"}
 
+"text_match" = {bg = "overlay0"}
+"selected.text_match" = {bg = "overlay0"}
+
 "status.next" = {fg = "green"}
 "status.waiting" = {fg = "pink"}
 "status.project" = {fg = "green"}
