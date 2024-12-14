@@ -517,6 +517,7 @@ forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
  where
   contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels . idForest $ forest
 
+searchForRxAction :: SearchDirection -> Bool -> EventM n MainTree ()
 searchForRxAction dir curOk = do
   mrx <- use mtSearchRxL
   case mrx of
