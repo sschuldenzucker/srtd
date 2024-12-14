@@ -271,9 +271,7 @@ moveSubtreeModeKeymap =
   sticky $
     kmMake
       "Move subtree mode"
-      -- SOMEDAY clean up repetition
-      -- TODO I think these moveSubtree (and moveSingle) things can take a cleanup with their destinations. What are the most intuitive keys?
-      -- Can we reduce the number of different options? E.g., ("next based on preorder relative to self", "next based on siblings relative to parent") - Prob think about indicating the *target* relative to sth.
+      -- SOMEDAY Can we reduce the number of different options? E.g., ("next based on preorder relative to self", "next based on siblings relative to parent") - Prob think about indicating the *target* relative to sth.
       [ (kmLeafA_ (bind 'j') "Down" $ moveCurRelativeDynamic dtoNextPreorder)
       , (kmLeafA_ (bind 'k') "Up" $ moveCurRelativeDynamic dtoPrevPreorder)
       , (kmLeafA_ (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter)
