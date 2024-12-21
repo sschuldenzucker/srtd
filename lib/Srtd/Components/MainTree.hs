@@ -58,7 +58,25 @@ import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), RegexLike (..), (=~)
 import Text.Regex.TDFA.Common (Regex)
 import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 
-type MyList = L.List AppResourceName (Int, EID, LocalLabel)
+data ListIdLabel = ListIdLabel
+  { lilLvl :: Int
+  , lilEID :: EID
+  , lilLocalLabel :: LocalLabel
+  }
+
+listIdLabel2LocalIdLabel :: ListIdLabel -> LocalIdLabel
+listIdLabel2LocalIdLabel itm = (lilEID itm, lilLocalLabel itm)
+
+instance HasAttr ListIdLabel where getAttr = getAttr . lilLocalLabel
+
+instance HasDerivedAttr ListIdLabel where getDerivedAttr = getDerivedAttr . lilLocalLabel
+
+instance HasLocalDerivedAttr ListIdLabel where
+  getLocalDerivedAttr = getLocalDerivedAttr . lilLocalLabel
+
+instance HasEID ListIdLabel where getEID = lilEID
+
+type MyList = L.List AppResourceName ListIdLabel
 
 -- | Type of computations that update the subtree synchronously (and may fail because of that).
 --
@@ -519,7 +537,7 @@ translateAppFilterContext x =
 forestToBrickList :: AppResourceName -> STForest -> MyList
 forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
  where
-  contents = map (\(lvl, (i, attr)) -> (lvl, i, attr)) $ forestFlattenWithLevels . idForest $ forest
+  contents = map (\(lvl, (i, attr)) -> ListIdLabel lvl i attr) $ forestFlattenWithLevels . idForest $ forest
 
 searchForRxAction :: SearchDirection -> Bool -> EventM n MainTree ()
 searchForRxAction dir curOk = do
@@ -542,20 +560,20 @@ searchForRxSiblingAction dir = do
  where
   searchForRxNextSibling Forward rx curpar st = L.listFindBy (p rx curpar st)
   searchForRxNextSibling Backward rx curpar st = L.listFindBackwardsBy (p rx curpar st)
-  p rx curpar st itm@(_lvl, _i, llabel) = stParentEID st llabel == curpar && matchesRx rx itm
+  p rx curpar st itm = stParentEID st itm == curpar && nameMatchesRx rx itm
 
 -- | Usage: `searchForRx direction doNothingIfCurrentMatches`
 searchForRx :: SearchDirection -> Bool -> Regex -> MyList -> MyList
 searchForRx _ True rx l | matchesRxCurrent rx l = l
-searchForRx Forward _ rx l = L.listFindBy (matchesRx rx) l
-searchForRx Backward _ rx l = L.listFindBackwardsBy (matchesRx rx) l
+searchForRx Forward _ rx l = L.listFindBy (nameMatchesRx rx) l
+searchForRx Backward _ rx l = L.listFindBackwardsBy (nameMatchesRx rx) l
 
-matchesRx :: Regex -> (Int, EID, LocalLabel) -> Bool
-matchesRx rx (_lvl, _i, llabel) = matchTest rx (llName llabel)
+nameMatchesRx :: (RegexLike regex String, HasAttr a) => regex -> a -> Bool
+nameMatchesRx rx itm = matchTest rx (gName itm)
 
 matchesRxCurrent :: Regex -> MyList -> Bool
 matchesRxCurrent rx l = case L.listSelectedElement l of
-  Just (_ix, (_lvl, _i, llabel)) | matchTest rx (llName llabel) -> True
+  Just (_ix, itm) | matchTest rx (gName itm) -> True
   _ -> False
 
 withSelAttr :: Bool -> Widget n -> Widget n
@@ -563,16 +581,18 @@ withSelAttr = withDefAttrIf selectedItemRowAttr
 
 withDefAttrIf :: AttrName -> Bool -> Widget n -> Widget n
 withDefAttrIf a True = withDefAttr a
-withDefAttrIf a False = id
+withDefAttrIf _ False = id
 
-renderRow :: ZonedTime -> Maybe Regex -> Bool -> (Int, a, LocalLabel) -> Widget n
+renderRow :: ZonedTime -> Maybe Regex -> Bool -> ListIdLabel -> Widget n
 renderRow
   ztime
   mrx
   sel
-  ( lvl
-    , _
-    , llabel@( ( Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}
+  -- SOMEDAY these can be made way simpler using universal accessors (`g*`)
+  ( ListIdLabel
+      lvl
+      _
+      llabel@( ( Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}
                 , DerivedAttr {daImpliedDates}
                 )
               , _
@@ -882,10 +902,11 @@ instance AppComponent MainTree () () where
     rootName = name (fst . rootLabel $ mtSubtree)
 
 mtCur :: MainTree -> Maybe EID
-mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, _)) -> i)
+mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, itm) -> lilEID itm)
 
+-- SOMEDAY I think we can just return the ListIdLabel instead.
 mtCurWithAttr :: MainTree -> Maybe LocalIdLabel
-mtCurWithAttr (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, (_, i, attr)) -> (i, attr))
+mtCurWithAttr (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, itm) -> listIdLabel2LocalIdLabel itm)
 
 withCurOrElse ::
   (?actx :: AppContext) => EventM n MainTree a -> (EID -> EventM n MainTree a) -> EventM n MainTree a
@@ -984,13 +1005,13 @@ pullNewModel = do
   put s {mtSubtree = subtree, mtList = list'}
 
 scrollListToEID :: EID -> MyList -> MyList
-scrollListToEID eid = L.listFindBy $ \(_, eid', _) -> eid' == eid
+scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
 -- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the current position.
 resetListPosition :: MyList -> MyList -> MyList
 resetListPosition old new = case L.listSelectedElement old of
   Nothing -> new
-  Just (ix_, (_, tgt, _)) -> case Vec.findIndex (\(_, eid, _) -> eid == tgt) (L.listElements new) of
+  Just (ix_, tgtItm) -> case Vec.findIndex (\itm -> lilEID itm == lilEID tgtItm) (L.listElements new) of
     -- NB this is fine if `new` doesn't actually have `ix` b/c it's too short: then it goes to the end, as desired.
     Nothing -> L.listMoveTo ix_ new
     Just ix' -> L.listMoveTo ix' new
