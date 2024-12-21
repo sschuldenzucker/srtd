@@ -305,10 +305,10 @@ f_flatByDates =
     -- in the (unlikely) case that they have a date themselves, to be sure we're not missing anything
     -- important.
     -- NB this filter could be even more extreme I think. Any amount of filtering we want really.
-    p llabel = llStatus llabel /= None || not (isDatesEmpty $ llDates llabel)
+    p llabel = gStatus llabel /= None || not (isDatesEmpty $ gDates llabel)
     cmp llabel1 llabel2 =
       mconcat
-        [ (compareAttrDates tz `on` llImpliedDates) llabel1 llabel2
+        [ (compareAttrDates tz `on` gImpliedDates) llabel1 llabel2
         , comparing gLocalActionability llabel1 llabel2
         ]
     tz = fcTimeZone ?fctx
@@ -328,7 +328,7 @@ f_deepByDates =
    where
     cmp llabel1 llabel2 =
       mconcat
-        [ (compareAttrDates tz `on` llEarliestImpliedOrChildDates tz) llabel1 llabel2
+        [ (compareAttrDates tz `on` gEarliestImpliedOrChildDates tz) llabel1 llabel2
         , comparing gLocalActionability llabel1 llabel2
         ]
     tz = fcTimeZone ?fctx

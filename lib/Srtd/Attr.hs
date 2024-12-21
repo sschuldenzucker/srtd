@@ -347,47 +347,20 @@ type LocalLabel = (Label, LocalDerivedAttr)
 -- | Label in the local tree of items including the item ID
 type LocalIdLabel = (EID, LocalLabel)
 
--- ** Convenience accessors
-
-llImpliedDates :: LocalLabel -> AttrDates
-llImpliedDates = daImpliedDates . snd . fst
-
-llEarliestChildDates :: ((a, DerivedAttr), b) -> AttrDates
-llEarliestChildDates = daEarliestDates . snd . fst
-
-llEarliestImpliedOrChildDates :: TimeZone -> LocalLabel -> AttrDates
-llEarliestImpliedOrChildDates tz llabel = pointwiseChooseAttrDates chooseMin tz (llImpliedDates llabel) (llEarliestChildDates llabel)
-
-llName :: LocalLabel -> String
-llName = name . fst . fst
-
-llStatus :: LocalLabel -> Status
-llStatus = status . fst . fst
-
-llDates :: LocalLabel -> AttrDates
-llDates = dates . fst . fst
-
+-- | Convenience transformation
 localIdLabel2IdLabel :: LocalIdLabel -> IdLabel
 localIdLabel2IdLabel = second fst
 
--- SOMEDAY all these accessors tell me that we should prob make LocalLabel etc. actual data structures instead of tuples.
-
-llBreadcrumbs :: LocalLabel -> [LocalIdLabel]
-llBreadcrumbs = ldBreadcrumbs . snd
-
--- SOMEDAY these unused?
-
-llEarliestChildAutodates :: LocalLabel -> AttrAutoDates
-llEarliestChildAutodates ((_attr, dattr), _ldattr) = daEarliestAutodates dattr
-
-llLatestChildAutodates :: LocalLabel -> AttrAutoDates
-llLatestChildAutodates ((_attr, dattr), _ldattr) = daLatestAutodates dattr
+-- SOMEDAY make Label and LocalLabel into proper data structures.
 
 -- * Universal Accessors
 
 -- These accessors let us access different attrs from various data structure. Inspired by RIO. A bit of boilerplate though.
 
 -- SOMEDAY Revive the TH module so we can generate these and don't have to keep them up to date.
+
+-- SOMEDAY make the classes hierarchical (so e.g. HasDerivedAttr requires HasAttr) to simplify a bit.
+-- This implies that we can't have the trivial instances, but I think that's fine (we're not using them anyways I think)
 
 class HasAttr a where
   getAttr :: a -> Attr
@@ -503,3 +476,11 @@ gLocalActionability x = case (gGlobalActionability x, gParentActionability x) of
   (WIP, Next) -> WIP
   (a, Project) -> a
   (a, ap) -> max a ap
+
+-- | Implied or earliest child dates, whichever come earlier. This considers both parents and
+-- children and is essentially "when this item has to be paid attention to", either directly or
+-- because their children become relevant.
+--
+-- Note that, in contrast to actionability, these dates are always global.
+gEarliestImpliedOrChildDates :: (HasDerivedAttr a) => TimeZone -> a -> AttrDates
+gEarliestImpliedOrChildDates tz llabel = pointwiseChooseAttrDates chooseMin tz (gImpliedDates llabel) (gEarliestDates llabel)
