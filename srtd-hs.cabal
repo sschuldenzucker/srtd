@@ -103,12 +103,14 @@ library
         safe ^>= 0.3.21,
         composition ^>= 1.0.2.2,
         text-zipper ^>= 0.13,
+        template-haskell ^>= 2.19,
 
     exposed-modules:
         Srtd.Alignment,
         Srtd.AppAttr,
         Srtd.AppTheme,
         Srtd.Attr,
+        Srtd.Attr.TH,
         Srtd.BrickHelpers,
         Srtd.BrickListHelpers,
         Srtd.CmdlineArgs,

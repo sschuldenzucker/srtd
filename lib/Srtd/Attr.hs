@@ -326,23 +326,6 @@ type Label = (Attr, DerivedAttr)
 -- | Label in the global tree of items including the item ID
 type IdLabel = (EID, Label)
 
--- | Treat Nothing and Project statuses as transparent (they consider children) and everything else
--- not (they consider the item only)
-glActionability :: Label -> Status
-glActionability (attr, dattr) = case (status attr, daChildActionability dattr) of
-  (None, a) -> a
-  -- This a little bit inconsistent but we typically *mean* this.
-  -- Con: there's no way to pause a WIP task to next now.
-  -- SOMEDAY handle this using the new "force" status.
-  (Next, WIP) -> WIP
-  (Project, a) -> a
-  -- This makes Open items semi-transparent: they're transparent to Next etc. tasks but also stand
-  -- for their own (likely project blockers). This is *different* from Project nodes, which are
-  -- fully transparent!
-  -- SOMEDAY we could also make it transparent to Later but I'm not right now.
-  (Open, a) | a <= Open -> a
-  (s, _) -> s
-
 -- * Local Derived Attr
 
 -- | Derived properties at the local (per-subtree / per-view) level
@@ -365,15 +348,6 @@ type LocalLabel = (Label, LocalDerivedAttr)
 type LocalIdLabel = (EID, LocalLabel)
 
 -- ** Convenience accessors
-
-llActionability :: LocalLabel -> Status
-llActionability (label, ldattr) = case (glActionability label, ldParentActionability ldattr) of
-  -- SOMEDAY I've seen this patterns a few times now, perhaps abstract it or restructure.
-  -- See also 'addLocalDerivedAttrs' in Model and 'glActionability' above. It's duplicated with there.
-  (a, None) -> a
-  (WIP, Next) -> WIP
-  (a, Project) -> a
-  (a, ap) -> max a ap
 
 llImpliedDates :: LocalLabel -> AttrDates
 llImpliedDates = daImpliedDates . snd . fst
@@ -408,3 +382,124 @@ llEarliestChildAutodates ((_attr, dattr), _ldattr) = daEarliestAutodates dattr
 
 llLatestChildAutodates :: LocalLabel -> AttrAutoDates
 llLatestChildAutodates ((_attr, dattr), _ldattr) = daLatestAutodates dattr
+
+-- * Universal Accessors
+
+-- These accessors let us access different attrs from various data structure. Inspired by RIO. A bit of boilerplate though.
+
+-- SOMEDAY Revive the TH module so we can generate these and don't have to keep them up to date.
+
+class HasAttr a where
+  getAttr :: a -> Attr
+
+gName :: (HasAttr a) => a -> String
+gName = name . getAttr
+
+gStatus :: (HasAttr a) => a -> Status
+gStatus = status . getAttr
+
+gDates :: (HasAttr a) => a -> AttrDates
+gDates = dates . getAttr
+
+gAutoDates :: (HasAttr a) => a -> AttrAutoDates
+gAutoDates = autoDates . getAttr
+
+instance HasAttr Attr where getAttr = id
+
+instance HasAttr Label where getAttr = fst
+
+instance HasAttr IdLabel where getAttr = getAttr . snd
+
+instance HasAttr LocalLabel where getAttr = getAttr . fst
+
+instance HasAttr LocalIdLabel where getAttr = getAttr . snd
+
+class HasDerivedAttr a where
+  getDerivedAttr :: a -> DerivedAttr
+
+gChildActionability :: (HasDerivedAttr a) => a -> Status
+gChildActionability = daChildActionability . getDerivedAttr
+
+gEarliestAutodates :: (HasDerivedAttr a) => a -> AttrAutoDates
+gEarliestAutodates = daEarliestAutodates . getDerivedAttr
+
+gLatestAutodates :: (HasDerivedAttr a) => a -> AttrAutoDates
+gLatestAutodates = daLatestAutodates . getDerivedAttr
+
+gEarliestDates :: (HasDerivedAttr a) => a -> AttrDates
+gEarliestDates = daEarliestDates . getDerivedAttr
+
+gLatestDates :: (HasDerivedAttr a) => a -> AttrDates
+gLatestDates = daLatestDates . getDerivedAttr
+
+gImpliedDates :: (HasDerivedAttr a) => a -> AttrDates
+gImpliedDates = daImpliedDates . getDerivedAttr
+
+instance HasDerivedAttr DerivedAttr where getDerivedAttr = id
+
+instance HasDerivedAttr Label where getDerivedAttr = snd
+
+instance HasDerivedAttr IdLabel where getDerivedAttr = getDerivedAttr . snd
+
+instance HasDerivedAttr LocalLabel where getDerivedAttr = getDerivedAttr . fst
+
+instance HasDerivedAttr LocalIdLabel where getDerivedAttr = getDerivedAttr . snd
+
+class HasLocalDerivedAttr a where
+  getLocalDerivedAttr :: a -> LocalDerivedAttr
+
+gParentActionability :: (HasLocalDerivedAttr a) => a -> Status
+gParentActionability = ldParentActionability . getLocalDerivedAttr
+
+gBreadcrumbs :: (HasLocalDerivedAttr a) => a -> [LocalIdLabel]
+gBreadcrumbs = ldBreadcrumbs . getLocalDerivedAttr
+
+instance HasLocalDerivedAttr LocalDerivedAttr where getLocalDerivedAttr = id
+
+instance HasLocalDerivedAttr LocalLabel where getLocalDerivedAttr = snd
+
+instance HasLocalDerivedAttr LocalIdLabel where getLocalDerivedAttr = getLocalDerivedAttr . snd
+
+-- SOMEDAY this isn't used super much and maybe isn't useful.
+class HasEID a where
+  getEID :: a -> EID
+
+gEID :: (HasEID a) => a -> EID
+gEID = getEID
+
+instance HasEID EID where getEID = id
+
+instance HasEID (EID, a) where getEID = fst
+
+-- * Derived attr calculation
+
+-- | Actionability based on the node and its children, but ignoring its parents. This is globally
+-- the same for all views.
+--
+-- Treat Nothing and Project statuses as transparent (they consider children) and everything else
+-- not (they consider the item only)
+gGlobalActionability :: (HasAttr a, HasDerivedAttr a) => a -> Status
+gGlobalActionability x = case (gStatus x, gChildActionability x) of
+  (None, a) -> a
+  -- This a little bit inconsistent but we typically *mean* this.
+  -- Con: there's no way to pause a WIP task to next now.
+  -- SOMEDAY handle this using the new "force" status.
+  (Next, WIP) -> WIP
+  (Project, a) -> a
+  -- This makes Open items semi-transparent: they're transparent to Next etc. tasks but also stand
+  -- for their own (likely project blockers). This is *different* from Project nodes, which are
+  -- fully transparent!
+  -- SOMEDAY we could also make it transparent to Later but I'm not right now.
+  (Open, a) | a <= Open -> a
+  (s, _) -> s
+
+-- | Actionability based on 'gGlobalActionability' and also its parents. This is (or can be) local
+-- to the view b/c it depends on which part of the tree is visible to the given view.
+gLocalActionability :: (HasAttr a, HasDerivedAttr a, HasLocalDerivedAttr a) => a -> Status
+gLocalActionability x = case (gGlobalActionability x, gParentActionability x) of
+  -- SOMEDAY I've seen this patterns a few times now, perhaps abstract it or restructure.
+  -- See also 'addLocalDerivedAttrs' in Model and 'glActionability' above. It's duplicated with there.
+  (a, None) -> a
+  (WIP, Next) -> WIP
+  (a, Project) -> a
+  (a, ap) -> max a ap

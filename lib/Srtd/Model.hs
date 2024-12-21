@@ -106,7 +106,7 @@ _forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> 
  where
   makeNodeDerivedAttr mplabel clabels attr =
     DerivedAttr
-      { daChildActionability = forEmptyList None minimum . map glActionability $ clabels
+      { daChildActionability = forEmptyList None minimum . map gGlobalActionability $ clabels
       , daEarliestAutodates =
           foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
       , daLatestAutodates =
@@ -184,7 +184,7 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
       ( label
       , LocalDerivedAttr
           { ldParentActionability =
-              stepParentActionability (glActionability plabel) (ldParentActionability parLDAttr)
+              stepParentActionability (gGlobalActionability plabel) (ldParentActionability parLDAttr)
           , ldBreadcrumbs = plilabel : ldBreadcrumbs parLDAttr
           }
       )
@@ -309,7 +309,7 @@ f_flatByDates =
     cmp llabel1 llabel2 =
       mconcat
         [ (compareAttrDates tz `on` llImpliedDates) llabel1 llabel2
-        , comparing llActionability llabel1 llabel2
+        , comparing gLocalActionability llabel1 llabel2
         ]
     tz = fcTimeZone ?fctx
 
@@ -329,7 +329,7 @@ f_deepByDates =
     cmp llabel1 llabel2 =
       mconcat
         [ (compareAttrDates tz `on` llEarliestImpliedOrChildDates tz) llabel1 llabel2
-        , comparing llActionability llabel1 llabel2
+        , comparing gLocalActionability llabel1 llabel2
         ]
     tz = fcTimeZone ?fctx
 

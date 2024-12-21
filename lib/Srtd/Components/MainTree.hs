@@ -343,8 +343,8 @@ _mkSortKeymap withFunc name =
   compareActionabilityForSort l1 l2 = case (isNote l1, isNote l2) of
     (True, False) -> LT
     (True, True) -> EQ
-    _ -> compare (glActionability l1) (glActionability l2)
-  isNote l = (status . fst $ l) == None && glActionability l == None
+    _ -> compare (gGlobalActionability l1) (gGlobalActionability l2)
+  isNote l = (status . fst $ l) == None && gGlobalActionability l == None
 
 goKeymap :: Keymap (AppEventAction MainTree () ())
 goKeymap =
@@ -591,7 +591,7 @@ renderRow
     indentW = str (concat (replicate (lvl + 1) "    "))
     dateW = renderMostUrgentDate ztime sel dates daImpliedDates
     lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
-    statusW = renderStatus sel status (llActionability llabel)
+    statusW = renderStatus sel status (gLocalActionability llabel)
     nameW = case mrx of
       Nothing -> strTruncateAvailable name
       -- SOMEDAY kinda bad performance that we re-match on every draw. If this becomes an issue, we
@@ -609,11 +609,11 @@ renderRow
 
 -- SOMEDAY also deadline for the root (if any)?
 renderRoot :: ZonedTime -> Label -> [IdLabel] -> Widget n
-renderRoot ztime glabel@(rootAttr, _) breadcrumbs =
+renderRoot ztime glabel breadcrumbs =
   hBox
     [statusW, str " ", pathW]
  where
-  statusW = renderStatus False (status rootAttr) (glActionability glabel)
+  statusW = renderStatus False (gStatus glabel) (gGlobalActionability glabel)
   pathW = renderBreadcrumbs ztime glabel breadcrumbs
 
 -- SOMEDAY annoying these are two duplicate functions.
@@ -667,7 +667,6 @@ renderItemDetails ztime (eid, llabel) =
         , botBox
         ]
  where
-  (label@(attr, dattr), ldattr) = llabel
   topBox =
     -- We cannot make this a table b/c `strWrap` has greedy growth and tables don't support that.
     -- NB in principle, we also don't *need* a table here but sth less general would be fine.
@@ -676,16 +675,16 @@ renderItemDetails ztime (eid, llabel) =
         -- hBox [str "Title  ", strWrapWith nameWrapSettings (name attr)]
         padBottom (Pad 1) $
           hBox
-            [ renderStatus False (status attr) (llActionability llabel)
+            [ renderStatus False (gStatus llabel) (gLocalActionability llabel)
             , str " "
-            , strWrapWith nameWrapSettings (name attr)
+            , strWrapWith nameWrapSettings (gName llabel)
             ]
       , -- SOMEDAY all these conversions are pretty fucking annoying. Maybe use lenses? Proper data
         -- structures for the different *Label things?
         str "< "
           <+> renderBreadcrumbsOnly
             ztime
-            (map localIdLabel2IdLabel . ldBreadcrumbs $ ldattr)
+            (map localIdLabel2IdLabel . gBreadcrumbs $ llabel)
       ]
   botBox =
     vBox
@@ -702,33 +701,32 @@ renderItemDetails ztime (eid, llabel) =
       -- SOMEDAY we may wanna make this not one big table but separate the bottom part out into
       -- another vBox element below the rest. Looks a bit strange re reserved space rn.
       [ sectionHeaderRow "Status"
-      , [str "Status", str (show $ status attr)]
-      , [str "Actionability", str (show $ llActionability llabel)]
-      , [str "Global Actionability", str (show $ glActionability label)]
-      , [str "Child Actionability", str (show $ daChildActionability dattr)]
-      , [str "Parent Actionability", str (show $ ldParentActionability ldattr)]
+      , [str "Status", str (show $ gStatus llabel)]
+      , [str "Actionability", str (show $ gLocalActionability llabel)]
+      , [str "Child Actionability", str (show $ gChildActionability llabel)]
+      , [str "Parent Actionability", str (show $ gParentActionability llabel)]
       , spacerRow
       , sectionHeaderRow "Metadata"
       ]
-        ++ mkAutodatesCells "" (autoDates attr)
+        ++ mkAutodatesCells "" (gAutoDates llabel)
         ++ [spacerRow]
-        ++ mkAutodatesCells "Latest " (daLatestAutodates dattr)
+        ++ mkAutodatesCells "Latest " (gLatestAutodates llabel)
         ++ [spacerRow]
-        ++ mkAutodatesCells "Earliest " (daEarliestAutodates dattr)
+        ++ mkAutodatesCells "Earliest " (gEarliestAutodates llabel)
   rightBox =
     tbl $
       [sectionHeaderRow "Dates"]
-        ++ mkDatesCells "" (dates attr)
+        ++ mkDatesCells "" (gDates llabel)
         ++ [ spacerRow
            , sectionHeaderRow "Implied Dates"
            ]
-        ++ mkDatesCells "" (daImpliedDates dattr)
+        ++ mkDatesCells "" (gImpliedDates llabel)
         ++ [ spacerRow
            , sectionHeaderRow "Descendant Dates"
            ]
-        ++ mkDatesCells "Earliest " (daEarliestDates dattr)
+        ++ mkDatesCells "Earliest " (gEarliestDates llabel)
         ++ [spacerRow]
-        ++ mkDatesCells "Latest" (daLatestDates dattr)
+        ++ mkDatesCells "Latest" (gLatestDates llabel)
   sectionHeaderRow s = [withAttr sectionHeaderAttr (str s), emptyWidget]
   spacerRow = [str " ", emptyWidget]
   mkAutodatesCells prefix ad =
