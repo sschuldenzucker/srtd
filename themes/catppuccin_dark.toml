@@ -99,10 +99,12 @@ fg = "text"
 
 "date.goalline.today" = {fg = "yellow"}
 "date.goalline.tomorrow" = {fg = "green"}
-"date.goalline.overdue" = {fg = "red"}
+# "date.goalline.overdue" = {fg = "red"}
+"date.goalline.overdue" = {fg = "yellow"}
 
 "date.scheduled.today" = {fg = "yellow"}
-"date.scheduled.overdue" = {fg = "red"}
+# "date.scheduled.overdue" = {fg = "red"}
+"date.scheduled.overdue" = {fg = "yellow"}
 
 "date.remind.today" = {fg = "green"}
 "date.remind.overdue" = {fg = "yellow"}
@@ -118,10 +120,10 @@ fg = "text"
 
 "date.indirect.goalline.today" = {fg = "yellow1"}
 "date.indirect.goalline.tomorrow" = {fg = "green1"}
-"date.indirect.goalline.overdue" = {fg = "red1"}
+"date.indirect.goalline.overdue" = {fg = "yellow1"}
 
 "date.indirect.scheduled.today" = {fg = "yellow1"}
-"date.indirect.scheduled.overdue" = {fg = "red1"}
+"date.indirect.scheduled.overdue" = {fg = "yellow1"}
 
 "date.indirect.remind.today" = {fg = "green1"}
 "date.indirect.remind.overdue" = {fg = "yellow1"}
