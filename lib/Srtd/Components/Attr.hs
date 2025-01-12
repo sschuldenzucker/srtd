@@ -105,7 +105,7 @@ renderPastDate :: ZonedTime -> Bool -> DateOrTime -> Widget n
 -- SOMEDAY styling options (`withAttr`), but I'm not using them rn.
 renderPastDate now _sel dt = setWidth 10 $ str label
  where
-  label = prettyRelativeMed now dt
+  label = prettyRelativePastMed now dt
 
 -- | `renderMStatus selected status actionability`
 renderStatus :: Bool -> Status -> Status -> Widget n

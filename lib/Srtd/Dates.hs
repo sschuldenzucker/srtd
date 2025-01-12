@@ -282,6 +282,15 @@ prettyDayRelativeMed dnow d =
     L.find (\(_names, v) -> v == delta) pairs <&> \(names, _) ->
       T.unpack $ head names
 
+-- | Pretty-render a past date relative to the given `now` moment in time. Only renders the date.
+--
+-- This is *not* a valid inverse to 'parseInterpretHumanDateOrTime'
+prettyRelativePastMed :: ZonedTime -> DateOrTime -> String
+prettyRelativePastMed (ZonedTime lnow tz) dot = prettyPastDayRelativeMed (localDay lnow) (dotDay tz dot)
+
+prettyPastDayRelativeMed :: Day -> Day -> String
+prettyPastDayRelativeMed dnow d = todo
+
 -- SOMEDAY maybe include %a (day of week, short)
 prettyDay :: Day -> String
 prettyDay = formatTime defaultTimeLocale "%Y-%m-%d"
