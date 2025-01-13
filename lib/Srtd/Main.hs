@@ -102,6 +102,7 @@ main = do
   -- SOMEDAY should we be really careful about consistency between the modelserver and the saver?
   -- As in, we have to start from the same consistent state?
   modelSaver <- ModelSaver.startModelSaver modelServer
+  ModelSaver.linkModelSaver modelSaver
 
   -- SOMEDAY it's unfortunate that this is bounded actually, could in principle lead to deadlock.
   appChan <- newBChan 100
