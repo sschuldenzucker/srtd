@@ -95,7 +95,7 @@ server mserver isDirtyV shallQuitV s_ = go s_
 -- SOMEDAY should we refuse to kill it hard, for safety?
 --
 -- SOMEDAY could be simpler & safer to trap the cancel exception and bracket the write. Then the
--- parent can just kill (but it * cannot * just end !) and no explicit quit signal is needed.
+-- parent can just cancel (but it * cannot * just end !) and no explicit quit signal is needed.
 exitGracefully :: ModelSaver -> IO ()
 exitGracefully ModelSaver {..} = do
   atomically $ writeTVar msShallQuitV True
