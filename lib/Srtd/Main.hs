@@ -7,7 +7,7 @@ import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
 import Control.Arrow (second)
-import Control.Monad (forM_, void, when)
+import Control.Monad (forM_, when)
 import Control.Monad.State (liftIO)
 import Data.CircularList qualified as CList
 import Data.List (intersperse)
@@ -30,7 +30,7 @@ import Srtd.Component
 import Srtd.Components.MainTree qualified as MainTree
 import Srtd.Keymap (KeyDesc (..))
 import Srtd.Log
-import Srtd.ModelSaver (startModelSaver)
+import Srtd.ModelSaver qualified as ModelSaver
 import Srtd.ModelServer
 import Srtd.Ticker
 import System.Directory (listDirectory)
@@ -99,8 +99,9 @@ main = do
 
   glogL INFO "App starting"
   modelServer <- startModelServer
-  -- SOMEDAY I should probably do something with the returned thread ID.
-  _ <- startModelSaver modelServer
+  -- SOMEDAY should we be really careful about consistency between the modelserver and the saver?
+  -- As in, we have to start from the same consistent state?
+  modelSaver <- ModelSaver.startModelSaver modelServer
 
   -- SOMEDAY it's unfortunate that this is bounded actually, could in principle lead to deadlock.
   appChan <- newBChan 100
@@ -131,6 +132,12 @@ main = do
   --     app
   --     appState
   (s, _vty) <- customMainWithDefaultVty (Just appChan) app appState
+
+  -- SOMEDAY would be good to have some kind of bracket expression that makes sure this is called
+  -- and can't be missed. I guess I could make a `withModelSaver` function or something.
+  -- Should I worry about exceptions though?
+  ModelSaver.exitGracefully modelSaver
+
   let exitCode = asExitCode s
   case exitCode of
     ExitSuccess -> glogL INFO "App did quit normally"

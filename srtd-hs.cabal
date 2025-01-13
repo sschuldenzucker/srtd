@@ -66,6 +66,7 @@ library
         TemplateHaskell,
         DeriveGeneric,
         LambdaCase,
+        NumericUnderscores,
 
     -- Other library packages from which modules are imported.
     build-depends:
@@ -104,6 +105,8 @@ library
         composition ^>= 1.0.2.2,
         text-zipper ^>= 0.13,
         template-haskell ^>= 2.19,
+        async ^>= 2.2.5,
+        clock ^>= 0.8.4,
 
     exposed-modules:
         Srtd.Alignment,
