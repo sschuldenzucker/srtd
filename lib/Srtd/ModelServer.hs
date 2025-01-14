@@ -2,7 +2,15 @@
 
 There's not actually a server here but we *may* want to make it one later.
 -}
-module Srtd.ModelServer (ModelServer, MsgModelUpdated (..), getModel, modifyModelOnServer, startModelServer, subscribe) where
+module Srtd.ModelServer (
+  ModelServer,
+  MsgModelUpdated (..),
+  getModel,
+  getModelSTM,
+  modifyModelOnServer,
+  startModelServer,
+  subscribe,
+) where
 
 import Control.Concurrent.STM
 import Control.Exception
@@ -29,6 +37,9 @@ instance Show ModelServer where
 
 getModel :: ModelServer -> IO Model
 getModel (ModelServer mv _) = readTVarIO mv
+
+getModelSTM :: ModelServer -> STM Model
+getModelSTM (ModelServer mv _) = readTVar mv
 
 -- SOMEDAY this prob shouldn't exist?
 -- The main issue seems to be that the caller currently assumes that the model is updated immediately after calling this.

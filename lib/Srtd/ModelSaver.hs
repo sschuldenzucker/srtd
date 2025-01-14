@@ -67,7 +67,7 @@ server mserver isDirtyV shallQuitV s_ = go s_
       check $ isDirty || shallQuit
       return (isDirty, shallQuit)
     if shallQuit
-      then when isDirty doSave
+      then when isDirty (doSave =<< MS.getModel mserver)
       else do
         whenJust lastSaveTime $ \lst -> do
           now <- C.getTime C.Monotonic
@@ -75,14 +75,15 @@ server mserver isDirtyV shallQuitV s_ = go s_
           -- NB this won't be interrupted by a quit signal. If we care about that, we should do a `race` against reading `check =<< shallQuitV`.
           when (waitMicros > 0) $ threadDelay (fromIntegral waitMicros)
         -- Order matters! We set it here so that dirty signals during the wait are ignored (we will
-        -- save!) but those during the save are considered.
-        atomically $ writeTVar isDirtyV False
-        doSave
+        -- save!) but those during the save are considered. Atomicity is nice but not actually needed.
+        model <- atomically $ do
+          writeTVar isDirtyV False
+          MS.getModelSTM mserver
+        doSave model
         now <- C.getTime C.Monotonic
         go $ s {lastSaveTime = Just now}
-  doSave = do
+  doSave model = do
     glogL DEBUG $ "Writing " ++ model_filename
-    model <- MS.getModel mserver
     writeModelToFile model
 
 -- | Attempt to exit the modelsaver gracefully or kill it hard after a timeout (which is then
