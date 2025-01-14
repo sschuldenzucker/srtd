@@ -29,7 +29,7 @@ data MsgModelUpdated = MsgModelUpdated deriving (Show)
 --
 -- Note: You should be careful to make sure the notifiers don't lead to deadlock. Usually, these will be of type `putChan xxx`.
 --
--- SOMEDAY some safety when we can't run one of the subscribers b/c someone else crashed? Should we just force them to be channels?
+-- SOMEDAY some safety when we can't run one of the subscribers b/c someone else crashed? Should we just force them to be channels? Can also be TVars though. Should we force them to be STM actions?
 data ModelServer = ModelServer (TVar Model) (TVar [MsgModelUpdated -> IO ()])
 
 instance Show ModelServer where
