@@ -105,7 +105,7 @@ fg = "text"
 "date.scheduled.overdue" = {fg = "red"}
 
 "date.remind.today" = {fg = "green"}
-"date.remind.overdue" = {fg = "yellow"}
+"date.remind.overdue" = {fg = "red"}
 
 # TODO another instance of the current attr mechanism being incredibly inconvenient
 # Actually, this one is fine, the problem is "selected" above.
@@ -124,7 +124,7 @@ fg = "text"
 "date.indirect.scheduled.overdue" = {fg = "red1"}
 
 "date.indirect.remind.today" = {fg = "green1"}
-"date.indirect.remind.overdue" = {fg = "yellow1"}
+"date.indirect.remind.overdue" = {fg = "red1"}
 
 # "date.deadline" = {style = "underline"}
 # "date.deadline.today" = {fg = "yellow", style = "underline"}
