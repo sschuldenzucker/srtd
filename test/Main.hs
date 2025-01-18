@@ -154,13 +154,13 @@ prettyRelativePastMedTests =
     , testCase "Yesterday" $
         prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 8 9) @?= "yesterday"
     , testCase "1 month" $
-        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 7 10) @?= "4 weeks"
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 7 10) @?= "1 month"
     , testCase "1.5 months" $
-        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 7 1) @?= "5 weeks"
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 7 1) @?= "1 month"
     , testCase "1.5 months 2" $
-        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 6 29) @?= "6 weeks"
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 6 29) @?= "1 month"
     , testCase "almost 2 months" $
-        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 6 11) @?= "8 weeks"
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 6 11) @?= "1 month"
     , testCase "2 months" $
         prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 6 10) @?= "2 months"
     , testCase "1 year" $

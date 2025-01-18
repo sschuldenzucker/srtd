@@ -16,6 +16,7 @@ import GHC.Generics
 import Srtd.Util (eitherToMaybe, maybeToEither, replacePrefix)
 import Text.Megaparsec
 import Text.Megaparsec.Char
+import Text.Printf
 
 -- | Type for deadlines, reminders, etc.
 --
@@ -295,19 +296,25 @@ prettyPastDayRelativeMed dnow d
   | deltaDays == 0 = "today"
   | deltaDays == 1 = "yesterday"
   -- Nonstandard: we show everything up to 2 weeks for precision.
-  | deltaDays < 14 = (show deltaDays) ++ " days"
+  -- \| deltaDays < 14 = (rnumber deltaDays) ++ " days"
+  | deltaDays < 7 = (rnumber deltaDays) ++ " days"
   -- Nonstandard: we show everything up to 2 months in weeks for precision.
-  | deltaMonths < 2 = (show $ deltaDays `div` 7) ++ " weeks"
-  -- NOTE: "1 month" doesn't happen b/c we only show in months starting at a *two* months difference, so we don't need a special case.
-  | deltaYears < 1 = (show $ deltaMonths) ++ " months"
+  -- \| deltaMonths < 2 = (rnumber $ deltaDays `div` 7) ++ " weeks"
+  | deltaWeeks == 1 = "1 week"
+  | deltaMonths == 0 = (rnumber $ deltaWeeks) ++ " weeks"
+  | deltaMonths == 1 = "1 month"
+  | deltaYears < 1 = (rnumber $ deltaMonths) ++ " months"
   -- We do *not* do a nonstandard display for years (b/c nobody cares I think)
   | deltaYears == 1 = "1 year"
-  | otherwise = (show $ deltaYears) ++ " years"
+  | otherwise = (rnumber $ deltaYears) ++ " years"
  where
   delta = diffGregorianDurationClip dnow d
   deltaMonths = cdMonths delta
   deltaYears = deltaMonths `div` 12
   deltaDays = diffDays dnow d
+  deltaWeeks = deltaDays `div` 7
+  -- Doing it like this so I can have padding if I need to.
+  rnumber (i :: Integer) = printf "%d" i
 
 -- SOMEDAY maybe include %a (day of week, short)
 prettyDay :: Day -> String
