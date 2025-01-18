@@ -248,7 +248,11 @@ prettyAbsolute tz (DateAndTime time) = formatTime defaultTimeLocale "%a, %Y-%m-%
 --
 -- Relative rendering for 'today', 'tomorrow', or 'mon', but not 'in 1 hour' or 'in 2 months'.
 --
--- This is a valid inverse to `parseInterpretHumanDateOrTime`.
+-- This is a valid inverse to `parseInterpretHumanDateOrTime` if the `DateOrTime` is in the future;
+-- otherwise not.
+--
+-- For past dates, we render them as by weekday (e.g. "last mon") if applicable and otherwise use
+-- the relative adaptive rendering from 'prettyPastStrictRelativeAdaptive'.
 prettyRelativeMed :: ZonedTime -> DateOrTime -> String
 prettyRelativeMed (ZonedTime lnow tz) dot = dayS <> maybe mempty (" " <>) mtimeS
  where
@@ -261,16 +265,17 @@ prettyRelativeMed (ZonedTime lnow tz) dot = dayS <> maybe mempty (" " <>) mtimeS
   mtimeS = prettyTimeOfDay <$> dotmLocalTimeOfDay tz dot
 
 prettyDayRelativeMed :: Day -> Day -> String
-prettyDayRelativeMed dnow d =
-  fromMaybe (prettyDay d) $
-    findDelta namedOffsetPairs cdiffDays
-      <|> (findDelta dayOfWeekPairs =<< dowIfNext)
-      <|> (fmap ("-" ++) $ findDelta namedOffsetPairs negCdiffDays)
-      <|> (fmap ("-" ++) . findDelta dayOfWeekPairs =<< dowIfPrev)
+prettyDayRelativeMed dnow d
+  | d < dnow =
+      fromMaybe (prettyPastStrictRelativeAdaptiveDay True dnow d) $
+        (fmap ("last " ++) . findDelta dayOfWeekPairs =<< dowIfPrev)
+  | otherwise =
+      fromMaybe (prettyDay d) $
+        findDelta namedOffsetPairs cdiffDays
+          <|> (findDelta dayOfWeekPairs =<< dowIfNext)
  where
   deltaDays = diffDays d dnow
   cdiffDays = CalendarDiffDays 0 deltaDays
-  negCdiffDays = CalendarDiffDays 0 (-deltaDays)
   dowIfNext
     | deltaDays <= 0 = Nothing
     | deltaDays > 7 = Nothing
@@ -290,27 +295,29 @@ prettyDayRelativeMed dnow d =
 -- 2. Adaptive precision, e.g., "2 months" (ago) instead of "2 months 1 week 2 days" (ago).
 --
 -- This is *not* a valid inverse to 'parseInterpretHumanDateOrTime'
-prettyPastStrictRelativeAdaptive :: ZonedTime -> DateOrTime -> String
-prettyPastStrictRelativeAdaptive (ZonedTime lnow tz) dot = prettyPastStrictRelativeAdaptiveDay (localDay lnow) (dotDay tz dot)
+--
+-- The first argument indicates if we want the string "ago" of it it's clear.
+prettyPastStrictRelativeAdaptive :: Bool -> ZonedTime -> DateOrTime -> String
+prettyPastStrictRelativeAdaptive doAgo (ZonedTime lnow tz) dot = prettyPastStrictRelativeAdaptiveDay doAgo (localDay lnow) (dotDay tz dot)
 
-prettyPastStrictRelativeAdaptiveDay :: Day -> Day -> String
-prettyPastStrictRelativeAdaptiveDay dnow d
+prettyPastStrictRelativeAdaptiveDay :: Bool -> Day -> Day -> String
+prettyPastStrictRelativeAdaptiveDay doAgo dnow d
   -- Fallback in case actually no past date was passed. This is a weird data consistency problem then.
   | deltaDays < 0 = prettyDay d
   | deltaDays == 0 = "today"
   | deltaDays == 1 = "yesterday"
   -- Nonstandard: we show everything up to 2 weeks for precision.
   -- \| deltaDays < 14 = (rnumber deltaDays) ++ " days"
-  | deltaDays < 7 = (rnumber deltaDays) ++ " days"
+  | deltaDays < 7 = (rnumber deltaDays) ++ " days" ++ ago
   -- Nonstandard: we show everything up to 2 months in weeks for precision.
   -- \| deltaMonths < 2 = (rnumber $ deltaDays `div` 7) ++ " weeks"
-  | deltaWeeks == 1 = "1 week"
-  | deltaMonths == 0 = (rnumber $ deltaWeeks) ++ " weeks"
-  | deltaMonths == 1 = "1 month"
-  | deltaYears < 1 = (rnumber $ deltaMonths) ++ " months"
+  | deltaWeeks == 1 = "1 week" ++ ago
+  | deltaMonths == 0 = (rnumber $ deltaWeeks) ++ " weeks" ++ ago
+  | deltaMonths == 1 = "1 month" ++ ago
+  | deltaYears < 1 = (rnumber $ deltaMonths) ++ " months" ++ ago
   -- We do *not* do a nonstandard display for years (b/c nobody cares I think)
-  | deltaYears == 1 = "1 year"
-  | otherwise = (rnumber $ deltaYears) ++ " years"
+  | deltaYears == 1 = "1 year" ++ ago
+  | otherwise = (rnumber $ deltaYears) ++ " years" ++ ago
  where
   delta = diffGregorianDurationClip dnow d
   deltaMonths = cdMonths delta
@@ -319,6 +326,8 @@ prettyPastStrictRelativeAdaptiveDay dnow d
   deltaWeeks = deltaDays `div` 7
   -- Doing it like this so I can have padding if I need to.
   rnumber (i :: Integer) = printf "%d" i
+  ago :: String
+  ago = if doAgo then " ago" else ""
 
 -- SOMEDAY maybe include %a (day of week, short)
 prettyDay :: Day -> String
