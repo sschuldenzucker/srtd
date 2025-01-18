@@ -24,7 +24,10 @@ testTests :: TestTree
 testTests = testGroup "Test tests" [unit_additionTest]
 
 dateTests :: TestTree
-dateTests = testGroup "Date" [parseHumanDateOrTimeTests, nextWeekdayTests, interpretHumanDateOrTimeTests]
+dateTests =
+  testGroup
+    "Date"
+    [parseHumanDateOrTimeTests, nextWeekdayTests, interpretHumanDateOrTimeTests, dateRenderingTests]
 
 parseE p = mapLeft Parsec.errorBundlePretty . Parsec.parse p "none"
 
@@ -137,6 +140,39 @@ interpretHumanDateOrTimeTests =
   now1 = ZonedTime (LocalTime (fromGregorian 2024 8 10) (TimeOfDay 8 0 0)) cet
   cet = hoursToTimeZone 1
   hours n = n * 60 * 60
+
+dateRenderingTests =
+  testGroup
+    "Date & Time Rendering"
+    [prettyRelativePastMedTests]
+
+prettyRelativePastMedTests =
+  testGroup
+    "Past Dates"
+    [ testCase "Today" $
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 8 10) @?= "today"
+    , testCase "Yesterday" $
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 8 9) @?= "yesterday"
+    , testCase "1 month" $
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 7 10) @?= "4 weeks"
+    , testCase "1.5 months" $
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 7 1) @?= "5 weeks"
+    , testCase "1.5 months 2" $
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 6 29) @?= "6 weeks"
+    , testCase "almost 2 months" $
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 6 11) @?= "8 weeks"
+    , testCase "2 months" $
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2024 6 10) @?= "2 months"
+    , testCase "1 year" $
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2023 8 10) @?= "1 year"
+    , testCase "2 years" $
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2022 8 10) @?= "2 years"
+    , testCase "future fallback" $
+        prettyRelativePastMed now1 (DateOnly $ fromGregorian 2025 8 10) @?= "2025-08-10"
+    ]
+ where
+  now1 = ZonedTime (LocalTime (fromGregorian 2024 8 10) (TimeOfDay 8 0 0)) cet
+  cet = hoursToTimeZone 1
 
 treeTests =
   testGroup

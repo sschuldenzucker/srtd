@@ -289,7 +289,25 @@ prettyRelativePastMed :: ZonedTime -> DateOrTime -> String
 prettyRelativePastMed (ZonedTime lnow tz) dot = prettyPastDayRelativeMed (localDay lnow) (dotDay tz dot)
 
 prettyPastDayRelativeMed :: Day -> Day -> String
-prettyPastDayRelativeMed dnow d = todo
+prettyPastDayRelativeMed dnow d
+  -- Fallback in case actually no past date was passed. This is a weird data consistency problem then.
+  | deltaDays < 0 = prettyDay d
+  | deltaDays == 0 = "today"
+  | deltaDays == 1 = "yesterday"
+  -- Nonstandard: we show everything up to 2 weeks for precision.
+  | deltaDays < 14 = (show deltaDays) ++ " days"
+  -- Nonstandard: we show everything up to 2 months in weeks for precision.
+  | deltaMonths < 2 = (show $ deltaDays `div` 7) ++ " weeks"
+  -- NOTE: "1 month" doesn't happen b/c we only show in months starting at a *two* months difference, so we don't need a special case.
+  | deltaYears < 1 = (show $ deltaMonths) ++ " months"
+  -- We do *not* do a nonstandard display for years (b/c nobody cares I think)
+  | deltaYears == 1 = "1 year"
+  | otherwise = (show $ deltaYears) ++ " years"
+ where
+  delta = diffGregorianDurationClip dnow d
+  deltaMonths = cdMonths delta
+  deltaYears = deltaMonths `div` 12
+  deltaDays = diffDays dnow d
 
 -- SOMEDAY maybe include %a (day of week, short)
 prettyDay :: Day -> String
