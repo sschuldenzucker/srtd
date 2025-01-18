@@ -90,7 +90,7 @@ mostUrgentDateAttr now sel dates indates = maybe mempty (dateAttrForLabeled now 
 
 renderMostUrgentDate :: ZonedTime -> Bool -> AttrDates -> AttrDates -> Widget n
 renderMostUrgentDate now sel =
-  setWidth 13 . maybe almostEmptyWidget (renderLabeledDate now sel) .: mostUrgentDateLabeled tz
+  setWidth 15 . maybe almostEmptyWidget (renderLabeledDate now sel) .: mostUrgentDateLabeled tz
  where
   tz = zonedTimeZone now
 
