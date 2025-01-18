@@ -126,6 +126,8 @@ fg = "text"
 "date.indirect.remind.today" = {fg = "green1"}
 "date.indirect.remind.overdue" = {fg = "red1"}
 
+"date.last_modified" = {fg = "overlay1"}
+
 # "date.deadline" = {style = "underline"}
 # "date.deadline.today" = {fg = "yellow", style = "underline"}
 # "date.deadline.tomorrow" = {fg = "green", style = "underline"}

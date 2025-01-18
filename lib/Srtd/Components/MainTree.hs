@@ -34,9 +34,9 @@ import Srtd.Component
 import Srtd.Component qualified as Component
 import Srtd.Components.Attr (
   mostUrgentDateAttr,
+  renderLastModified,
   renderMostUrgentDate,
   renderMostUrgentDateMaybe,
-  renderPastDate,
   renderStatus,
  )
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
@@ -610,7 +610,7 @@ renderRow
     -- The first level doesn't take indent b/c deadlines are enough rn.
     indentW = str (concat (replicate (lvl + 1) "    "))
     dateW = renderMostUrgentDate ztime sel dates daImpliedDates
-    lastStatusModifiedW = renderPastDate ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
+    lastStatusModifiedW = renderLastModified ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
     statusW = renderStatus sel status (gLocalActionability llabel)
     nameW = case mrx of
       Nothing -> strTruncateAvailable name

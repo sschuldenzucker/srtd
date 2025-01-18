@@ -101,10 +101,10 @@ renderMostUrgentDateMaybe now sel = fmap (renderLabeledDate now sel) .: mostUrge
  where
   tz = zonedTimeZone now
 
-renderPastDate :: ZonedTime -> Bool -> DateOrTime -> Widget n
--- SOMEDAY styling options (`withAttr`), but I'm not using them rn.
-renderPastDate now _sel dt = setWidth 10 $ str label
+renderLastModified :: ZonedTime -> Bool -> DateOrTime -> Widget n
+renderLastModified now _sel dt = withAttr attr $ setWidth 8 $ str label
  where
+  attr = attrName "date" <> attrName "last_modified"
   label = prettyRelativePastMed now dt
 
 -- | `renderMStatus selected status actionability`
