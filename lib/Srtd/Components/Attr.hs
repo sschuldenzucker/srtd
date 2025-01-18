@@ -102,7 +102,7 @@ renderMostUrgentDateMaybe now sel = fmap (renderLabeledDate now sel) .: mostUrge
   tz = zonedTimeZone now
 
 renderLastModified :: ZonedTime -> Bool -> DateOrTime -> Widget n
-renderLastModified now _sel dt = withAttr attr $ setWidth 8 $ str label
+renderLastModified now _sel dt = withAttr attr $ setWidth 9 $ str label
  where
   attr = attrName "date" <> attrName "last_modified"
   label = prettyRelativePastMed now dt
