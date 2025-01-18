@@ -105,7 +105,7 @@ renderLastModified :: ZonedTime -> Bool -> DateOrTime -> Widget n
 renderLastModified now _sel dt = withAttr attr $ setWidth 9 $ str label
  where
   attr = attrName "date" <> attrName "last_modified"
-  label = prettyRelativePastMed now dt
+  label = prettyPastStrictRelativeAdaptive now dt
 
 -- | `renderMStatus selected status actionability`
 renderStatus :: Bool -> Status -> Status -> Widget n

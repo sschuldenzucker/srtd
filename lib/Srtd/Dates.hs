@@ -285,12 +285,16 @@ prettyDayRelativeMed dnow d =
 
 -- | Pretty-render a past date relative to the given `now` moment in time. Only renders the date.
 --
+-- This has the following features:
+-- 1. Strictly relative, e.g., "2 days" (ago) instead of (last) "mon"
+-- 2. Adaptive precision, e.g., "2 months" (ago) instead of "2 months 1 week 2 days" (ago).
+--
 -- This is *not* a valid inverse to 'parseInterpretHumanDateOrTime'
-prettyRelativePastMed :: ZonedTime -> DateOrTime -> String
-prettyRelativePastMed (ZonedTime lnow tz) dot = prettyPastDayRelativeMed (localDay lnow) (dotDay tz dot)
+prettyPastStrictRelativeAdaptive :: ZonedTime -> DateOrTime -> String
+prettyPastStrictRelativeAdaptive (ZonedTime lnow tz) dot = prettyPastStrictRelativeAdaptiveDay (localDay lnow) (dotDay tz dot)
 
-prettyPastDayRelativeMed :: Day -> Day -> String
-prettyPastDayRelativeMed dnow d
+prettyPastStrictRelativeAdaptiveDay :: Day -> Day -> String
+prettyPastStrictRelativeAdaptiveDay dnow d
   -- Fallback in case actually no past date was passed. This is a weird data consistency problem then.
   | deltaDays < 0 = prettyDay d
   | deltaDays == 0 = "today"
