@@ -150,25 +150,25 @@ prettyPastStrictRelativeAdaptiveTests =
   testGroup
     "Past Dates"
     [ testCase "Today" $
-        prettyPastStrictRelativeAdaptive now1 (DateOnly $ fromGregorian 2024 8 10) @?= "today"
+        prettyPastStrictRelativeAdaptive False now1 (DateOnly $ fromGregorian 2024 8 10) @?= "today"
     , testCase "Yesterday" $
-        prettyPastStrictRelativeAdaptive now1 (DateOnly $ fromGregorian 2024 8 9) @?= "yesterday"
+        prettyPastStrictRelativeAdaptive False now1 (DateOnly $ fromGregorian 2024 8 9) @?= "yesterday"
     , testCase "1 month" $
-        prettyPastStrictRelativeAdaptive now1 (DateOnly $ fromGregorian 2024 7 10) @?= "1 month"
+        prettyPastStrictRelativeAdaptive False now1 (DateOnly $ fromGregorian 2024 7 10) @?= "1 month"
     , testCase "1.5 months" $
-        prettyPastStrictRelativeAdaptive now1 (DateOnly $ fromGregorian 2024 7 1) @?= "1 month"
+        prettyPastStrictRelativeAdaptive False now1 (DateOnly $ fromGregorian 2024 7 1) @?= "1 month"
     , testCase "1.5 months 2" $
-        prettyPastStrictRelativeAdaptive now1 (DateOnly $ fromGregorian 2024 6 29) @?= "1 month"
+        prettyPastStrictRelativeAdaptive False now1 (DateOnly $ fromGregorian 2024 6 29) @?= "1 month"
     , testCase "almost 2 months" $
-        prettyPastStrictRelativeAdaptive now1 (DateOnly $ fromGregorian 2024 6 11) @?= "1 month"
+        prettyPastStrictRelativeAdaptive False now1 (DateOnly $ fromGregorian 2024 6 11) @?= "1 month"
     , testCase "2 months" $
-        prettyPastStrictRelativeAdaptive now1 (DateOnly $ fromGregorian 2024 6 10) @?= "2 months"
+        prettyPastStrictRelativeAdaptive False now1 (DateOnly $ fromGregorian 2024 6 10) @?= "2 months"
     , testCase "1 year" $
-        prettyPastStrictRelativeAdaptive now1 (DateOnly $ fromGregorian 2023 8 10) @?= "1 year"
+        prettyPastStrictRelativeAdaptive False now1 (DateOnly $ fromGregorian 2023 8 10) @?= "1 year"
     , testCase "2 years" $
-        prettyPastStrictRelativeAdaptive now1 (DateOnly $ fromGregorian 2022 8 10) @?= "2 years"
+        prettyPastStrictRelativeAdaptive False now1 (DateOnly $ fromGregorian 2022 8 10) @?= "2 years"
     , testCase "future fallback" $
-        prettyPastStrictRelativeAdaptive now1 (DateOnly $ fromGregorian 2025 8 10) @?= "2025-08-10"
+        prettyPastStrictRelativeAdaptive False now1 (DateOnly $ fromGregorian 2025 8 10) @?= "2025-08-10"
     ]
  where
   now1 = ZonedTime (LocalTime (fromGregorian 2024 8 10) (TimeOfDay 8 0 0)) cet

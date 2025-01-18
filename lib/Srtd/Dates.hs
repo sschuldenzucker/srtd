@@ -13,6 +13,7 @@ import Data.Time.Calendar.Month
 import Data.Time.Calendar.WeekDate (toWeekDate)
 import Data.Void
 import GHC.Generics
+import Srtd.Todo (todo)
 import Srtd.Util (eitherToMaybe, maybeToEither, replacePrefix)
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -270,7 +271,7 @@ prettyDayRelativeMed dnow d
       fromMaybe (prettyPastStrictRelativeAdaptiveDay True dnow d) $
         (fmap ("last " ++) . findDelta dayOfWeekPairs =<< dowIfPrev)
   | otherwise =
-      fromMaybe (prettyDay d) $
+      fromMaybe (prettyDayMildlyAdaptive dnow d) $
         findDelta namedOffsetPairs cdiffDays
           <|> (findDelta dayOfWeekPairs =<< dowIfNext)
  where
@@ -332,6 +333,39 @@ prettyPastStrictRelativeAdaptiveDay doAgo dnow d
 -- SOMEDAY maybe include %a (day of week, short)
 prettyDay :: Day -> String
 prettyDay = formatTime defaultTimeLocale "%Y-%m-%d"
+
+-- | For future dates, be adaptive to the current month and year while yielding exact dates (never
+-- relative offsets)
+--
+-- Say today is 2025-01-19.
+--
+-- - 2025-01-25 -> 25th (DEACTIVATED)
+-- - 2025-02-18 -> 02-18
+-- - 2026-01-30 -> 2026-01-30
+-- - 2024-12-14 -> 2024-12-14
+--
+-- Note that "today" is rendered as its full isodate b/c "today" would be relative and just the day
+-- would be that day of the *next* month. Usually, users catch this before.
+--
+-- This is a valid inverse to 'parseInterpretHumanDateOrTime'.
+prettyDayMildlyAdaptive :: Day -> Day -> String
+prettyDayMildlyAdaptive dnow d
+  | dnow >= d = prettyDay d
+  -- Deactivated this b/c it looks a bit funny
+  -- \| (dayPeriod d :: Month) == dayPeriod dnow =
+  --     let (YearMonthDay _ _ di) = d
+  --      in formatOrdinal di
+  | (dayPeriod d :: Year) == dayPeriod dnow = formatTime defaultTimeLocale "%m-%d" d
+  | otherwise = prettyDay d
+ where
+  formatOrdinal di =
+    let dig = di `mod` 10
+        suffix
+          | dig == 1 = "st"
+          | dig == 2 = "nd"
+          | dig == 3 = "rd"
+          | otherwise = "th"
+     in show di ++ suffix
 
 prettyTimeOfDay :: TimeOfDay -> String
 prettyTimeOfDay = formatTime defaultTimeLocale "%H:%M"
