@@ -605,10 +605,10 @@ renderRow
         -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
         -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
         -- I think it's so we don't have two greedy widgets or something.
-        [indentW, statusW, str " ", padRight Max nameW, str " ", dateW, str " ", lastStatusModifiedW]
+        [lastStatusModifiedW, str " ", dateW, str " ", indentW, statusW, str " ", padRight Max nameW]
    where
     -- The first level doesn't take indent b/c deadlines are enough rn.
-    indentW = str (concat (replicate (lvl + 1) "    "))
+    indentW = str (concat (replicate lvl "    "))
     dateW = renderMostUrgentDate ztime sel dates daImpliedDates
     lastStatusModifiedW = renderLastModified ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
     statusW = renderStatus sel status (gLocalActionability llabel)
