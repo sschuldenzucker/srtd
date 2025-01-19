@@ -49,7 +49,17 @@ periodic_backups() {
 git pull
 
 make_backup
-periodic_backups &
 
-exec cabal run srtd -- "$@"
+periodic_backups &
+BACKUP_PID=$!
+cleanup() {
+  kill $BACKUP_PID 2>/dev/null
+}
+trap cleanup EXIT
+
+# NOT exec so the cleanup above actually happens. We also handle exit codes explicitly (o/w they get polluted by the trap).
+cabal run srtd -- "$@"
+exit_code=$?
+exit "$exit_code"
+
 
