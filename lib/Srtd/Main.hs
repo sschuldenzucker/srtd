@@ -7,6 +7,7 @@ import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
 import Control.Arrow (second)
+import Control.Concurrent.Async qualified as Async
 import Control.Monad (forM_, when)
 import Control.Monad.State (liftIO)
 import Data.CircularList qualified as CList
@@ -108,7 +109,7 @@ main = do
   appChan <- newBChan 100
   subscribe modelServer $ writeBChan appChan . ModelUpdated
 
-  _ <- startTicker 60 $ writeBChan appChan Tick
+  Async.link =<< startTicker 60 (writeBChan appChan Tick)
 
   ztime <- getZonedTime
   let actx = AppContext modelServer appChan ztime
