@@ -19,13 +19,16 @@ MAX_BACKUPS=50  # Maximum number of backups to keep
 # mkdir -p "$BACKUP_DIR"
 
 # Create a timestamped backup
-TIMESTAMP=$(date -Iseconds)
-BACKUP_FILE="$BACKUP_DIR/srtd_$TIMESTAMP.json"
+make_backup() {
+  # SOMEDAY lock the backup using flock so no-one else is writing. Google how to do that. flock isn't on mac though so unclear.
+  TIMESTAMP=$(date -Iseconds)
+  BACKUP_FILE="$BACKUP_DIR/srtd_$TIMESTAMP.json"
 
-# Copy the file
-if [ -f "$SOURCE_FILE" ]; then
-  cp "$SOURCE_FILE" "$BACKUP_FILE"
-fi
+  # Copy the file
+  if [ -f "$SOURCE_FILE" ]; then
+    cp "$SOURCE_FILE" "$BACKUP_FILE"
+  fi
+}
 
 # Remove old backups if exceeding the limit
 # Currently not used.
@@ -35,7 +38,18 @@ fi
 #   ls -1t "$BACKUP_DIR" | tail -n +$(($MAX_BACKUPS + 1)) | xargs -I {} rm -- "$BACKUP_DIR/{}"
 # fi
 
+periodic_backups() {
+  while true; do
+    # Backup every hour
+    sleep 3600
+    make_backup
+  done
+}
+
 git pull
+
+make_backup
+periodic_backups &
 
 exec cabal run srtd -- "$@"
 
