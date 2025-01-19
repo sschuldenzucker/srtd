@@ -31,6 +31,7 @@ A theme is a toml file. Every theme defines three toplevel keys (all of which ar
   - `style`: Maps to Brick style names. Can be a comma-separated (without whitespace) string of styles to apply multiple.
 - `defaultAttr` specifies the toplevel (default) attrs, like keys in `theme`.
 - `palette` is a mapping from free-form color names to color codes.
+- `inherits` (optional) is the name of a theme from which `palette` and `theme` should be inherited. Note that the other required entries still *have* to be there, even if empty. The inheriting theme can overwrite individual keys within these mappings, but nothing is deep-merged. Note that `defaultAttr` is *not* inherited!
 
 This is roughly a mix between Brick's themes (which do not support the color-name mapping layer, though) and helix's color scheme format (the only difference being that helix doesn't use a toplevel `theme` key, which I find confusing).
 

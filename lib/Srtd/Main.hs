@@ -6,17 +6,16 @@ import Brick.Themes (Theme, themeToAttrMap)
 import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
-import Control.Arrow (second)
-import Control.Monad (forM_, when)
+import Control.Arrow (first, second)
+import Control.Concurrent.Async qualified as Async
+import Control.Monad (when)
 import Control.Monad.State (liftIO)
 import Data.CircularList qualified as CList
 import Data.List (intersperse)
 import Data.List.Zipper qualified as LZ
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Text qualified as T
-import Data.Text.IO qualified as T
 import Data.Time (getZonedTime)
-import Data.Traversable (forM)
 import GHC.Stack (HasCallStack)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Graphics.Vty qualified as Vty
@@ -33,10 +32,7 @@ import Srtd.Log
 import Srtd.ModelSaver qualified as ModelSaver
 import Srtd.ModelServer
 import Srtd.Ticker
-import System.Directory (listDirectory)
 import System.Exit (ExitCode (..), exitFailure, exitWith)
-import System.FilePath
-import Toml qualified
 
 data AppState = AppState
   { asContext :: AppContext
@@ -59,27 +55,16 @@ data AppState = AppState
 
 suffixLenses ''AppState
 
-readThemeFileOrExit :: FilePath -> IO Theme
-readThemeFileOrExit p = do
-  content <- T.readFile p
-  let res :: Toml.Result String AppTheme.ThemeFile = Toml.decode content
-  case res of
-    Toml.Failure errors -> logParseErrors ERROR errors >> exitFailure
-    Toml.Success warnings themefile -> do
-      logParseErrors WARNING warnings
-      case AppTheme.themeFileToTheme themefile of
-        Left err -> logParseErrors ERROR [T.unpack err] >> exitFailure
-        Right res' -> return res'
- where
-  logParseErrors lvl errors = forM_ errors $ \e ->
-    glogL lvl $ "While reading " ++ p ++ ": parse error: " ++ e
-
 loadAllThemes :: IO [(String, Theme)]
 loadAllThemes = do
-  filenames <- filter ((== ".toml") . takeExtension) <$> listDirectory themeDir
-  forM filenames $ \filename -> do
-    theme <- readThemeFileOrExit $ themeDir </> filename
-    return (takeBaseName filename, theme)
+  ethemes <- AppTheme.loadAllThemes themeDir
+  case ethemes of
+    Left err -> do
+      glogL ERROR (T.unpack err)
+      -- NB this is quite harsh, but nothing is initialized at this point so w/e.
+      exitFailure
+    Right themes ->
+      return $ map (first T.unpack) themes
  where
   themeDir = "themes"
 
@@ -108,7 +93,7 @@ main = do
   appChan <- newBChan 100
   subscribe modelServer $ writeBChan appChan . ModelUpdated
 
-  _ <- startTicker 60 $ writeBChan appChan Tick
+  Async.link =<< startTicker 60 (writeBChan appChan Tick)
 
   ztime <- getZonedTime
   let actx = AppContext modelServer appChan ztime
