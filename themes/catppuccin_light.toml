@@ -1,3 +1,5 @@
+inherits = "catppuccin_dark"
+
 [palette]
 # COPIED from helix's catppuccin_latte theme
 
@@ -42,82 +44,9 @@ red1 = "#ef6c88"
 yellow1 = "#ebc38b"
 green1 = "#85d273"
 
-# Below is the same as catppuccin_dark (but we don't support inheritance, so listing here again)
-
-
 [defaultAttr]
 bg = "base"
 fg = "text"
 
 [theme]
-
-# Helix uses mantle instead of crust but I think it's also got better color accuracy.
-"tab_bar" = {fg = "subtext1", bg = "crust"}
-# "tab_bar.tab_title" = {}  # Unused
-"tab_bar.selected.tab_title" = {fg = "mauve", bg = "base", style = "underline"}
-
-"section_header" = {style = "underline"}
-
-# SOMEDAY some background would be nice
-"filter_label" = {fg = "blue"}
-
-# SOMEDAY maybe a bit too subtle.
-"selected" = {bg = "surface1"}
-
-"text_match" = {bg = "overlay0"}
-"selected.text_match" = {bg = "overlay0"}
-
-"status.next" = {fg = "green"}
-"status.waiting" = {fg = "pink"}
-"status.project" = {fg = "green"}
-"status.later" = {fg = "teal"}
-"status.wip" = {fg = "yellow"}
-"status.done" = {fg = "overlay1"}
-"status.someday" = {fg = "mauve"}
-"status.open" = {fg = "sapphire"}
-
-# SOMEDAY a bit annoying that we don't have the right kind of inheritance, so we have to duplicate this.
-# (it's the same as without selected)
-"selected.status.next" = {fg = "green"}
-"selected.status.waiting" = {fg = "pink"}
-"selected.status.project" = {fg = "green"}
-"selected.status.later" = {fg = "teal"}
-"selected.status.wip" = {fg = "yellow"}
-"selected.status.done" = {fg = "overlay1"}
-"selected.status.someday" = {fg = "mauve"}
-"selected.status.open" = {fg = "sapphire"}
-
-# TODO 'bold' doesn't really work. (but italic and underline do)
-"date.deadline" = {style = "underline"}
-"date.deadline.today" = {fg = "yellow", style = "underline"}
-"date.deadline.tomorrow" = {fg = "green", style = "underline"}
-"date.deadline.overdue" = {fg = "red", style = "underline"}
-
-"date.goalline.today" = {fg = "yellow"}
-"date.goalline.tomorrow" = {fg = "green"}
-"date.goalline.overdue" = {fg = "red"}
-
-"date.scheduled.today" = {fg = "yellow"}
-"date.scheduled.overdue" = {fg = "red"}
-
-"date.remind.today" = {fg = "green"}
-"date.remind.overdue" = {fg = "red"}
-
-"date.indirect" = {fg = "overlay1", style = "italic"}
-
-"date.indirect.deadline" = {style = "italic,underline"}
-"date.indirect.deadline.today" = {fg = "yellow1"}
-"date.indirect.deadline.tomorrow" = {fg = "green1"}
-"date.indirect.deadline.overdue" = {fg = "red1"}
-
-"date.indirect.goalline.today" = {fg = "yellow1"}
-"date.indirect.goalline.tomorrow" = {fg = "green1"}
-"date.indirect.goalline.overdue" = {fg = "red1"}
-
-"date.indirect.scheduled.today" = {fg = "yellow1"}
-"date.indirect.scheduled.overdue" = {fg = "red1"}
-
-"date.indirect.remind.today" = {fg = "green1"}
-"date.indirect.remind.overdue" = {fg = "red1"}
-
-"search_entry.error" = {fg = "red"}
+# Empty, all inherited. (but *has* to be there right now)
