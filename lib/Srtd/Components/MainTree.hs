@@ -149,6 +149,8 @@ defaultFilters =
   [ f_notDone
   , f_deepByDates
   , f_flatByDates
+  , f_nextFlatByDates
+  , f_waitingFlatByDates
   , f_all
   ]
 

@@ -313,6 +313,53 @@ f_flatByDates =
         ]
     tz = fcTimeZone ?fctx
 
+-- | Flat list of next and WIP tasks, ordered by dates. This is a simple "do mode".
+f_nextFlatByDates :: Filter
+f_nextFlatByDates =
+  Filter
+    { fiName = "flat next, by simple urgency"
+    , fiIncludeDone = False
+    , fiPostprocess = go
+    }
+ where
+  -- SOMEDAY there's quite some overlap between the different filters, maybe make top-level helpers.
+  -- But not quite yet, we'll wanna restructure.
+  go :: (?fctx :: FilterContext) => STForest -> STForest
+  go = sortIdForestBy cmp False . filterIdForest p . withIdForest forestFlattenPostorder
+   where
+    -- SOMEDAY this combo tells me some concept is missing / there's an overlap of concepts.
+    p llabel = gStatus llabel <= Next && gLocalActionability llabel <= Next
+    cmp llabel1 llabel2 =
+      mconcat
+        -- NB here we list WIP tasks first b/c it just makes sense.
+        -- SOMEDAY do this for the other filters, too.
+        [ comparing gLocalActionability llabel1 llabel2
+        , (compareAttrDates tz `on` gImpliedDates) llabel1 llabel2
+        ]
+    tz = fcTimeZone ?fctx
+
+-- | Flat list of next tasks, ordered by dates. This is a simple "do mode".
+f_waitingFlatByDates :: Filter
+f_waitingFlatByDates =
+  Filter
+    { fiName = "flat waiting, by simple urgency"
+    , fiIncludeDone = False
+    , fiPostprocess = go
+    }
+ where
+  -- SOMEDAY there's quite some overlap between the different filters, maybe make top-level helpers.
+  -- But not quite yet, we'll wanna restructure.
+  go :: (?fctx :: FilterContext) => STForest -> STForest
+  go = sortIdForestBy cmp False . filterIdForest p . withIdForest forestFlattenPostorder
+   where
+    p llabel = gStatus llabel == Waiting && gLocalActionability llabel <= Waiting
+    cmp llabel1 llabel2 =
+      mconcat
+        [ (compareAttrDates tz `on` gImpliedDates) llabel1 llabel2
+        -- , comparing gLocalActionability llabel1 llabel2
+        ]
+    tz = fcTimeZone ?fctx
+
 -- | Hierarchy-preserving non-done child nodes but deep-sort like `f_flatByDates`
 f_deepByDates :: Filter
 f_deepByDates =
