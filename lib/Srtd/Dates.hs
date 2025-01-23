@@ -269,7 +269,8 @@ prettyDayRelativeMed :: Day -> Day -> String
 prettyDayRelativeMed dnow d
   | d < dnow =
       fromMaybe (prettyPastStrictRelativeAdaptiveDay True dnow d) $
-        (fmap ("last " ++) . findDelta dayOfWeekPairs =<< dowIfPrev)
+        findDelta namedOffsetPairs cdiffDays -- yesterday
+          <|> (fmap ("last " ++) . findDelta dayOfWeekPairs =<< dowIfPrev)
   | otherwise =
       fromMaybe (prettyDayMildlyAdaptive dnow d) $
         findDelta namedOffsetPairs cdiffDays
