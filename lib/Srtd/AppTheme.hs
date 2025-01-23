@@ -153,7 +153,7 @@ inheritThemeFiles themeFiles = foldM go Map.empty themefilesInheritSort
     Nothing -> Right $ Map.insert name themefile res
     Just pname -> case Map.lookup pname res of
       Just pthemefile -> Right $ Map.insert name (inheritThemeFile pthemefile themefile) res
-      Nothing -> Left $ "Circular `inherits` dependency at " <> name
+      Nothing -> Left $ "File not found or circular `inherits` dependency for " <> name
 
 themefilesToThemes :: Map Text ThemeFile -> Either Text (Map Text Theme)
 themefilesToThemes themeFiles = do
