@@ -30,6 +30,8 @@ surface0 = "#313244"
 base = "#1e1e2e"
 mantle = "#181825"
 crust = "#11111b"
+# SRS
+core = "#0c0c13"
 
 # derived colors by blending existing palette colors
 cursorline = "#2a2b3c"
@@ -65,6 +67,10 @@ fg = "text"
 # SOMEDAY we may wanna choose something around the overlay/surface colors to optimize readability.
 "text_match" = {bg = "overlay0"}
 "selected.text_match" = {bg = "overlay0"}
+
+"dates_column" = {bg = "mantle"}
+"selected.dates_column" = {bg = "surface1"}
+# "selected.dates_column" = {bg = "surface0"}
 
 "status.next" = {fg = "green"}
 "status.waiting" = {fg = "pink"}

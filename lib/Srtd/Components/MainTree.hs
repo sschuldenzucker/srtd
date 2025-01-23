@@ -585,6 +585,11 @@ withDefAttrIf :: AttrName -> Bool -> Widget n -> Widget n
 withDefAttrIf a True = withDefAttr a
 withDefAttrIf _ False = id
 
+-- TODO this function shouldn't exist. Instead proper inheritance.
+maybePrefixSelAttr :: Bool -> AttrName -> AttrName
+maybePrefixSelAttr True a = selectedItemRowAttr <> a
+maybePrefixSelAttr False a = a
+
 renderRow :: ZonedTime -> Maybe Regex -> Bool -> ListIdLabel -> Widget n
 renderRow
   ztime
@@ -607,7 +612,18 @@ renderRow
         -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
         -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
         -- I think it's so we don't have two greedy widgets or something.
-        [lastStatusModifiedW, str " ", dateW, str " ", indentW, statusW, str " ", padRight Max nameW]
+        -- TODO attr management really broken here, and I'm not sure how I'd fix.
+        [ withDefAttr (maybePrefixSelAttr sel $ attrName "dates_column") . hBox $
+            [ lastStatusModifiedW
+            , str " "
+            , dateW
+            ]
+        , str " "
+        , indentW
+        , statusW
+        , str " "
+        , padRight Max nameW
+        ]
    where
     -- The first level doesn't take indent b/c deadlines are enough rn.
     indentW = str (concat (replicate lvl "    "))
