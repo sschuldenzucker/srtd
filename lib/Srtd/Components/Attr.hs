@@ -121,6 +121,7 @@ renderStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
     WIP -> "wip"
     Someday -> "someday"
     Done -> "done"
+    Canceled -> "canceled"
     Open -> "open"
     -- NB this typically isn't configured in the theme, which is fine.
     None -> "none"
@@ -133,5 +134,6 @@ renderStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
     WIP -> "*"
     Someday -> "~"
     Done -> "+"
+    Canceled -> "x"
     Open -> "o"
     None -> "-"

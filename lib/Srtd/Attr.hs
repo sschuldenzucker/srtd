@@ -57,11 +57,21 @@ data Status
     Someday
   | -- | No status assigned. For notes, containers, areas of responsibility, and "stuff"
     None
+  | -- | Canceled. Never done. We separate this from Done b/c Canceled is more likely to be revived.
+    Canceled
   | -- | Done. (NB there's no 'archived' tag right now)
     Done
   deriving (Eq, Ord, Show, Generic)
 
 suffixLenses ''Status
+
+-- | Whether status is 'Done' or 'Canceled'. This excludes an item from many analyses. A bit of a
+-- misnomer but I didn't want to make up a new term.
+isDone :: Status -> Bool
+isDone = \case
+  Canceled -> True
+  Done -> True
+  _ -> False
 
 -- ** Dates
 
@@ -297,9 +307,9 @@ data DerivedAttr = DerivedAttr
   , daLatestAutodates :: AttrAutoDates
   -- ^ Point-wise latest autodates of the children and including this node.
   , daEarliestDates :: AttrDates
-  -- ^ Point-wise earliest dates of the children and including this node. Ignores 'Done' nodes.
+  -- ^ Point-wise earliest dates of the children and including this node. Ignores 'isDone' nodes.
   , daLatestDates :: AttrDates
-  -- ^ Point-wise latest dates of the children and including this node. Ignores 'Done' nodes
+  -- ^ Point-wise latest dates of the children and including this node. Ignores 'isDone' nodes
   --
   -- NB This is probably not very useful.
   , daImpliedDates :: AttrDates

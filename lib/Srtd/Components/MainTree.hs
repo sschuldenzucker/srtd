@@ -27,7 +27,8 @@ import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Graphics.Vty.Input (Button (..))
 import Lens.Micro.Platform
 import Srtd.AppAttr
-import Srtd.Attr
+import Srtd.Attr hiding (Canceled) -- hiding to avoid a name clash
+import Srtd.Attr qualified (Status (Canceled))
 import Srtd.BrickHelpers
 import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
@@ -273,6 +274,7 @@ setStatusKeymap =
     , kmLeafA_ (bind 'l') "Later" (setStatus $ Later)
     , kmLeafA_ (bind 'i') "WIP" (setStatus $ WIP)
     , kmLeafA_ (binding KEnter []) "Done" (setStatus $ Done)
+    , kmLeafA_ (bind 'x') "Canceled" (setStatus $ Srtd.Attr.Canceled)
     , kmLeafA_ (bind 's') "Someday" (setStatus $ Someday)
     , kmLeafA_ (bind 'o') "Open" (setStatus $ Open)
     , kmLeafA_ (bind 't') "Touch" touchLastStatusModified

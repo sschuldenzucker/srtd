@@ -23,7 +23,7 @@ import Lens.Micro.Platform
 import Srtd.Alignment
 import Srtd.AppAttr
 import Srtd.AppTheme qualified as AppTheme
-import Srtd.Attr
+import Srtd.Attr (EID (Vault))
 import Srtd.CmdlineArgs qualified as CArgs
 import Srtd.Component
 import Srtd.Components.MainTree qualified as MainTree

@@ -115,12 +115,12 @@ _forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> 
           foldl'
             (pointwiseChooseAttrDates chooseMin tz)
             (dates attr)
-            [daEarliestDates d | (a, d) <- clabels, status a /= Done]
+            [daEarliestDates d | (a, d) <- clabels, not (isDone $ status a)]
       , daLatestDates =
           foldl'
             (pointwiseChooseAttrDates chooseMax tz)
             (dates attr)
-            [daLatestDates d | (a, d) <- clabels, status a /= Done]
+            [daLatestDates d | (a, d) <- clabels, not (isDone $ status a)]
       , -- Writing this as fold to match the above, but `mplabel` is just a Maybe, not a list.
         daImpliedDates =
           foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . fmap (daImpliedDates . snd) $ mplabel
@@ -258,7 +258,7 @@ runFilter (Filter {fiIncludeDone, fiPostprocess}) i m = do
     st2 = (stForestL %~ fiPostprocess) $ st1
   return st2
  where
-  pNotDone ((Attr {status}, _), _) = status /= Done
+  pNotDone = not . isDone . gStatus
 
 -- ** Specific filters
 

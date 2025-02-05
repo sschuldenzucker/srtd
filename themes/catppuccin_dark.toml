@@ -78,6 +78,7 @@ fg = "text"
 "status.later" = {fg = "teal"}
 "status.wip" = {fg = "yellow"}
 "status.done" = {fg = "overlay1"}
+"status.canceled" = {fg = "overlay1"}
 "status.someday" = {fg = "mauve"}
 # SOMEDAY quite sure yet what's most readable.
 # "status.open" = {fg = "maroon"}
@@ -93,6 +94,7 @@ fg = "text"
 "selected.status.later" = {fg = "teal"}
 "selected.status.wip" = {fg = "yellow"}
 "selected.status.done" = {fg = "overlay1"}
+"selected.status.canceled" = {fg = "overlay1"}
 "selected.status.someday" = {fg = "mauve"}
 "selected.status.open" = {fg = "sapphire"}
 
