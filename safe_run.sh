@@ -53,12 +53,14 @@ periodic_backups() {
     # Backup every hour
     sleep 3600
     make_backup
+    clean_old_backups
   done
 }
 
 git pull
 
 make_backup
+clean_old_backups
 
 periodic_backups &
 BACKUP_PID=$!

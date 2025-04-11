@@ -17,6 +17,8 @@ There are three packages:
 - The `srtd` executable. (run using `cabal run srtd`)
 - The `srtd-test` suite. (run using `cabal run srtd-test`)
 
+To run `safe_run.sh` (with backups), you also need [timegaps](https://gehrcke.de/timegaps/) ([repo](https://github.com/jgehrcke/timegaps)).
+
 ## Running
 
 `cabal run srtd` and Ctrl+/ to show keyboard shortcuts. Writes to `srtd.json` in the current directory. Autosaves.
