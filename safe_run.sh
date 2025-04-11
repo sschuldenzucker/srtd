@@ -21,13 +21,23 @@ MAX_BACKUPS=50  # Maximum number of backups to keep
 # Create a timestamped backup
 make_backup() {
   # SOMEDAY lock the backup using flock so no-one else is writing. Google how to do that. flock isn't on mac though so unclear.
-  TIMESTAMP=$(date -Iseconds)
+  TIMESTAMP=$(date -Iseconds | sed 's/:/-/g')
   BACKUP_FILE="$BACKUP_DIR/srtd_$TIMESTAMP.json"
 
   # Copy the file
   if [ -f "$SOURCE_FILE" ]; then
     cp "$SOURCE_FILE" "$BACKUP_FILE"
   fi
+}
+
+clean_old_backups() {
+  (
+    cd "$BACKUP_DIR"
+    # NB we index based on the modification time. That's fine with our method here but can be a
+    # problem when the backup itself is restored from somewhere. Timegaps has an option to parse the
+    # filename then.
+    ls | timegaps --stdin recent3,hours24,days7,weeks8,months12,years5 -d >/dev/null
+  )
 }
 
 # Remove old backups if exceeding the limit
