@@ -7,6 +7,13 @@ Use cabal (`cabal build`).
 
 Tested with the following ecosystem:
 
+- GHC 9.12.2
+- cabal 3.14.2.0
+- HLS 2.10.0.0
+- GHCup 0.1.50.2
+
+Previously tested with (this should still work if you're on an older GHC version):
+
 - GHC 9.4.8
 - cabal 3.10.3.0
 - HLS 2.7.0.0
