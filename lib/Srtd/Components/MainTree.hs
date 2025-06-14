@@ -136,6 +136,7 @@ data MainTree = MainTree
   -- SOMEDAY do I want to make a wrapper for "things that have overlays" that *consistenly* handles everything?
   , mtSearchRx :: Maybe Regex
   -- ^ Regex to use for highlighting and search
+  , mtHideHierarchyFilter :: HideHierarchyFilter
   }
 
 suffixLenses ''MainTree
@@ -217,26 +218,20 @@ rootKeymap =
       (kmSub (bind 'M') moveSubtreeModeKeymap)
     , (kmSub (bind 'D') deleteKeymap)
     , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse aerContinue $ \cur -> do
-          rname <- mtResourceName <$> get
-          model <- liftIO $ getModel (acModelServer ?actx)
-          filters <- mtFilters <$> get
-          let eres = makeWithFilters cur filters model rname
-          case eres of
-            Left _err -> return Canceled
-            Right res -> put res >> aerContinue
+          e <- tryMoveToEID cur
+          case e of
+            Left IdNotFoundError -> return Canceled
+            Right () -> aerContinue
       )
     , ( kmLeafA (binding KBS []) "De-hoist" $ do
-          s <- get
-          case s ^. mtSubtreeL . breadcrumbsL of
+          mt <- get
+          case mt ^. mtSubtreeL . breadcrumbsL of
             [] -> aerContinue
-            (parent, _) : _ -> do
-              rname <- mtResourceName <$> get
-              model <- liftIO $ getModel (acModelServer ?actx)
-              filters <- mtFilters <$> get
-              let eres = makeWithFilters parent filters model rname
-              case eres of
-                Left _err -> return Canceled
-                Right res -> put (res & mtListL %~ scrollListToEID (mtRoot s)) >> aerContinue
+            (par, _) : _ -> do
+              e <- tryMoveToEID par
+              case e of
+                Left IdNotFoundError -> return Canceled
+                Right () -> modify (mtListL %~ scrollListToEID (mtRoot mt)) >> aerContinue
       )
     , (kmSub (bind ';') sortKeymap)
     , (kmLeafA_ (bind 'h') "Go to parent" (modify (mtGoSubtreeFromCur goParent)))
@@ -385,21 +380,18 @@ goKeymap =
       kmLeafA_ (bind 'e') "End" $ mtListL %= L.listMoveToEnd
     , ( kmLeafA (binding KBS []) "De-hoist, keep pos" $ do
           -- SOMEDAY some code duplication vs the other de-hoist.
-          s <- get
-          case s ^. mtSubtreeL . breadcrumbsL of
+          mt <- get
+          case mt ^. mtSubtreeL . breadcrumbsL of
             [] -> aerContinue
-            (parent, _) : _ -> do
-              rname <- mtResourceName <$> get
-              model <- liftIO $ getModel (acModelServer ?actx)
-              filters <- mtFilters <$> get
-              let eres = makeWithFilters parent filters model rname
+            (par, _) : _ -> do
+              e <- tryMoveToEID par
               -- This is to stay at the current position, but if the subtree is empty, it
               -- should still do something for ergonomics, so we instead behave like the regular
               -- "de-hoist".
-              let tgt = fromMaybe (mtRoot s) (mtCur s)
-              case eres of
-                Left _err -> return Canceled
-                Right res -> put (res & mtListL %~ scrollListToEID tgt) >> aerContinue
+              let tgt = fromMaybe (mtRoot mt) (mtCur mt)
+              case e of
+                Left IdNotFoundError -> return Canceled
+                Right () -> modify (mtListL %~ scrollListToEID tgt) >> aerContinue
       )
     ]
 
@@ -514,17 +506,31 @@ cyclePrevFilter = do
   pullNewModel
 
 make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
-make root = makeWithFilters root (CList.fromList defaultFilters)
+make root = makeWithFilters root (CList.fromList defaultFilters) emptyHideHierarchyFilter
+
+-- | Move the tree to any EID, preserving settings. Returns an error if that EID doesn't exist
+-- (presumably b/c it was deleted). Then nothing is updated.
+tryMoveToEID ::
+  (?actx :: AppContext) => EID -> EventM AppResourceName MainTree (Either IdNotFoundError ())
+tryMoveToEID eid = do
+  mt <- get
+  model <- liftIO $ getModel (acModelServer ?actx)
+  -- NB we can re-use the resource name b/c we're updating ourselves
+  let emt' = makeWithFilters eid (mtFilters mt) (mtHideHierarchyFilter mt) model (mtResourceName mt)
+  case emt' of
+    Left err -> return (Left err)
+    Right mt' -> put mt' >> return (Right ())
 
 -- | filters must not be empty.
 makeWithFilters ::
   (?actx :: AppContext) =>
   EID ->
   CList.CList Filter ->
+  HideHierarchyFilter ->
   Model ->
   AppResourceName ->
   Either IdNotFoundError MainTree
-makeWithFilters root filters model rname = do
+makeWithFilters root filters hhf model rname = do
   subtree <- translateAppFilterContext $ runFilter (fromJust $ CList.focus filters) root model
   let list = forestToBrickList (MainListFor rname) $ stForest subtree
   return
@@ -538,6 +544,7 @@ makeWithFilters root filters model rname = do
       , mtShowDetails = False
       , mtOverlay = Nothing
       , mtSearchRx = Nothing
+      , mtHideHierarchyFilter = hhf
       }
 
 translateAppFilterContext :: (?actx :: AppContext) => ((?fctx :: FilterContext) => a) -> a
