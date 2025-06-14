@@ -142,7 +142,10 @@ data MainTree = MainTree
 suffixLenses ''MainTree
 
 mtFilter :: MainTree -> Filter
-mtFilter = fromJust . CList.focus . mtFilters
+mtFilter mt = chainFilters collapseFilter normalFilter
+ where
+  collapseFilter = hideHierarchyFilter . mtHideHierarchyFilter $ mt
+  normalFilter = fromJust . CList.focus . mtFilters $ mt
 -- ^ NB we know that filters will be non-empty.
 
 -- The first one is default selected.
@@ -240,8 +243,16 @@ rootKeymap =
     , (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
     , (kmSub (bind 'g') goKeymap)
     , (kmSub (bind 'f') searchKeymap)
-    -- SOMEDAY bind '/' to directly go to search. A bit of duplication b/c ESC should *not* go to
-    -- the submenu in this case.
+    , -- SOMEDAY bind '/' to directly go to search. A bit of duplication b/c ESC should *not* go to
+      -- the submenu in this case.
+      ( kmLeafA
+          (bind '-')
+          "Un/collapse"
+          ( withCurWithAttrOrElse aerContinue $ \curl -> do
+              modify (mtHideHierarchyFilterL %~ hhfToggle curl)
+              notFoundToAER_ pullNewModel
+          )
+      )
     ]
 
 deleteKeymap :: Keymap (AppEventAction MainTree () ())
@@ -523,7 +534,9 @@ makeWithFilters ::
   AppResourceName ->
   Either IdNotFoundError MainTree
 makeWithFilters root filters hhf model rname = do
-  subtree <- translateAppFilterContext $ runFilter (fromJust $ CList.focus filters) root model
+  subtree <-
+    translateAppFilterContext $
+      runFilter (chainFilters (hideHierarchyFilter hhf) (fromJust $ CList.focus filters)) root model
   let list = forestToBrickList (MainListFor rname) $ stForest subtree
   return
     MainTree
@@ -949,11 +962,15 @@ withCur = withCurOrElse (return ())
 
 withCurWithAttr ::
   (LocalIdLabel -> EventM n MainTree ()) -> EventM n MainTree ()
-withCurWithAttr go = do
+withCurWithAttr = withCurWithAttrOrElse (return ())
+
+withCurWithAttrOrElse ::
+  EventM n MainTree a -> (LocalIdLabel -> EventM n MainTree a) -> EventM n MainTree a
+withCurWithAttrOrElse dflt go = do
   s <- get
   case mtCurWithAttr s of
     Just cura -> go cura
-    Nothing -> return ()
+    Nothing -> dflt
 
 withRoot ::
   (EID -> EventM n MainTree ()) -> EventM n MainTree ()
