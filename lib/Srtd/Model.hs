@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+
 -- | Model stuff.
 module Srtd.Model where
 
@@ -6,7 +8,10 @@ import Brick (suffixLenses)
 import Data.Aeson
 import Data.Function (on)
 import Data.List (find, foldl', sortBy)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Ord (comparing)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Time (TimeZone)
 import Data.Tree
 import Data.UUID (UUID)
@@ -406,6 +411,60 @@ f_deepByDates =
         , comparing gLocalActionability llabel1 llabel2
         ]
     tz = fcTimeZone ?fctx
+
+-- | Intermediate structure to build the filter for hiding levels.
+--
+-- Note that 'hiding' is the same as just filtering out at the data level but is different from a
+-- user expectation point-of-view: the user sees "hiding" as collapsing and expects to be able to
+-- un-collapse whatever is hidden.
+data HideHierarchyFilter = HideHierarchyFilter
+  { hideLevel :: Maybe Int
+  , hideEIDs :: Set EID
+  , showEIDs :: Set EID
+  }
+
+emptyHideHierarchyFilter :: HideHierarchyFilter
+emptyHideHierarchyFilter = HideHierarchyFilter Nothing Set.empty Set.empty
+
+-- | Build a hierarchy filter. This is _not_ meant to be selected directly by the user but as a tool
+-- for views.
+hideHierarchyFilter :: HideHierarchyFilter -> Filter
+hideHierarchyFilter hhf =
+  Filter
+    { fiName = name_
+    , fiIncludeDone = True
+    , fiPostprocess = withIdForest (foldForest go)
+    }
+ where
+  name_ =
+    let parts =
+          catMaybes
+            [ fmap show $ hhf.hideLevel
+            , case Set.size hhf.hideEIDs of
+                0 -> Nothing
+                i -> Just ("-" ++ show i)
+            , case Set.size hhf.showEIDs of
+                0 -> Nothing
+                i -> Just ("+" ++ show i)
+            ]
+     in "Hide " ++ if null parts then "none" else concat parts
+  go lilabel cs =
+    let isHiddenLevel = fromMaybe False ((gLocalLevel lilabel >=) <$> hhf.hideLevel)
+        isInHideList = Set.member (gEID lilabel) hhf.hideEIDs
+        isInShowList = Set.member (gEID lilabel) hhf.showEIDs
+     in if (isHiddenLevel || isInHideList) && not isInShowList
+          then
+            -- Hide
+            let lilabel' =
+                  lilabel
+                    & (_2 . _2 . ldHiddenAncestorsL)
+                    %~ (+ length cs)
+                    & (_2 . _2 . ldHiddenAncestorsL)
+                    %~ (+ forestSize cs)
+             in Node lilabel' []
+          else
+            -- Show
+            Node lilabel cs
 
 -- * Model modifications
 
