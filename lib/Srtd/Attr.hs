@@ -348,6 +348,8 @@ data LocalDerivedAttr = LocalDerivedAttr
   -- ^ Ancestors starting at the parent up to and excluding the root.
   --
   -- SOMEDAY rename to ancestors.
+  , ldLevel :: Int
+  -- ^ Level local to the subtree. The root of the subtree (!) is -1, so all nodes have level >= 0.
   }
   deriving (Show)
 
@@ -436,6 +438,9 @@ gParentActionability = ldParentActionability . getLocalDerivedAttr
 
 gBreadcrumbs :: (HasLocalDerivedAttr a) => a -> [LocalIdLabel]
 gBreadcrumbs = ldBreadcrumbs . getLocalDerivedAttr
+
+gLocalLevel :: (HasLocalDerivedAttr a) => a -> Int
+gLocalLevel = ldLevel . getLocalDerivedAttr
 
 instance HasLocalDerivedAttr LocalDerivedAttr where getLocalDerivedAttr = id
 

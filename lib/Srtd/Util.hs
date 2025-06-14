@@ -162,6 +162,7 @@ forestTreesWithBreadcrumbs = concatMap (goTree [])
   goTree crumbs n@(Node x children) = (crumbs, n) : concatMap (goTree (x : crumbs)) children
 
 -- | Preorder nodes with their respecive levels
+-- SOMEDAY unused, remove.
 forestFlattenWithLevels :: Forest a -> [(Int, a)]
 forestFlattenWithLevels = map extr . forestTreesWithBreadcrumbs
  where
@@ -172,6 +173,9 @@ forestFlatten :: Forest a -> Forest a
 forestFlatten = concatMap goTree
  where
   goTree (Node x children) = Node x [] : concatMap goTree children
+
+forestFlattenToList :: Forest a -> [a]
+forestFlattenToList = map rootLabel . forestFlatten
 
 -- | Postorder variant of 'forestFlatten'
 forestFlattenPostorder :: Forest a -> Forest a

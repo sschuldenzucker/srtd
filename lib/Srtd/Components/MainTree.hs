@@ -548,7 +548,8 @@ translateAppFilterContext x =
 forestToBrickList :: AppResourceName -> STForest -> MyList
 forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
  where
-  contents = map (\(lvl, (i, attr)) -> ListIdLabel lvl i attr) $ forestFlattenWithLevels . idForest $ forest
+  contents =
+    map (\(i, attr) -> ListIdLabel (gLocalLevel attr) i attr) . forestFlattenToList . idForest $ forest
 
 searchForRxAction :: SearchDirection -> Bool -> EventM n MainTree ()
 searchForRxAction dir curOk = do

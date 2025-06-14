@@ -177,7 +177,7 @@ forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt
 addLocalDerivedAttrs :: MForest -> STForest
 addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
  where
-  _go Nothing (i, label) = (i, (label, LocalDerivedAttr {ldParentActionability = None, ldBreadcrumbs = []}))
+  _go Nothing (i, label) = (i, (label, LocalDerivedAttr {ldParentActionability = None, ldBreadcrumbs = [], ldLevel = 0}))
   _go (Just plilabel@(_i, (plabel@(_parAttr, _parDAttr), parLDAttr))) (i, label) =
     ( i
     ,
@@ -186,6 +186,7 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
           { ldParentActionability =
               stepParentActionability (gGlobalActionability plabel) (ldParentActionability parLDAttr)
           , ldBreadcrumbs = plilabel : ldBreadcrumbs parLDAttr
+          , ldLevel = ldLevel parLDAttr + 1
           }
       )
     )
