@@ -218,20 +218,15 @@ rootKeymap =
       (kmSub (bind 'M') moveSubtreeModeKeymap)
     , (kmSub (bind 'D') deleteKeymap)
     , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse aerContinue $ \cur -> do
-          e <- tryMoveToEID cur
-          case e of
-            Left IdNotFoundError -> return Canceled
-            Right () -> aerContinue
+          notFoundToAER_ $ moveToEID cur
       )
     , ( kmLeafA (binding KBS []) "De-hoist" $ do
           mt <- get
           case mt ^. mtSubtreeL . breadcrumbsL of
             [] -> aerContinue
-            (par, _) : _ -> do
-              e <- tryMoveToEID par
-              case e of
-                Left IdNotFoundError -> return Canceled
-                Right () -> modify (mtListL %~ scrollListToEID (mtRoot mt)) >> aerContinue
+            (par, _) : _ -> notFoundToAER_ $ do
+              moveToEID par
+              modify (mtListL %~ scrollListToEID (mtRoot mt))
       )
     , (kmSub (bind ';') sortKeymap)
     , (kmLeafA_ (bind 'h') "Go to parent" (modify (mtGoSubtreeFromCur goParent)))
@@ -383,15 +378,13 @@ goKeymap =
           mt <- get
           case mt ^. mtSubtreeL . breadcrumbsL of
             [] -> aerContinue
-            (par, _) : _ -> do
-              e <- tryMoveToEID par
+            (par, _) : _ -> notFoundToAER_ $ do
+              moveToEID par
               -- This is to stay at the current position, but if the subtree is empty, it
               -- should still do something for ergonomics, so we instead behave like the regular
               -- "de-hoist".
               let tgt = fromMaybe (mtRoot mt) (mtCur mt)
-              case e of
-                Left IdNotFoundError -> return Canceled
-                Right () -> modify (mtListL %~ scrollListToEID tgt) >> aerContinue
+              modify (mtListL %~ scrollListToEID tgt)
       )
     ]
 
@@ -510,16 +503,15 @@ make root = makeWithFilters root (CList.fromList defaultFilters) emptyHideHierar
 
 -- | Move the tree to any EID, preserving settings. Returns an error if that EID doesn't exist
 -- (presumably b/c it was deleted). Then nothing is updated.
-tryMoveToEID ::
-  (?actx :: AppContext) => EID -> EventM AppResourceName MainTree (Either IdNotFoundError ())
-tryMoveToEID eid = do
+moveToEID ::
+  (?actx :: AppContext) => EID -> EventMOrNotFound n MainTree ()
+moveToEID eid = do
   mt <- get
   model <- liftIO $ getModel (acModelServer ?actx)
   -- NB we can re-use the resource name b/c we're updating ourselves
-  let emt' = makeWithFilters eid (mtFilters mt) (mtHideHierarchyFilter mt) model (mtResourceName mt)
-  case emt' of
-    Left err -> return (Left err)
-    Right mt' -> put mt' >> return (Right ())
+  mt' <-
+    pureET $ makeWithFilters eid (mtFilters mt) (mtHideHierarchyFilter mt) model (mtResourceName mt)
+  put mt'
 
 -- | filters must not be empty.
 makeWithFilters ::
