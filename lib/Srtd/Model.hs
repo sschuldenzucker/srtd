@@ -247,6 +247,16 @@ data Filter = Filter
   -- ^ Postprocessing function that can apply pretty much any transformation.
   }
 
+-- | Like `(.)` for filters. The name of the first filter in the chain (second argument) is used.
+-- We don't make this an instance of Category b/c it's a bit funky.
+filterChain :: Filter -> Filter -> Filter
+filterChain f1 f2 =
+  Filter
+    { fiName = fiName f2
+    , fiIncludeDone = fiIncludeDone f2
+    , fiPostprocess = fiPostprocess f1 . fiPostprocess f2
+    }
+
 instance Show Filter where
   show f = "<Filter " ++ fiName f ++ ">"
 
