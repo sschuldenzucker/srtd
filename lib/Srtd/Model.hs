@@ -444,7 +444,8 @@ _hhfSwapToShow eid hhf = hhf & hideEIDsL %~ Set.delete eid & showEIDsL %~ Set.in
 -- | Toggle between collapsed and not. Needs some logic
 hhfToggle :: LocalIdLabel -> HideHierarchyFilter -> HideHierarchyFilter
 hhfToggle lil@(eid, _) hhf
-  | ((gLocalLevel lil >=) <$> hhf.hideLevel) == Just True = _hhfSwapToShow eid hhf
+  -- We match with equality here for the same reason as in hideHierarchyFilter below.
+  | ((gLocalLevel lil ==) <$> hhf.hideLevel) == Just True = _hhfSwapToShow eid hhf
   | Set.member eid hhf.hideEIDs = _hhfSwapToShow eid hhf
   | otherwise = _hhfSwapToHide eid hhf
 
@@ -476,7 +477,8 @@ hideHierarchyFilter hhf =
             ]
      in "Hide " ++ if null parts then "none" else concat parts
   go lilabel cs =
-    let isHiddenLevel = fromMaybe False ((gLocalLevel lilabel >=) <$> hhf.hideLevel)
+    -- isHiddenLevel matches with *equality* so that all descendants expand when we manual-exapand. Seems to be the right thing.
+    let isHiddenLevel = fromMaybe False ((gLocalLevel lilabel ==) <$> hhf.hideLevel)
         isInHideList = Set.member (gEID lilabel) hhf.hideEIDs
         isInShowList = Set.member (gEID lilabel) hhf.showEIDs
      in if (isHiddenLevel || isInHideList) && not isInShowList
