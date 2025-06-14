@@ -662,8 +662,8 @@ renderRow
             , str " "
             , dateW
             ]
-        , str " "
         , indentW
+        , collapsedW
         , statusW
         , str " "
         , padRight Max nameW
@@ -671,6 +671,16 @@ renderRow
    where
     -- The first level doesn't take indent b/c deadlines are enough rn.
     indentW = str (concat (replicate lvl "    "))
+    collapsedW =
+      -- NB the symbol means that something is hidden; this is subtly different form ldIsCollapsed.
+      if (ldHiddenChildren . getLocalDerivedAttr $ llabel) > 0
+        -- if (ldIsCollapsed . getLocalDerivedAttr $ llabel)
+        -- SOMEDAY not sure if this is the prettiest character, here are some alternatives:
+        then withDefAttr collapsedMarkerAttr (str "▸")
+        -- then withDefAttr collapsedMarkerAttr (str "›")
+        -- then withDefAttr collapsedMarkerAttr (str "►")
+        -- then withDefAttr collapsedMarkerAttr (str "▷")
+        else str " "
     dateW = renderMostUrgentDate ztime sel dates daImpliedDates
     lastStatusModifiedW = renderLastModified ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
     statusW = renderStatus sel status (gLocalActionability llabel)

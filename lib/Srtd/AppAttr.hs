@@ -16,3 +16,6 @@ statusAttr = attrName "status"
 
 filterLabelAttr :: AttrName
 filterLabelAttr = attrName "filter_label"
+
+collapsedMarkerAttr :: AttrName
+collapsedMarkerAttr = attrName "collapsed_marker"

@@ -72,6 +72,8 @@ fg = "text"
 "selected.dates_column" = {bg = "surface1"}
 # "selected.dates_column" = {bg = "surface0"}
 
+"collapsed_marker" = {fg = "overlay1"}
+
 "status.next" = {fg = "green"}
 "status.waiting" = {fg = "pink"}
 "status.project" = {fg = "green"}
