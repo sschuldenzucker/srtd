@@ -445,7 +445,8 @@ _hhfSwapToShow eid hhf = hhf & hideEIDsL %~ Set.delete eid & showEIDsL %~ Set.in
 hhfToggle :: LocalIdLabel -> HideHierarchyFilter -> HideHierarchyFilter
 hhfToggle lil@(eid, _) hhf
   -- We match with equality here for the same reason as in hideHierarchyFilter below.
-  | ((gLocalLevel lil ==) <$> hhf.hideLevel) == Just True = _hhfSwapToShow eid hhf
+  | (((gLocalLevel lil ==) <$> hhf.hideLevel) == Just True) && not (Set.member eid hhf.showEIDs) =
+      _hhfSwapToShow eid hhf
   | Set.member eid hhf.hideEIDs = _hhfSwapToShow eid hhf
   | otherwise = _hhfSwapToHide eid hhf
 
