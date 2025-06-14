@@ -221,3 +221,10 @@ regexSplitWithMatches regex input = go 0 matches
      in (if not (T.null before_) then [(False, before_)] else [])
           ++ [(True, matched)]
           ++ go (start + len) rest
+
+-- * Text helpers
+
+unsafeSingleDigitUIntToChar :: Int -> Char
+unsafeSingleDigitUIntToChar i = case (show i) of
+  [c] | '0' <= c && c <= '9' -> c
+  _ -> error $ "unsafeSingleDigitUIntToChar: Expected 0-9, got " ++ (show i)

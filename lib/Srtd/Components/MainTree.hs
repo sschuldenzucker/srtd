@@ -7,7 +7,9 @@ module Srtd.Components.MainTree (MainTree (..), make) where
 
 import Brick hiding (on)
 import Brick.BChan (writeBChan)
-import Brick.Keybindings (bind, ctrl, meta)
+-- hiding to avoid a name clash
+
+import Brick.Keybindings (Binding, bind, ctrl, meta)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
@@ -27,7 +29,7 @@ import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Graphics.Vty.Input (Button (..))
 import Lens.Micro.Platform
 import Srtd.AppAttr
-import Srtd.Attr hiding (Canceled) -- hiding to avoid a name clash
+import Srtd.Attr hiding (Canceled)
 import Srtd.Attr qualified (Status (Canceled))
 import Srtd.BrickHelpers
 import Srtd.BrickListHelpers qualified as L
@@ -170,98 +172,110 @@ rootKeymap :: Keymap (AppEventAction MainTree () ())
 rootKeymap =
   kmMake
     "Tree View"
-    [ kmLeafA_ (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur insAfter
-    , kmLeafA_ (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore
-    , kmLeafA_ (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild
-    , kmLeafA_ (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild
-    , ( kmLeafA_ (bind 'e') "Edit name" $ do
-          state <- get
-          case mtCurWithAttr state of
-            Just (cur, ((curAttr, _), _)) -> do
-              let oldName = name curAttr
-              let cb name' = aerVoid $ do
-                    let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
-                    modifyModelAsync $ modifyAttrByEID cur f
-                    -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
-                    mtListL %= scrollListToEID cur
-              pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb
-            Nothing -> return ()
-      )
-    , ( kmLeafA_ (ctrl 't') "Open test overlay" $
-          pushOverlay (const newTestOverlay) overlayNoop overlayNoop
-      )
-    , ( kmLeafA_ (bind 'T') "New tab" $ do
-          state <- get
-          liftIO $
-            writeBChan (acAppChan ?actx) $
-              PushTab (\rname -> SomeAppComponent $ setResourceName rname state)
-      )
-    , (kmLeafA (bind 'q') "Close tab / quit" $ return $ Confirmed ())
-    , ( kmLeafA_ (bind ']') "Next tab" $
-          liftIO $
-            writeBChan (acAppChan ?actx) $
-              NextTab
-      )
-    , ( kmLeafA_ (bind '[') "Prev tab" $
-          liftIO $
-            writeBChan (acAppChan ?actx) $
-              PrevTab
-      )
-    , ( kmLeafA_ (binding (KChar 'j') [MMeta]) "Move subtree down same level" $
-          moveCurRelative goNextSibling insAfter
-      )
-    , ( kmLeafA_ (binding (KChar 'k') [MMeta]) "Move subtree up same level" $
-          moveCurRelative goPrevSibling insBefore
-      )
-    , (kmLeafA_ (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter)
-    , ( kmLeafA_ (bind '>') "Move subtree last child of previous" $
-          moveCurRelative goPrevSibling insLastChild
-      )
-    , -- (kmSub (bind 'm') moveSingleModeKeymap),
-      (kmSub (bind 'M') moveSubtreeModeKeymap)
-    , (kmSub (bind 'D') deleteKeymap)
-    , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse aerContinue $ \cur -> do
-          notFoundToAER_ $ moveToEID cur
-      )
-    , ( kmLeafA (binding KBS []) "De-hoist" $ do
-          mt <- get
-          case mt ^. mtSubtreeL . breadcrumbsL of
-            [] -> aerContinue
-            (par, _) : _ -> notFoundToAER_ $ do
-              moveToEID par
-              modify (mtListL %~ scrollListToEID (mtRoot mt))
-      )
-    , (kmSub (bind ';') sortKeymap)
-    , (kmLeafA_ (bind 'h') "Go to parent" (modify (mtGoSubtreeFromCur goParent)))
-    , (kmLeafA_ (bind 'J') "Go to next sibling" (modify (mtGoSubtreeFromCur goNextSibling)))
-    , (kmLeafA_ (bind 'K') "Go to prev sibling" (modify (mtGoSubtreeFromCur goPrevSibling)))
-    , (kmSub (bind 't') setStatusKeymap)
-    , (kmSub (bind 'o') openExternallyKeymap)
-    , (kmLeafA (bind ',') "Prev filter" $ notFoundToAER_ cyclePrevFilter)
-    , (kmLeafA (bind '.') "Next filter" $ notFoundToAER_ cycleNextFilter)
-    , (kmSub (bind 'd') editDateKeymap)
-    , (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
-    , (kmSub (bind 'g') goKeymap)
-    , (kmSub (bind 'f') searchKeymap)
-    , -- SOMEDAY bind '/' to directly go to search. A bit of duplication b/c ESC should *not* go to
-      -- the submenu in this case.
-      ( kmLeafA
-          (bind '-')
-          "Un/collapse"
-          ( withCurWithAttrOrElse aerContinue $ \curl -> do
-              modify (mtHideHierarchyFilterL %~ hhfToggle curl)
-              notFoundToAER_ pullNewModel
-          )
-      )
-    , ( kmLeafA
-          (bind '0')
-          "Uncollapse all"
-          ( do
-              modify (mtHideHierarchyFilterL .~ emptyHideHierarchyFilter)
-              notFoundToAER_ pullNewModel
-          )
-      )
-    ]
+    ( [ kmLeafA_ (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur insAfter
+      , kmLeafA_ (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore
+      , kmLeafA_ (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild
+      , kmLeafA_ (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild
+      , ( kmLeafA_ (bind 'e') "Edit name" $ do
+            state <- get
+            case mtCurWithAttr state of
+              Just (cur, ((curAttr, _), _)) -> do
+                let oldName = name curAttr
+                let cb name' = aerVoid $ do
+                      let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
+                      modifyModelAsync $ modifyAttrByEID cur f
+                      -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
+                      mtListL %= scrollListToEID cur
+                pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb
+              Nothing -> return ()
+        )
+      , ( kmLeafA_ (ctrl 't') "Open test overlay" $
+            pushOverlay (const newTestOverlay) overlayNoop overlayNoop
+        )
+      , ( kmLeafA_ (bind 'T') "New tab" $ do
+            state <- get
+            liftIO $
+              writeBChan (acAppChan ?actx) $
+                PushTab (\rname -> SomeAppComponent $ setResourceName rname state)
+        )
+      , (kmLeafA (bind 'q') "Close tab / quit" $ return $ Confirmed ())
+      , ( kmLeafA_ (bind ']') "Next tab" $
+            liftIO $
+              writeBChan (acAppChan ?actx) $
+                NextTab
+        )
+      , ( kmLeafA_ (bind '[') "Prev tab" $
+            liftIO $
+              writeBChan (acAppChan ?actx) $
+                PrevTab
+        )
+      , ( kmLeafA_ (binding (KChar 'j') [MMeta]) "Move subtree down same level" $
+            moveCurRelative goNextSibling insAfter
+        )
+      , ( kmLeafA_ (binding (KChar 'k') [MMeta]) "Move subtree up same level" $
+            moveCurRelative goPrevSibling insBefore
+        )
+      , (kmLeafA_ (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter)
+      , ( kmLeafA_ (bind '>') "Move subtree last child of previous" $
+            moveCurRelative goPrevSibling insLastChild
+        )
+      , -- (kmSub (bind 'm') moveSingleModeKeymap),
+        (kmSub (bind 'M') moveSubtreeModeKeymap)
+      , (kmSub (bind 'D') deleteKeymap)
+      , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse aerContinue $ \cur -> do
+            notFoundToAER_ $ moveToEID cur
+        )
+      , ( kmLeafA (binding KBS []) "De-hoist" $ do
+            mt <- get
+            case mt ^. mtSubtreeL . breadcrumbsL of
+              [] -> aerContinue
+              (par, _) : _ -> notFoundToAER_ $ do
+                moveToEID par
+                modify (mtListL %~ scrollListToEID (mtRoot mt))
+        )
+      , (kmSub (bind ';') sortKeymap)
+      , (kmLeafA_ (bind 'h') "Go to parent" (modify (mtGoSubtreeFromCur goParent)))
+      , (kmLeafA_ (bind 'J') "Go to next sibling" (modify (mtGoSubtreeFromCur goNextSibling)))
+      , (kmLeafA_ (bind 'K') "Go to prev sibling" (modify (mtGoSubtreeFromCur goPrevSibling)))
+      , (kmSub (bind 't') setStatusKeymap)
+      , (kmSub (bind 'o') openExternallyKeymap)
+      , (kmLeafA (bind ',') "Prev filter" $ notFoundToAER_ cyclePrevFilter)
+      , (kmLeafA (bind '.') "Next filter" $ notFoundToAER_ cycleNextFilter)
+      , (kmSub (bind 'd') editDateKeymap)
+      , (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
+      , (kmSub (bind 'g') goKeymap)
+      , (kmSub (bind 'f') searchKeymap)
+      , -- SOMEDAY bind '/' to directly go to search. A bit of duplication b/c ESC should *not* go to
+        -- the submenu in this case.
+        ( kmLeafA
+            (bind '-')
+            "Un/collapse"
+            ( withCurWithAttrOrElse aerContinue $ \curl -> do
+                modify (mtHideHierarchyFilterL %~ hhfToggle curl)
+                notFoundToAER_ pullNewModel
+            )
+        )
+      , ( kmLeafA
+            (bind '0')
+            "Uncollapse all"
+            ( do
+                modify (mtHideHierarchyFilterL .~ emptyHideHierarchyFilter)
+                notFoundToAER_ pullNewModel
+            )
+        )
+      ]
+        ++ map collapseLevelKeymapItem [1 .. 9]
+    )
+
+collapseLevelKeymapItem :: Int -> (Binding, KeymapItem (AppEventAction MainTree () ()))
+collapseLevelKeymapItem i =
+  kmLeafA
+    (bind $ unsafeSingleDigitUIntToChar i)
+    ("Collapse level " <> (T.show i))
+    ( do
+        modify (mtHideHierarchyFilterL %~ hhfSetLevel (i - 1))
+        notFoundToAER_ pullNewModel
+    )
 
 deleteKeymap :: Keymap (AppEventAction MainTree () ())
 deleteKeymap =
