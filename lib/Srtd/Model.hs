@@ -487,10 +487,12 @@ hideHierarchyFilter hhf =
             -- Hide
             let lilabel' =
                   lilabel
-                    & (_2 . _2 . ldHiddenAncestorsL)
+                    & (_2 . _2 . ldHiddenChildrenL)
                     %~ (+ length cs)
                     & (_2 . _2 . ldHiddenAncestorsL)
                     %~ (+ forestSize cs)
+                    & (_2 . _2 . ldIsCollapsedL)
+                    .~ True
              in Node lilabel' []
           else
             -- Show
