@@ -344,9 +344,8 @@ sortKeymap =
 
 -- | Either `withCur` or `withRoot`. Used to unify sorting.
 type WithFunc =
-  (?actx :: AppContext) =>
   (EID -> EventM AppResourceName MainTree ()) ->
-  EventM AppResourceName MainTree ()
+  (EventM AppResourceName MainTree ())
 
 _mkSortKeymap :: WithFunc -> Text -> Keymap (AppEventAction MainTree () ())
 _mkSortKeymap withFunc name =
@@ -359,7 +358,14 @@ _mkSortKeymap withFunc name =
   -- forgets about it and the code doesn't type check. Have to do this in both places.
   mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
     [kmLeafA_ (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
-  sortFuncBy (sorter :: ((?mue :: ModelUpdateEnv) => a)) ord = withFunc $ \root -> modifyModelAsync (sorter ord root)
+  -- For some reason, I have to explicitly specify the type of this function to specify when all the implicit parameters are supposed to be bound. This is in GHC2024 and probably related to this: https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0287-simplify-subsumption.rst#motivation
+  sortFuncBy ::
+    ((?mue :: ModelUpdateEnv) => (Label -> Label -> Ordering) -> EID -> Model -> Model) ->
+    (Label -> Label -> Ordering) ->
+    ((?actx :: AppContext) => EventM AppResourceName MainTree ())
+  sortFuncBy sorter ord =
+    let  run root = modifyModelAsync (sorter ord root)
+     in withFunc $ \root -> run root
   -- comparison function that puts notes first (which is what we usually want)
   compareActionabilityForSort :: Label -> Label -> Ordering
   compareActionabilityForSort l1 l2 = case (isNote l1, isNote l2) of
@@ -929,7 +935,7 @@ mtCurWithAttr :: MainTree -> Maybe LocalIdLabel
 mtCurWithAttr (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, itm) -> listIdLabel2LocalIdLabel itm)
 
 withCurOrElse ::
-  (?actx :: AppContext) => EventM n MainTree a -> (EID -> EventM n MainTree a) -> EventM n MainTree a
+  EventM n MainTree a -> (EID -> EventM n MainTree a) -> EventM n MainTree a
 withCurOrElse dflt go = do
   s <- get
   case mtCur s of
@@ -937,7 +943,7 @@ withCurOrElse dflt go = do
     Nothing -> dflt
 
 withCur ::
-  (?actx :: AppContext) => (EID -> EventM n MainTree ()) -> EventM n MainTree ()
+  (EID -> EventM n MainTree ()) -> EventM n MainTree ()
 withCur = withCurOrElse (return ())
 
 withCurWithAttr ::
@@ -949,7 +955,7 @@ withCurWithAttr go = do
     Nothing -> return ()
 
 withRoot ::
-  (?actx :: AppContext) => (EID -> EventM n MainTree ()) -> EventM n MainTree ()
+  (EID -> EventM n MainTree ()) -> EventM n MainTree ()
 withRoot go = do
   s <- get
   let root = mtRoot s
