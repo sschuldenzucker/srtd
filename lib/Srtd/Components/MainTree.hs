@@ -253,6 +253,14 @@ rootKeymap =
               notFoundToAER_ pullNewModel
           )
       )
+    , ( kmLeafA
+          (bind '0')
+          "Uncollapse all"
+          ( do
+              modify (mtHideHierarchyFilterL .~ emptyHideHierarchyFilter)
+              notFoundToAER_ pullNewModel
+          )
+      )
     ]
 
 deleteKeymap :: Keymap (AppEventAction MainTree () ())
