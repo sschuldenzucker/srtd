@@ -20,9 +20,11 @@ import Srtd.Todo
 import Srtd.Util (
   chooseMax,
   chooseMin,
+  foldForest,
   forEmptyList,
   forestFlatten,
   forestFlattenPostorder,
+  forestSize,
   forestTreesWithBreadcrumbs,
   leaf,
   mapForest,
@@ -177,7 +179,19 @@ forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt
 addLocalDerivedAttrs :: MForest -> STForest
 addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
  where
-  _go Nothing (i, label) = (i, (label, LocalDerivedAttr {ldParentActionability = None, ldBreadcrumbs = [], ldLevel = 0}))
+  _go Nothing (i, label) =
+    ( i
+    ,
+      ( label
+      , LocalDerivedAttr
+          { ldParentActionability = None
+          , ldBreadcrumbs = []
+          , ldLevel = 0
+          , ldHiddenChildren = 0
+          , ldHiddenAncestors = 0
+          }
+      )
+    )
   _go (Just plilabel@(_i, (plabel@(_parAttr, _parDAttr), parLDAttr))) (i, label) =
     ( i
     ,
@@ -187,6 +201,8 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
               stepParentActionability (gGlobalActionability plabel) (ldParentActionability parLDAttr)
           , ldBreadcrumbs = plilabel : ldBreadcrumbs parLDAttr
           , ldLevel = ldLevel parLDAttr + 1
+          , ldHiddenChildren = 0
+          , ldHiddenAncestors = 0
           }
       )
     )

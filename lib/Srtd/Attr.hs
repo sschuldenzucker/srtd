@@ -318,6 +318,8 @@ data DerivedAttr = DerivedAttr
   }
   deriving (Show)
 
+suffixLenses ''DerivedAttr
+
 -- | The 'DerivedAttr' of an element without any children or parent
 emptyDerivedAttr :: Attr -> DerivedAttr
 emptyDerivedAttr attr =
@@ -350,6 +352,11 @@ data LocalDerivedAttr = LocalDerivedAttr
   -- SOMEDAY rename to ancestors.
   , ldLevel :: Int
   -- ^ Level local to the subtree. The root of the subtree (!) is -1, so all nodes have level >= 0.
+  , ldHiddenChildren :: Int
+  -- ^ Number of direct children marked hidden, see 'HideHierarchyFilter'
+  -- SOMEDAY this is a bit weird, should go somewhere else.
+  , ldHiddenAncestors :: Int
+  -- ^ Number of ancestors marked hidden, see 'HideHierarchyFilter'
   }
   deriving (Show)
 
@@ -358,6 +365,8 @@ type LocalLabel = (Label, LocalDerivedAttr)
 
 -- | Label in the local tree of items including the item ID
 type LocalIdLabel = (EID, LocalLabel)
+
+suffixLenses ''LocalDerivedAttr
 
 -- | Convenience transformation
 localIdLabel2IdLabel :: LocalIdLabel -> IdLabel
