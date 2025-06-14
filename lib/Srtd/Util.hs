@@ -81,6 +81,14 @@ mapForest f = map (fmap f)
 foldForest :: (a -> [b] -> b) -> Forest a -> [b]
 foldForest f = map (foldTree f)
 
+-- | Number of nodes
+treeSize :: Tree a -> Int
+treeSize = foldTree $ \_ childSizes -> sum childSizes + 1
+
+-- | Number of nodes
+forestSize :: Forest a -> Int
+forestSize = sum . map treeSize
+
 -- | Forest variant of 'transformTreeDownUp' that maps over each tree independently. See there.
 transformForestDownUp :: (Maybe u -> a -> u) -> (u -> a -> [b] -> b) -> Forest a -> Forest b
 transformForestDownUp fdown gmake = map (transformTreeDownUp fdown gmake)
