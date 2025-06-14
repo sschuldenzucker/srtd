@@ -192,6 +192,7 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
           { ldParentActionability = None
           , ldBreadcrumbs = []
           , ldLevel = 0
+          , ldIsCollapsed = False
           , ldHiddenChildren = 0
           , ldHiddenAncestors = 0
           }
@@ -206,6 +207,7 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
               stepParentActionability (gGlobalActionability plabel) (ldParentActionability parLDAttr)
           , ldBreadcrumbs = plilabel : ldBreadcrumbs parLDAttr
           , ldLevel = ldLevel parLDAttr + 1
+          , ldIsCollapsed = False
           , ldHiddenChildren = 0
           , ldHiddenAncestors = 0
           }
@@ -270,8 +272,8 @@ data Filter = Filter
 
 -- | Like `(.)` for filters. The name of the first filter in the chain (second argument) is used.
 -- We don't make this an instance of Category b/c it's a bit funky.
-filterChain :: Filter -> Filter -> Filter
-filterChain f1 f2 =
+chainFilters :: Filter -> Filter -> Filter
+chainFilters f1 f2 =
   Filter
     { fiName = fiName f2
     , fiIncludeDone = fiIncludeDone f2
@@ -417,14 +419,39 @@ f_deepByDates =
 -- Note that 'hiding' is the same as just filtering out at the data level but is different from a
 -- user expectation point-of-view: the user sees "hiding" as collapsing and expects to be able to
 -- un-collapse whatever is hidden.
+--
+-- Priority is in the following order: showEIDs > hideEIDs > hideLevel.
+--
+-- SOMEDAY maybe this is a bad idea. Maybe this should be a stateful property of something, not a filter.
+-- In a non-functional language, we would just make it a property and it'd be fine.
 data HideHierarchyFilter = HideHierarchyFilter
   { hideLevel :: Maybe Int
   , hideEIDs :: Set EID
   , showEIDs :: Set EID
   }
 
+suffixLenses ''HideHierarchyFilter
+
 emptyHideHierarchyFilter :: HideHierarchyFilter
 emptyHideHierarchyFilter = HideHierarchyFilter Nothing Set.empty Set.empty
+
+_hhfSwapToHide :: EID -> HideHierarchyFilter -> HideHierarchyFilter
+_hhfSwapToHide eid hhf = hhf & showEIDsL %~ Set.delete eid & hideEIDsL %~ Set.insert eid
+
+_hhfSwapToShow :: EID -> HideHierarchyFilter -> HideHierarchyFilter
+_hhfSwapToShow eid hhf = hhf & hideEIDsL %~ Set.delete eid & showEIDsL %~ Set.insert eid
+
+-- | Toggle between collapsed and not. Needs some logic
+hhfToggle :: LocalIdLabel -> HideHierarchyFilter -> HideHierarchyFilter
+hhfToggle lil@(eid, _) hhf
+  | ((gLocalLevel lil >=) <$> hhf.hideLevel) == Just True = _hhfSwapToShow eid hhf
+  | Set.member eid hhf.hideEIDs = _hhfSwapToShow eid hhf
+  | otherwise = _hhfSwapToHide eid hhf
+
+-- | Set level. For now we reset all specialized hide/show filter b/c I can't do anything intuitive
+-- and this may as well be expected.
+hhfSetLevel :: Int -> HideHierarchyFilter -> HideHierarchyFilter
+hhfSetLevel lvl _hhf = emptyHideHierarchyFilter {hideLevel = Just lvl}
 
 -- | Build a hierarchy filter. This is _not_ meant to be selected directly by the user but as a tool
 -- for views.

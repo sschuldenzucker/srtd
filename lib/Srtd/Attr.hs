@@ -352,6 +352,8 @@ data LocalDerivedAttr = LocalDerivedAttr
   -- SOMEDAY rename to ancestors.
   , ldLevel :: Int
   -- ^ Level local to the subtree. The root of the subtree (!) is -1, so all nodes have level >= 0.
+  , ldIsCollapsed :: Bool
+  -- ^ Whether or not this node is collapsed for display and no children are shown.
   , ldHiddenChildren :: Int
   -- ^ Number of direct children marked hidden, see 'HideHierarchyFilter'
   -- SOMEDAY this is a bit weird, should go somewhere else.
