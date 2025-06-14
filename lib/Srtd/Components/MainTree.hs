@@ -192,8 +192,7 @@ rootKeymap =
             writeBChan (acAppChan ?actx) $
               PushTab (\rname -> SomeAppComponent $ setResourceName rname state)
       )
-    , ( kmLeafA (bind 'q') "Close tab / quit" $ return $ Confirmed ()
-      )
+    , (kmLeafA (bind 'q') "Close tab / quit" $ return $ Confirmed ())
     , ( kmLeafA_ (bind ']') "Next tab" $
           liftIO $
             writeBChan (acAppChan ?actx) $
@@ -358,13 +357,15 @@ _mkSortKeymap withFunc name =
   -- forgets about it and the code doesn't type check. Have to do this in both places.
   mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
     [kmLeafA_ (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
-  -- For some reason, I have to explicitly specify the type of this function to specify when all the implicit parameters are supposed to be bound. This is in GHC2024 and probably related to this: https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0287-simplify-subsumption.rst#motivation
+  -- For some reason, I have to explicitly specify the type of this function to specify when all
+  -- the implicit parameters are supposed to be bound. This is in GHC2024 and probably related to this:
+  -- https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0287-simplify-subsumption.rst#motivation
   sortFuncBy ::
     ((?mue :: ModelUpdateEnv) => (Label -> Label -> Ordering) -> EID -> Model -> Model) ->
     (Label -> Label -> Ordering) ->
     ((?actx :: AppContext) => EventM AppResourceName MainTree ())
   sortFuncBy sorter ord =
-    let  run root = modifyModelAsync (sorter ord root)
+    let run root = modifyModelAsync (sorter ord root)
      in withFunc $ \root -> run root
   -- comparison function that puts notes first (which is what we usually want)
   compareActionabilityForSort :: Label -> Label -> Ordering
@@ -608,10 +609,10 @@ renderRow
       lvl
       _
       llabel@( ( Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}
-                , DerivedAttr {daImpliedDates}
-                )
-              , _
-              )
+                 , DerivedAttr {daImpliedDates}
+                 )
+               , _
+               )
     ) =
     withSelAttr sel $
       hBox $
