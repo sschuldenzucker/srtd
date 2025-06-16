@@ -442,6 +442,9 @@ _hhfSwapToShow :: EID -> HideHierarchyFilter -> HideHierarchyFilter
 _hhfSwapToShow eid hhf = hhf & hideEIDsL %~ Set.delete eid & showEIDsL %~ Set.insert eid
 
 -- | Toggle between collapsed and not. Needs some logic
+--
+-- SOMEDAY minor bug: collapse+uncollapse is not idempotent but adds the item to `showEIDs`. I think
+-- this is not visible right now but might be when the behavior of `hhfSetLevel` is changed.
 hhfToggle :: LocalIdLabel -> HideHierarchyFilter -> HideHierarchyFilter
 hhfToggle lil@(eid, _) hhf
   -- We match with equality here for the same reason as in hideHierarchyFilter below.
