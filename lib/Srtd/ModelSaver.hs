@@ -89,7 +89,7 @@ server mserver isDirtyV shallQuitV s_ = go s_
 -- | Attempt to exit the modelsaver gracefully or kill it hard after a timeout (which is then
 -- a problem).
 --
--- Graceful shutdown avoids two issues:
+-- Graceful shutdown avoids two issues (these are not hypothetical! I've seen this happen!):
 -- 1. Remaining dirty state is written to the file so no changes are lost.
 -- 2. When the saver is just killed (e.g., on exit) during write, data is corrupted. O_O
 --

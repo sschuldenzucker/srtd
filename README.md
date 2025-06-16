@@ -24,11 +24,19 @@ There are three packages:
 - The `srtd` executable. (run using `cabal run srtd`)
 - The `srtd-test` suite. (run using `cabal run srtd-test`)
 
-To run `safe_run.sh` (with backups), you also need [timegaps](https://gehrcke.de/timegaps/) ([repo](https://github.com/jgehrcke/timegaps)).
+To run `safe_run.sh` (with backups), you also need [timegaps](https://gehrcke.de/timegaps/) ([repo](https://github.com/jgehrcke/timegaps)). And you my wanna use `just`.
 
 ## Running
 
 `cabal run srtd` and Ctrl+/ to show keyboard shortcuts. Writes to `srtd.json` in the current directory. Autosaves.
+
+Use `./safe_run.sh` to pull from a dev repo, compile and run relatively safely with backups. See that script.
+
+## Docs
+
+Haddock docs are generated to `docs/build_haddock/` using `just docs`, and there's also more docs files there:
+
+- [Architecture Overview](docs/architecture.md)
 
 ## Themes
 

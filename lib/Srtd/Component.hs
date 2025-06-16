@@ -3,7 +3,10 @@
 
 {-| A model defining a unified component interface. I have no idea why Brick doesn't include this.
 
-The only place where we really need this is for overlays. We don't localize resource names or messages.
+A Component is a piece of data that can be rendered to brick and supports a vaguely "call" like
+interface where a parent can hold and call it and the component can tell it when it's done and
+return a value (and/or pass a stream of intermediate values if desired). It also provides context
+info (e.g., a list of supported keybindings) to the parent for rendering.
 -}
 module Srtd.Component where
 
@@ -16,8 +19,10 @@ import Lens.Micro.Platform
 import Srtd.Keymap (KeyDesc, KeymapItem, kmLeaf)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
 
+-- | Global messages sent through Srtd at the app (top) level together with any brick events.
+-- Individual components can define their own message type.
 data AppMsg
-  = -- SOMEDAY the first couple ones are for MainTree to communicate with Main. May not be needed.
+  = -- SOMEDAY the first couple ones are for MainTree to communicate with Main. May not be needed, could just be the message returned by MainTree.
     -- (but let's keep them for now in case I have some funky interaction pattern later)
     PushTab (AppResourceName -> SomeAppComponent)
   | NextTab
@@ -37,6 +42,10 @@ instance Show AppMsg where
   show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
   show Tick = "Tick"
 
+-- | Global type for Brick "resource names", which are used to detect clicks (and also visibility/scroll, but I'm not using that right now). This can be anything but resource names need to be globally unique.
+--
+-- NB tabs, overlays, etc. are _not_ numbered consecutively but the Int is to ensure uniqueness only.
+--
 -- Not super clean but I don't think I'll need a lot here. These nest to be unique across different tabs / overlays.
 -- SOMEDAY maybe our resource names should just be lists of strings, aka. Brick attr names.
 data AppResourceName
@@ -47,6 +56,7 @@ data AppResourceName
   | EditorFor AppResourceName
   deriving (Eq, Ord, Show)
 
+-- | App conext passed down from the app (top) level to components that need it.
 data AppContext = AppContext
   { acModelServer :: ModelServer
   , acAppChan :: BChan AppMsg
@@ -55,7 +65,23 @@ data AppContext = AppContext
   -- interactions, NOT for internal process coordination!
   }
 
-data AppEventReturn a b = Continue a | Confirmed b | Canceled
+-- | Return data returned by 'handleEvent' (see below) to tell the parent component if the child
+-- component should be kept around.
+data AppEventReturn a b
+  = -- | Event processed successfully and the component should be kept open, returns an intermediate
+    -- result of type `a`. (choose `a = ()`) for components that don't return any intermediate result,
+    -- which are most of them.
+    Continue a
+  | -- | Event processed successfully and the user has confirmed whatever action encoded.
+    -- The component should be closed.
+    Confirmed b
+  | -- | Either the user has pressed the 'cancel' key (often ESC) _or_ there was some kind of error,
+    -- and the component should be closed without a result produced or action taken.
+    --
+    -- NB we currently don't differentiate between "user cancel" and "error". SOMEDAY maybe
+    -- we should do that, though currently the parent can't really take useful actions based on the
+    -- distinction.
+    Canceled
 
 forgetAppEventReturnData :: AppEventReturn a b -> AppEventReturn () ()
 forgetAppEventReturnData = \case
@@ -85,7 +111,7 @@ class AppComponent s a b | s -> a, s -> b where
   renderComponent :: (?actx :: AppContext) => s -> Widget AppResourceName
   renderComponent = fst . renderComponentWithOverlays
 
-  -- | Variant of `renderComponent` that lets us provide a list over overlays that should also be rendered.
+  -- | Variant of `renderComponent` that lets us provide a list of overlays that should also be rendered.
   -- Overlays behave like Brick's 'appDraw', i.e. the first overlay is rendered at the top. Of form
   -- `(Title, Widget)`.
   renderComponentWithOverlays ::
@@ -161,6 +187,7 @@ kmLeafA_ ::
 -- 'aerVoid' doesn't include the `?actx` constraint.
 kmLeafA_ b n x = kmLeafA b n (aerVoid x)
 
+-- | Return `Continue ()`.
 aerContinue :: (Monad m) => m (AppEventReturn () b)
 aerContinue = return $ Continue ()
 

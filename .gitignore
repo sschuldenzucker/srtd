@@ -1,3 +1,4 @@
 dist-newstyle/
 srtd.log
 srtd.json
+docs/build_haddock/
