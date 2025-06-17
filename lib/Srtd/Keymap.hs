@@ -88,6 +88,10 @@ sticky km = km {kmSticky = True}
 kmWithAddlDesc :: [(Text, Text)] -> Keymap a -> Keymap a
 kmWithAddlDesc addlDesc km@Keymap {kmAddlDesc} = km {kmAddlDesc = kmAddlDesc ++ addlDesc}
 
+-- | Flipped version of 'kmWithAddlDesc'
+kmAddAddlDesc :: Keymap a -> [(Text, Text)] -> Keymap a
+kmAddAddlDesc = flip kmWithAddlDesc
+
 -- I guess we could do something fancy with type class recursion but let's not.
 
 -- | Move to parent keymap

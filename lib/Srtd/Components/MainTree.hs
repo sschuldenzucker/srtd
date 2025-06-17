@@ -264,18 +264,25 @@ rootKeymap =
             )
         )
       ]
-        ++ map collapseLevelKeymapItem [1 .. 9]
     )
+    `kmUnion` collapseLevelKeymap
 
-collapseLevelKeymapItem :: Int -> (Binding, KeymapItem (AppEventAction MainTree () ()))
-collapseLevelKeymapItem i =
-  kmLeafA
-    (bind $ unsafeSingleDigitUIntToChar i)
-    ("Collapse level " <> (T.show i))
-    ( do
-        modify (mtHideHierarchyFilterL %~ hhfSetLevel (i - 1))
-        notFoundToAER_ pullNewModel
-    )
+collapseLevelKeymap :: Keymap (AppEventAction MainTree () ())
+collapseLevelKeymap =
+  kmMake
+    "Collapse level"
+    (map (hide . collapseLevelKeymapItem) [1 .. 9])
+    `kmAddAddlDesc` [("1-9", "Collapse to level")]
+ where
+  collapseLevelKeymapItem :: Int -> (Binding, KeymapItem (AppEventAction MainTree () ()))
+  collapseLevelKeymapItem i =
+    kmLeafA
+      (bind $ unsafeSingleDigitUIntToChar i)
+      ("Collapse level " <> (T.show i))
+      ( do
+          modify (mtHideHierarchyFilterL %~ hhfSetLevel (i - 1))
+          notFoundToAER_ pullNewModel
+      )
 
 deleteKeymap :: Keymap (AppEventAction MainTree () ())
 deleteKeymap =
