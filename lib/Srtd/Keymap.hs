@@ -1,3 +1,4 @@
+-- | Stateful keymaps with sub-maps and sticky options
 module Srtd.Keymap where
 
 import Brick (suffixLenses)
@@ -12,6 +13,9 @@ import Data.Ord (comparing)
 import Data.Text (Text)
 import Graphics.Vty (Key, Modifier)
 
+-- * Keymaps
+
+-- | Stateless keymap description with value type `a`. Often, `a` is a monadic action type (e.g., `EventM`).
 data Keymap a = Keymap
   { kmName :: Text
   , kmSticky :: Bool
@@ -37,12 +41,14 @@ data KeymapItemItem a
       a
   | SubmapItem (Keymap a)
 
+-- | Stateful keymap state if you have sub-maps. Typically, components store a `KeymapZipper` in
+-- their state to support this, unless the keymap is fully static / there are no sub-maps.
 data KeymapZipper a = KeymapZipper
   { parents :: [Keymap a]
   , cur :: Keymap a
   }
 
--- | We only provide a trivial-ish show instance here b/c you usually don't care and a isn't showable.
+-- | We only provide a trivial-ish show instance here b/c you usually don't care and `a` isn't showable.
 -- Could show more but prob not worth it.
 instance Show (KeymapZipper a) where
   show (KeymapZipper ps _) = "KeymapZipper(level " ++ show (length ps) ++ ")"
@@ -50,33 +56,46 @@ instance Show (KeymapZipper a) where
 keymapToZipper :: Keymap a -> KeymapZipper a
 keymapToZipper = KeymapZipper []
 
+-- | Main convenience function to build a Keymap. This sets some defaults, use `sticky` and `kmWithAddlDesc` to adjust.
 kmMake :: Text -> [(Binding, KeymapItem a)] -> Keymap a
 kmMake name kvs = Keymap name False (Map.fromList kvs) []
 
-kmAddItems :: Keymap a -> [(Binding, KeymapItem a)] -> Keymap a
-kmAddItems km pairs = km {kmMap = Map.union (kmMap km) (Map.fromList pairs)}
-
-sticky :: Keymap a -> Keymap a
-sticky km = km {kmSticky = True}
-
-kmWithAddlDesc :: [(Text, Text)] -> Keymap a -> Keymap a
-kmWithAddlDesc addlDesc km@Keymap {kmAddlDesc} = km {kmAddlDesc = kmAddlDesc ++ addlDesc}
-
+-- | Leaf item, use with 'kmMake'.
 kmLeaf :: Binding -> Text -> a -> (Binding, KeymapItem a)
 kmLeaf b l i = (b, KeymapItem (LeafItem l i) False)
 
+-- | Submap, use with 'kmMake'.
 kmSub :: Binding -> Keymap a -> (Binding, KeymapItem a)
 kmSub b i = (b, KeymapItem (SubmapItem i) False)
 
+-- | Flag binding as hidden when used with 'kmMake'
 hide :: (Binding, KeymapItem a) -> (Binding, KeymapItem a)
 hide (b, itm) = (b, itm {kmiHidden = True})
 
+-- | Add additional items to an existing keymap
+kmAddItems :: Keymap a -> [(Binding, KeymapItem a)] -> Keymap a
+kmAddItems km pairs = km {kmMap = Map.union (kmMap km) (Map.fromList pairs)}
+
+-- | Union of two keymaps. Metadata (name, sticky) is taken from the _first_ keymap.
+kmUnion :: Keymap a -> Keymap a -> Keymap a
+kmUnion km1 km2 = km1 {kmMap = Map.union (kmMap km1) (kmMap km2), kmAddlDesc = kmAddlDesc km1 ++ kmAddlDesc km2}
+
+-- | Make keymap sticky
+sticky :: Keymap a -> Keymap a
+sticky km = km {kmSticky = True}
+
+-- | Add a 'kmAddlDesc' to a keymap
+kmWithAddlDesc :: [(Text, Text)] -> Keymap a -> Keymap a
+kmWithAddlDesc addlDesc km@Keymap {kmAddlDesc} = km {kmAddlDesc = kmAddlDesc ++ addlDesc}
+
 -- I guess we could do something fancy with type class recursion but let's not.
 
+-- | Move to parent keymap
 kmzUp :: KeymapZipper a -> KeymapZipper a
 kmzUp (KeymapZipper (p : ps) _) = KeymapZipper ps p
 kmzUp kz = kz
 
+-- | Move into the given child keymap
 kmzDown :: Keymap a -> KeymapZipper a -> KeymapZipper a
 kmzDown km (KeymapZipper ps cur) = KeymapZipper (cur : ps) km
 
@@ -92,10 +111,11 @@ kmzResetSticky kz@(KeymapZipper (Keymap {kmSticky} : _) _)
   | kmSticky = kz
   | otherwise = kmzResetSticky $ kmzUp kz
 
+-- | True iff we're at the root.
 kmzIsToplevel :: KeymapZipper a -> Bool
 kmzIsToplevel (KeymapZipper ps _) = null ps
 
--- | [(key desc, action desc)]
+-- | Make the list `[(key desc, action desc)]`
 kmDesc :: Keymap a -> [(Text, Text)]
 kmDesc (Keymap {kmMap, kmAddlDesc}) =
   Map.toList kmMap
@@ -107,6 +127,7 @@ kmDesc (Keymap {kmMap, kmAddlDesc}) =
   describeItem (KeymapItem {kmiItem = LeafItem name _}) = name
   describeItem (KeymapItem {kmiItem = SubmapItem (Keymap {kmName})}) = kmName <> "..."
 
+-- | Description of a keymap. See 'kmzDesc'
 data KeyDesc = KeyDesc
   { kdName :: Text
   , kdIsToplevel :: Bool
@@ -125,6 +146,13 @@ kmzDesc (KeymapZipper ps cur) =
 
 data KeymapResult a = NotFound | SubmapResult (KeymapZipper a) | LeafResult a (KeymapZipper a)
 
+-- | Look up a pressed key in a keymap. Returns (if any) the leaf item and the updated zipper.
+--
+-- SOMEDAY Handling of the result is manual right now. We also don't make any effort to handle
+-- ESC/BS (go up) here. We could provide a convenience method that lives in a MonadState and that
+-- updates the KeymapZipper in state, and is used via zoom. Need to flag whether the key was handled,
+-- though. Some structure using Alternative seems to be the right way to handle these events, actually.
+--
 -- SOMEDAY Maybe we should use Brick's keymap infrastructure, at least for some of our types. But it's a bit overcomplicated for us here.
 kmzLookup :: KeymapZipper a -> Key -> [Modifier] -> KeymapResult a
 kmzLookup kz@(KeymapZipper {cur = Keymap {kmMap, kmSticky}}) key mods = case Map.lookup (binding key mods) kmMap of

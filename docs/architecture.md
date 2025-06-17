@@ -92,3 +92,9 @@ SOMEDAY there may be some of these race conditions hidden by the fact that the U
 Rendering is done using brick, and we use Brick's "attr" system to assign attributes to UI items (color etc.). For theming, we assign attrs using Brick's `attrMap` mechanism and we _do_ use Brick themes to configure them, but we use our own custom theming mechanism to configure those themes using toml files; this is mostly taken from the helix editor. See the readme.
 
 SOMEDAY The way how Brick's hierarchical attrs cascade is actually terrible; it's _not_ like CSS! That's why we need to write, e.g., `selected.status.next` instead and explicitly instead of the more intuitive `status.next.selected` (and expecting to get the same as `status.next` if the `.selected` variant is not specified). 
+
+## Keymaps
+
+We're using our own [`Srtd.Keymap`](../docs/build_haddock/srtd/Srtd-Keymap.html) module to encode stateful keymaps with submaps, sticky keys, and embedded descriptions. See usage of this in the components. Keymaps are not user-configurable right now.
+
+SOMEDAY We could use Brick's keymap mechanism as well. Haven't looked into that too much, might be orthogonal. It does provide _configurable_ keymaps (with a command abstraction) and would probably be the right path forward if we want that.
