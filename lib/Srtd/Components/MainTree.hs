@@ -313,12 +313,22 @@ editDateKeymap :: Keymap (AppEventAction MainTree () ())
 editDateKeymap =
   kmMake
     "Edit date"
-    $ map mkDateEditShortcut
-    $ [ (bind 'd', "Deadline", ALens' $ datesL . deadlineL)
-      , (bind 'g', "Goalline", ALens' $ datesL . goallineL)
-      , (bind 's', "Scheduled", ALens' $ datesL . scheduledL)
-      , (bind 'r', "Remind", ALens' $ datesL . remindL)
-      ]
+    $ ( map
+          mkDateEditShortcut
+          [ (bind 'd', "Deadline", ALens' $ datesL . deadlineL)
+          , (bind 'g', "Goalline", ALens' $ datesL . goallineL)
+          , (bind 's', "Scheduled", ALens' $ datesL . scheduledL)
+          , (bind 'r', "Remind", ALens' $ datesL . remindL)
+          ]
+      )
+      ++ [ kmLeafA_
+             (bind 'D')
+             "Delete all"
+             ( withCur $ \cur -> do
+                 let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (datesL .~ noDates)
+                 modifyModelAsync (modifyAttrByEID cur f)
+             )
+         ]
  where
   mkDateEditShortcut (kb, label, l0) = kmLeafA_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
     let cb date' = aerVoid $ do
