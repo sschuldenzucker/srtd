@@ -17,5 +17,11 @@ statusAttr = attrName "status"
 filterLabelAttr :: AttrName
 filterLabelAttr = attrName "filter_label"
 
+-- TODO these indicators should move to a status bar and they don't need their own attr each I think
+-- Right now we just hardcode it to the same attr as the filter label
+followBoxAttr :: AttrName
+-- followBoxAttr = attrName "follow_box"
+followBoxAttr = filterLabelAttr
+
 collapsedMarkerAttr :: AttrName
 collapsedMarkerAttr = attrName "collapsed_marker"

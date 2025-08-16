@@ -140,6 +140,8 @@ data MainTree = MainTree
   , mtSearchRx :: Maybe Regex
   -- ^ Regex to use for highlighting and search
   , mtHideHierarchyFilter :: HideHierarchyFilter
+  , mtDoFollowItem :: Bool
+  -- ^ Whether to follow an item when it's moving due to status update or deletion
   }
 
 suffixLenses ''MainTree
@@ -285,6 +287,8 @@ viewKeymap =
         , ('N', "flat next, by simple urgency")
         , ('W', "flat waiting, by simple urgency")
         ]
+        ++ [ kmLeafA_ (ctrl 'f') "Toggle follow item" (mtDoFollowItemL %= not)
+           ]
     )
  where
   mkMapping (k :: Char, s :: String) = kmLeafA (bind k) (T.pack s) $ notFoundToAER_ (selectFilterByName s)
@@ -583,7 +587,7 @@ selectFilterByName s = do
       pullNewModel
 
 make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
-make root = makeWithFilters root (CList.fromList defaultFilters) emptyHideHierarchyFilter
+make root = makeWithFilters root (CList.fromList defaultFilters) emptyHideHierarchyFilter True
 
 -- | Move the tree to any EID, preserving settings. Returns an error if that EID doesn't exist
 -- (presumably b/c it was deleted). Then nothing is updated.
@@ -594,7 +598,14 @@ moveToEID eid = do
   model <- liftIO $ getModel (acModelServer ?actx)
   -- NB we can re-use the resource name b/c we're updating ourselves
   mt' <-
-    pureET $ makeWithFilters eid (mtFilters mt) (mtHideHierarchyFilter mt) model (mtResourceName mt)
+    pureET $
+      makeWithFilters
+        eid
+        (mtFilters mt)
+        (mtHideHierarchyFilter mt)
+        (mtDoFollowItem mt)
+        model
+        (mtResourceName mt)
   put mt'
 
 -- | filters must not be empty.
@@ -603,10 +614,11 @@ makeWithFilters ::
   EID ->
   CList.CList Filter ->
   HideHierarchyFilter ->
+  Bool ->
   Model ->
   AppResourceName ->
   Either IdNotFoundError MainTree
-makeWithFilters root filters hhf model rname = do
+makeWithFilters root filters hhf doFollowItem model rname = do
   subtree <-
     translateAppFilterContext $
       runFilter (chainFilters (hideHierarchyFilter hhf) (fromJust $ CList.focus filters)) root model
@@ -623,6 +635,7 @@ makeWithFilters root filters hhf model rname = do
       , mtOverlay = Nothing
       , mtSearchRx = Nothing
       , mtHideHierarchyFilter = hhf
+      , mtDoFollowItem = doFollowItem
       }
 
 translateAppFilterContext :: (?actx :: AppContext) => ((?fctx :: FilterContext) => a) -> a
@@ -913,11 +926,15 @@ instance AppComponent MainTree () () where
       , mtShowDetails
       , mtOverlay
       , mtSearchRx
+      , mtDoFollowItem
       } =
       (box, catMaybes [ovl, detailsOvl])
      where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
-      headrow = renderRoot now rootLabel breadcrumbs <+> (padLeft Max (renderFilters mtFilters))
+      headrow =
+        renderRoot now rootLabel breadcrumbs
+          <+> (padLeft Max (renderFilters mtFilters <+> str " " <+> doFollowBox))
+      doFollowBox = withDefAttr followBoxAttr $ str (if mtDoFollowItem then "(follow)" else "(keep)")
       box = headrow <=> L.renderList (renderRow now mtSearchRx) True mtList
       detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
         (True, Just illabel) -> Just ("Item Details", renderItemDetails now illabel)
@@ -1097,7 +1114,7 @@ modifyModelSync ::
   -- This is `ExceptT IdNotFoundError (EventM n MainTree) ()` but I'm not using it that much.
   EventMOrNotFound n MainTree ()
 modifyModelSync f = do
-  s@(MainTree {mtRoot, mtList}) <- get
+  s@(MainTree {mtRoot, mtList, mtDoFollowItem}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
@@ -1105,7 +1122,7 @@ modifyModelSync f = do
     modifyModelOnServer (acModelServer ?actx) f
     getModel (acModelServer ?actx)
   subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
-  let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
+  let list' = resetListPosition mtDoFollowItem mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
 
 -- | Modify the model asynchronously, i.e., *without* pulling a new model immediately. We get a
@@ -1124,20 +1141,31 @@ modifyModelAsync f = liftIO $ modifyModelOnServer (acModelServer ?actx) f
 
 pullNewModel :: (?actx :: AppContext) => EventMOrNotFound n MainTree ()
 pullNewModel = do
-  s@(MainTree {mtRoot, mtList}) <- get
+  s@(MainTree {mtRoot, mtList, mtDoFollowItem}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ getModel (acModelServer ?actx)
   subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
-  let list' = resetListPosition mtList $ forestToBrickList (getName mtList) (stForest subtree)
+  let list' = resetListPosition mtDoFollowItem mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
 
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
+-- | Choose between follow or no-follow using a flag
+resetListPosition :: Bool -> MyList -> MyList -> MyList
+resetListPosition True = resetListPositionFollow
+resetListPosition False = resetListPositionIndex
+
+-- | Tries preserve the list position by index  only.
+resetListPositionIndex :: MyList -> MyList -> MyList
+resetListPositionIndex old new = case L.listSelectedElement old of
+  Nothing -> new -- `old` is empty
+  Just (ix_, _) -> L.listMoveTo ix_ new
+
 -- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the parents or, then the current position.
 -- EXPERIMENTAL. This may not always be desired actually.
-resetListPosition :: MyList -> MyList -> MyList
-resetListPosition old new = case L.listSelectedElement old of
+resetListPositionFollow :: MyList -> MyList -> MyList
+resetListPositionFollow old new = case L.listSelectedElement old of
   Nothing -> new -- `old` is empty
   Just (ix_, tgtItm) ->
     let tgtEIDs = gEID tgtItm : map gEID (gBreadcrumbs tgtItm)
@@ -1166,7 +1194,7 @@ setResourceName :: AppResourceName -> MainTree -> MainTree
 setResourceName rname state =
   state
     { mtList =
-        resetListPosition (mtList state) $
+        resetListPositionIndex (mtList state) $
           forestToBrickList (MainListFor rname) (stForest . mtSubtree $ state)
     , mtResourceName = rname
     }
