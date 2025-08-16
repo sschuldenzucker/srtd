@@ -13,6 +13,7 @@ import Brick.Keybindings (Binding, bind, ctrl, meta)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
+import Control.Applicative (Alternative ((<|>)), asum)
 import Control.Monad (when)
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
@@ -1133,14 +1134,21 @@ pullNewModel = do
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
--- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the current position.
+-- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the parents or, then the current position.
+-- EXPERIMENTAL. This may not always be desired actually.
 resetListPosition :: MyList -> MyList -> MyList
 resetListPosition old new = case L.listSelectedElement old of
-  Nothing -> new
-  Just (ix_, tgtItm) -> case Vec.findIndex (\itm -> lilEID itm == lilEID tgtItm) (L.listElements new) of
-    -- NB this is fine if `new` doesn't actually have `ix` b/c it's too short: then it goes to the end, as desired.
-    Nothing -> L.listMoveTo ix_ new
-    Just ix' -> L.listMoveTo ix' new
+  Nothing -> new -- `old` is empty
+  Just (ix_, tgtItm) ->
+    let tgtEIDs = gEID tgtItm : map gEID (gBreadcrumbs tgtItm)
+     in -- Try to find the previously selected element or a parent.
+        asum (map tryGoToEID tgtEIDs)
+          -- If we can't find
+          & fromMaybe (L.listMoveTo ix_ new)
+ where
+  tryGoToEID eid =
+    Vec.findIndex (\itm -> lilEID itm == eid) (L.listElements new) <&> \ix' ->
+      L.listMoveTo ix' new
 
 mtGoSubtreeFromCur :: GoWalker LocalIdLabel -> MainTree -> MainTree
 mtGoSubtreeFromCur go mt = fromMaybe mt mres
