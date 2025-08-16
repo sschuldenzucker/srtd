@@ -17,8 +17,10 @@ import Control.Applicative (asum)
 import Control.Monad (when)
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
 import Data.CircularList qualified as CList
+import Data.Functor (void)
 import Data.List (intersperse)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe)
 import Data.Text (Text)
@@ -1103,7 +1105,9 @@ moveCurRelative ::
   (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> EventM n MainTree ()
 moveCurRelative go ins = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
-  modifyModelAsync (moveSubtreeRelFromForest cur go ins forest)
+  -- The temporary follow setting makes sure we follow our item around. This is sync so that the temporary setting works. (:())
+  withLensValue mtDoFollowItemL True $
+    modifyModelSync_ (moveSubtreeRelFromForest cur go ins forest)
 
 -- SOMEDAY ^^ Same applies. Also, these could all be unified.
 moveCurRelativeDynamic ::
@@ -1112,7 +1116,8 @@ moveCurRelativeDynamic ::
   EventM n MainTree ()
 moveCurRelativeDynamic dgo = withCur $ \cur -> do
   forest <- use $ mtSubtreeL . stForestL
-  modifyModelAsync (moveSubtreeRelFromForestDynamic cur dgo forest)
+  withLensValue mtDoFollowItemL True $
+    modifyModelSync_ (moveSubtreeRelFromForestDynamic cur dgo forest)
 
 -- | Modify the model and *synchronously* pull the new model. Currently required when adding nodes.
 --
@@ -1133,6 +1138,20 @@ modifyModelSync f = do
   subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
   let list' = resetListPosition mtDoFollowItem mtList $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
+
+modifyModelSync_ ::
+  (?actx :: AppContext) =>
+  ((?mue :: ModelUpdateEnv) => Model -> Model) ->
+  EventM n MainTree ()
+modifyModelSync_ f = void . notFoundToAER_ $ modifyModelSync f
+
+withLensValue :: (MonadState s m) => Lens' s t -> t -> m a -> m a
+withLensValue l v act = do
+  oldValue <- use l
+  l .= v
+  res <- act
+  l .= oldValue
+  return res
 
 -- | Modify the model asynchronously, i.e., *without* pulling a new model immediately. We get a
 -- 'ModelUpdated' event and will pull a new model then. This is fine for most applications.
