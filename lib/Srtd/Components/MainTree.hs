@@ -247,7 +247,8 @@ rootKeymap =
       , (kmSub (bind 'f') searchKeymap)
       , -- SOMEDAY bind '/' to directly go to search. A bit of duplication b/c ESC should *not* go to
         -- the submenu in this case.
-        ( kmLeafA
+        (kmSub (bind 'v') viewKeymap)
+      , ( kmLeafA
             (bind '-')
             "Un/collapse"
             ( withCurWithAttrOrElse aerContinue $ \curl -> do
@@ -266,6 +267,26 @@ rootKeymap =
       ]
     )
     `kmUnion` collapseLevelKeymap
+
+-- TODO unclean that we have a static keymap but the list of filters is dynamic from the perspective of MainTree.
+-- I don't think filters need to be dynamic.
+-- Maybe the layout of the filters needs reworking. Maybe the filter structure shouldn't store the name.
+viewKeymap :: Keymap (AppEventAction MainTree () ())
+viewKeymap =
+  kmMake
+    "Filter"
+    ( map
+        mkMapping
+        [ ('n', "not done")
+        , ('a', "all")
+        , ('u', "by simple urgency")
+        , ('F', "flat, by simple urgency")
+        , ('N', "flat next, by simple urgency")
+        , ('W', "flat waiting, by simple urgency")
+        ]
+    )
+ where
+  mkMapping (k :: Char, s :: String) = kmLeafA (bind k) (T.pack s) $ notFoundToAER_ (selectFilterByName s)
 
 collapseLevelKeymap :: Keymap (AppEventAction MainTree () ())
 collapseLevelKeymap =
@@ -547,6 +568,18 @@ cyclePrevFilter :: (?actx :: AppContext) => EventMOrNotFound n MainTree ()
 cyclePrevFilter = do
   mtFiltersL %= CList.rotL
   pullNewModel
+
+selectFilterByName :: (?actx :: AppContext) => String -> EventMOrNotFound n MainTree ()
+selectFilterByName s = do
+  -- We don't use the following short form for updating to propagate the error right.
+  -- mtFiltersL %= (fromMaybe <*> CList.findRotateTo ((== s) . fiName))
+  mnewFilters <- CList.findRotateTo ((== s) . fiName) <$> gets mtFilters
+  case mnewFilters of
+    -- NB this isn't quite the right error but w/e
+    Nothing -> throwError IdNotFoundError
+    Just newFilters -> do
+      mtFiltersL .= newFilters
+      pullNewModel
 
 make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
 make root = makeWithFilters root (CList.fromList defaultFilters) emptyHideHierarchyFilter
