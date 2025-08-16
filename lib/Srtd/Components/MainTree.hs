@@ -462,6 +462,15 @@ goKeymap =
               let tgt = fromMaybe (mtRoot mt) (mtCur mt)
               modify (mtListL %~ scrollListToEID tgt)
       )
+    , ( kmLeafA (binding KEnter []) "Hoist 1 step, keep pos" $ withCurWithAttrOrElse aerContinue $ \(cur, llabel) ->
+          case reverse (gBreadcrumbs llabel) of
+            [] ->
+              -- toplevel element, behave like Hoist (this is prob intended)
+              notFoundToAER_ $ moveToEID cur
+            (par : _) -> notFoundToAER_ $ do
+              moveToEID (gEID par)
+              mtListL %= scrollListToEID cur
+      )
     ]
 
 searchKeymap :: Keymap (AppEventAction MainTree () b)
