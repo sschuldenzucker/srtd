@@ -13,7 +13,7 @@ import Brick.Keybindings (Binding, bind, ctrl, meta)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
-import Control.Applicative (Alternative ((<|>)), asum)
+import Control.Applicative (asum)
 import Control.Monad (when)
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
