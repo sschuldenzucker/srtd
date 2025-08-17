@@ -943,8 +943,9 @@ instance AppComponent MainTree () () where
      where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
       headrow =
-        renderRoot now rootLabel breadcrumbs
-          <+> (padLeft Max (renderFilters mtFilters <+> str " " <+> doFollowBox))
+        withDefAttr headerRowAttr $
+          renderRoot now rootLabel breadcrumbs
+            <+> (padLeft Max (renderFilters mtFilters <+> str " " <+> doFollowBox))
       doFollowBox = withDefAttr followBoxAttr $ str (if mtDoFollowItem then "(follow)" else "(keep)")
       box = headrow <=> L.renderList (renderRow now mtSearchRx) True mtList
       detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
