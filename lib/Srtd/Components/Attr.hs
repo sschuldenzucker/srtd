@@ -12,7 +12,7 @@ import Data.Ord qualified as Ord
 import Data.Time (TimeZone, ZonedTime (..))
 import Lens.Micro.Platform
 import Safe (minimumByMay)
-import Srtd.AppAttr
+import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr
 import Srtd.BrickHelpers
 import Srtd.Dates
@@ -111,7 +111,7 @@ renderLastModified now _sel dt = withAttr attr $ setWidth 9 $ str label
 renderStatus :: Bool -> Status -> Status -> Widget n
 renderStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
  where
-  rootAttr = if sel then selectedItemRowAttr <> attrName "status" else attrName "status"
+  rootAttr = if sel then AppAttr.selected_item_row <> attrName "status" else attrName "status"
   subAttr = attrName . status2subAttrName $ act
   status2subAttrName s = case s of
     Next -> "next"

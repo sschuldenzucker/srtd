@@ -31,7 +31,7 @@ import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Graphics.Vty.Input (Button (..))
 import Lens.Micro.Platform
-import Srtd.AppAttr
+import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
 import Srtd.Attr qualified (Status (Canceled))
 import Srtd.BrickHelpers
@@ -698,7 +698,7 @@ matchesRxCurrent rx l = case L.listSelectedElement l of
   _ -> False
 
 withSelAttr :: Bool -> Widget n -> Widget n
-withSelAttr = withDefAttrIf selectedItemRowAttr
+withSelAttr = withDefAttrIf AppAttr.selected_item_row
 
 withDefAttrIf :: AttrName -> Bool -> Widget n -> Widget n
 withDefAttrIf a True = withDefAttr a
@@ -706,7 +706,7 @@ withDefAttrIf _ False = id
 
 -- TODO this function shouldn't exist. Instead proper inheritance.
 maybePrefixSelAttr :: Bool -> AttrName -> AttrName
-maybePrefixSelAttr True a = selectedItemRowAttr <> a
+maybePrefixSelAttr True a = AppAttr.selected_item_row <> a
 maybePrefixSelAttr False a = a
 
 renderRow :: ZonedTime -> Maybe Regex -> Bool -> ListIdLabel -> Widget n
@@ -751,10 +751,10 @@ renderRow
       if (ldHiddenChildren . getLocalDerivedAttr $ llabel) > 0
         -- if (ldIsCollapsed . getLocalDerivedAttr $ llabel)
         -- SOMEDAY not sure if this is the prettiest character, here are some alternatives:
-        then withDefAttr collapsedMarkerAttr (str "▸")
-        -- then withDefAttr collapsedMarkerAttr (str "›")
-        -- then withDefAttr collapsedMarkerAttr (str "►")
-        -- then withDefAttr collapsedMarkerAttr (str "▷")
+        then withDefAttr AppAttr.collapsed_marker (str "▸")
+        -- then withDefAttr collapsed_marker (str "›")
+        -- then withDefAttr collapsed_marker (str "►")
+        -- then withDefAttr collapsed_marker (str "▷")
         else str " "
     dateW = renderMostUrgentDate ztime sel dates daImpliedDates
     lastStatusModifiedW = renderLastModified ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
@@ -821,7 +821,7 @@ renderBreadcrumbsOnly ztime breadcrumbs = pathW
 renderFilters :: CList.CList Filter -> Widget n
 renderFilters fs = maybe emptyWidget go (CList.focus fs)
  where
-  go f = withDefAttr filterLabelAttr $ str (fiName f)
+  go f = withDefAttr AppAttr.filter_label $ str (fiName f)
 
 renderItemDetails :: ZonedTime -> LocalIdLabel -> Widget n
 renderItemDetails ztime (eid, llabel) =
@@ -943,10 +943,10 @@ instance AppComponent MainTree () () where
      where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
       headrow =
-        withDefAttr headerRowAttr $
+        withDefAttr AppAttr.header_row $
           renderRoot now rootLabel breadcrumbs
             <+> (padLeft Max (renderFilters mtFilters <+> str " " <+> doFollowBox))
-      doFollowBox = withDefAttr followBoxAttr $ str (if mtDoFollowItem then "(follow)" else "(keep)")
+      doFollowBox = withDefAttr AppAttr.follow_box $ str (if mtDoFollowItem then "(follow)" else "(keep)")
       box = headrow <=> L.renderList (renderRow now mtSearchRx) True mtList
       detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
         (True, Just illabel) -> Just ("Item Details", renderItemDetails now illabel)

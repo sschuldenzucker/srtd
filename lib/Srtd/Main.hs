@@ -21,7 +21,7 @@ import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Graphics.Vty qualified as Vty
 import Lens.Micro.Platform
 import Srtd.Alignment
-import Srtd.AppAttr
+import Srtd.AppAttr qualified as AppAttr
 import Srtd.AppTheme qualified as AppTheme
 import Srtd.Attr (EID (Vault))
 import Srtd.CmdlineArgs qualified as CArgs
@@ -142,9 +142,11 @@ myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
   renderTabTitle :: (AppComponent c () (), Ord n) => Bool -> n -> c -> Widget n
   renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 25 $ txt (componentTitle c)
    where
-    theAttrName = (if sel then tabBarAttr <> attrName "selected" else tabBarAttr) <> attrName "tab_title"
+    theAttrName =
+      (if sel then AppAttr.tab_bar <> attrName "selected" else AppAttr.tab_bar)
+        <> attrName "tab_title"
   renderTabBar pairs =
-    withDefAttr tabBarAttr $
+    withDefAttr AppAttr.tab_bar $
       let (front, cur, back) = lzSplit3 pairs
        in hBox $
             intersperse (txt "|") $
