@@ -350,7 +350,7 @@ editDateKeymap =
           ]
       )
       ++ [ kmLeafA_
-             (bind 'D')
+             (ctrl 'd')
              "Delete all"
              ( withCur $ \cur -> do
                  let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (datesL .~ noDates)
