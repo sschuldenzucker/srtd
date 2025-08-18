@@ -2,6 +2,9 @@ module Srtd.Main (main) where
 
 import Brick
 import Brick.BChan (newBChan, writeBChan)
+import Brick.Keybindings (ToBinding (bind), ctrl)
+import Brick.Keybindings.KeyConfig (binding)
+import Brick.Keybindings.Pretty (ppBinding)
 import Brick.Themes (Theme, themeToAttrMap)
 import Brick.Widgets.Border
 import Brick.Widgets.Center
@@ -11,9 +14,10 @@ import Control.Concurrent.Async qualified as Async
 import Control.Monad (when)
 import Control.Monad.State (liftIO)
 import Data.CircularList qualified as CList
-import Data.List (intersperse)
+import Data.List (intersperse, sortBy)
 import Data.List.Zipper qualified as LZ
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
+import Data.Ord (comparing)
 import Data.Text qualified as T
 import Data.Time (getZonedTime)
 import GHC.Stack (HasCallStack)
@@ -170,7 +174,24 @@ myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
         alignBottomRightLayer . borderWithLabel (padLeftRight 1 $ txt keymapName) $ renderTable inner
   keyHelpUI =
     let KeyDesc keymapName isToplevel keydescs = componentKeyDesc $ state ^. activeTabL
-     in if not isToplevel || (asHelpAlways state) then renderKeyHelp keymapName keydescs else emptyWidget
+        -- Key desc for keys at the toplevel. We don't use a keymap for this right now.
+        mainKeydescs =
+          map (first ppBinding) $
+            [ (ctrl 'q', "Quit")
+            , (ctrl '/', "Toggle key help")
+            , (binding (KFun 10) [], "Next Theme")
+            ]
+        fullKeydescs =
+          sortBy
+            (comparing fst)
+            ( keydescs
+                ++
+                -- We only show the root keydesc at the toplevel b/c it looks better
+                (if isToplevel then mainKeydescs else [])
+            )
+     in if not isToplevel || (asHelpAlways state)
+          then renderKeyHelp keymapName fullKeydescs
+          else emptyWidget
 
 myHandleEvent :: BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
 myHandleEvent ev = wrappingActions $
