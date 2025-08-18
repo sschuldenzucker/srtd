@@ -1039,7 +1039,7 @@ instance AppComponent MainTree () () where
 
   componentKeyDesc s = case mtOverlay s of
     Nothing -> kmzDesc . mtKeymap $ s
-    Just (Overlay ol _ _) -> componentKeyDesc ol
+    Just (Overlay ol _ _) -> (componentKeyDesc ol) {kdIsToplevel = False} -- always show key help for overlays
 
   -- "Root name - Realm" unless the Realm is the root itself, or higher.
   componentTitle MainTree {mtSubtree} = T.pack $ pathStr
