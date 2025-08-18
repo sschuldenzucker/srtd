@@ -242,6 +242,7 @@ rootKeymap =
       , (kmLeafA_ (bind 'h') "Go to parent" (modify (mtGoSubtreeFromCur goParent)))
       , (kmLeafA_ (bind 'J') "Go to next sibling" (modify (mtGoSubtreeFromCur goNextSibling)))
       , (kmLeafA_ (bind 'K') "Go to prev sibling" (modify (mtGoSubtreeFromCur goPrevSibling)))
+      , (kmLeafA_ (bind 'H') "Go to next uncle" (modify (mtGoSubtreeFromCur goNextAncestor)))
       , (kmSub (bind 't') setStatusKeymap)
       , (kmSub (bind 'o') openExternallyKeymap)
       , (kmLeafA (bind ',') "Prev filter" $ notFoundToAER_ cyclePrevFilter)

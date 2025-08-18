@@ -4,7 +4,7 @@ module Srtd.Data.TreeZipper where
 import Control.Applicative ((<|>))
 import Control.Monad ((<=<))
 import Data.List (unfoldr)
-import Data.Maybe (listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Tree.Zipper (Empty, Full, TreePos)
 import Data.Tree.Zipper qualified as Z
 
@@ -75,7 +75,8 @@ goNextSibling
   , goParent
   , goFirstChild
   , goFirstChildOfNext
-  , goLastChildOfPrev ::
+  , goLastChildOfPrev
+  , goNextAncestor ::
     GoWalker a
 goNextSibling = Z.next
 goPrevSibling = Z.prev
@@ -83,6 +84,9 @@ goParent = Z.parent
 goFirstChild = Z.firstChild
 goFirstChildOfNext = Z.firstChild <=< Z.next
 goLastChildOfPrev = Z.lastChild <=< Z.prev
+goNextAncestor loc = do
+  par <- Z.parent loc
+  Z.next par <|> goNextAncestor par
 
 -- ** Insert Walker
 
