@@ -208,6 +208,8 @@ myHandleEvent ev = wrappingActions $
     (AppEvent (PushTab t)) -> modify $ pushTab t
     (AppEvent NextTab) -> asTabsL %= lzCircRight
     (AppEvent PrevTab) -> asTabsL %= lzCircLeft
+    (AppEvent SwapTabNext) -> asTabsL %= lzSwapRightCirc
+    (AppEvent SwapTabPrev) -> asTabsL %= lzSwapLeftCirc
     (MouseDown rname@(TabTitleFor _) Vty.BLeft [] _location) -> asTabsL %= lzFindBegin ((rname ==) . fst)
     (AppEvent (ModelUpdated _)) -> do
       eachTabHandleEvent ev
@@ -393,6 +395,15 @@ lzCircRight z =
   let nxt = LZ.right z
    in if LZ.endp nxt then LZ.start z else nxt
 lzCircLeft z = if LZ.beginp z then LZ.left (LZ.end z) else LZ.left z
+
+lzSwapRightCirc, lzSwapLeftCirc :: LZ.Zipper a -> LZ.Zipper a
+-- I'm feeling the zipper's API isn't all that useful.
+lzSwapRightCirc (LZ.Zip rfront (cur : nxt : back)) = LZ.Zip (nxt : rfront) (cur : back)
+lzSwapRightCirc (LZ.Zip rfront [cur]) = LZ.Zip [] (cur : reverse rfront)
+lzSwapRightCirc z = z
+lzSwapLeftCirc (LZ.Zip (prv : rfront) (cur : back)) = LZ.Zip rfront (cur : prv : back)
+lzSwapLeftCirc (LZ.Zip [] (cur : back)) = LZ.Zip (reverse back) [cur]
+lzSwapLeftCirc z = z
 
 -- | Modify the current element by a function. Error if zipper is at its end.
 lzModify :: (a -> a) -> LZ.Zipper a -> LZ.Zipper a

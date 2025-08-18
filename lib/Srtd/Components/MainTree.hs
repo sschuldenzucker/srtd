@@ -214,6 +214,16 @@ rootKeymap =
               writeBChan (acAppChan ?actx) $
                 PrevTab
         )
+      , ( kmLeafA_ (bind '}') "Swap tab next" $
+            liftIO $
+              writeBChan (acAppChan ?actx) $
+                SwapTabNext
+        )
+      , ( kmLeafA_ (bind '{') "Swap tab prev" $
+            liftIO $
+              writeBChan (acAppChan ?actx) $
+                SwapTabPrev
+        )
       , ( kmLeafA_ (binding (KChar 'j') [MMeta]) "Move subtree down same level" $
             moveCurRelative goNextSibling insAfter
         )

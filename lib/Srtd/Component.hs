@@ -27,6 +27,8 @@ data AppMsg
     PushTab (AppResourceName -> SomeAppComponent)
   | NextTab
   | PrevTab
+  | SwapTabNext
+  | SwapTabPrev
   | ModelUpdated MsgModelUpdated
   | -- | A signal sent once per minute. Only needs to be handled for components where the internal
     -- state depends on the clock. (which typically means they cache data that depends on entered
@@ -39,6 +41,8 @@ instance Show AppMsg where
   show (PushTab _) = "PushTab _"
   show NextTab = "NextTab"
   show PrevTab = "PrevTab"
+  show SwapTabNext = "SwapTabNext"
+  show SwapTabPrev = "SwapTabPrev"
   show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
   show Tick = "Tick"
 
