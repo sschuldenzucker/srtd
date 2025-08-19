@@ -767,7 +767,11 @@ renderRow
         -- then withDefAttr collapsed_marker (str "►")
         -- then withDefAttr collapsed_marker (str "▷")
         else str " "
-    dateW = renderMostUrgentDate ztime sel dates daImpliedDates
+    -- EXPERIMENTAL: Show also implied dates "upwards" from children.
+    -- SOMEDAY It might be confusing if the implied date comes from children or parent, maybe use different style or marker
+    -- was: theDates = daImpliedDates
+    theDates = gEarliestImpliedOrChildDates (zonedTimeZone ztime) llabel
+    dateW = renderMostUrgentDate ztime sel dates theDates
     lastStatusModifiedW = renderLastModified ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
     statusW = renderStatus sel status (gLocalActionability llabel)
     nameW = case mrx of
