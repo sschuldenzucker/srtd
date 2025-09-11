@@ -23,6 +23,7 @@ import Data.CircularList qualified as CList
 import Data.Functor (void)
 import Data.List (intersperse)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (UTCTime, ZonedTime, zonedTimeToUTC, zonedTimeZone)
@@ -319,9 +320,16 @@ collapseLevelKeymap =
       (bind $ unsafeSingleDigitUIntToChar i)
       ("Collapse level " <> (T.show i))
       ( do
-          modify (mtHideHierarchyFilterL %~ hhfSetLevel (i - 1))
-          notFoundToAER_ pullNewModel
+          -- NB there's some double work going on here but I think it's fine.
+          normalFilter <- gets (fromJust . CList.focus . mtFilters)
+          model' <- liftIO $ getModel (acModelServer ?actx)
+          root <- gets mtRoot
+          notFoundToAER_ $ do
+            subtree <- pureET $ translateAppFilterContext $ runFilter normalFilter root model'
+            lift $ mtHideHierarchyFilterL .= subtreeLevelHHF i subtree
+            pullNewModel
       )
+  subtreeLevelHHF i subtree = HideHierarchyFilter (Set.fromList $ forestIdsAtLevel i (stForest subtree))
 
 deleteKeymap :: Keymap (AppEventAction MainTree () ())
 deleteKeymap =

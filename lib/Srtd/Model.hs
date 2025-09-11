@@ -5,7 +5,7 @@ module Srtd.Model where
 
 -- Really just a helper here. Should prob not import this for separation
 import Brick (suffixLenses)
-import Data.Aeson
+import Data.Aeson hiding ((.=))
 import Data.Function (on)
 import Data.List (find, foldl', sortBy)
 import Data.Maybe (catMaybes, fromMaybe)
@@ -420,43 +420,22 @@ f_deepByDates =
 -- user expectation point-of-view: the user sees "hiding" as collapsing and expects to be able to
 -- un-collapse whatever is hidden.
 --
--- Priority is in the following order: showEIDs > hideEIDs > hideLevel.
---
 -- SOMEDAY maybe this is a bad idea. Maybe this should be a stateful property of something, not a filter.
 -- In a non-functional language, we would just make it a property and it'd be fine.
 data HideHierarchyFilter = HideHierarchyFilter
-  { hideLevel :: Maybe Int
-  , hideEIDs :: Set EID
-  , showEIDs :: Set EID
+  { hideEIDs :: Set EID
   }
 
 suffixLenses ''HideHierarchyFilter
 
 emptyHideHierarchyFilter :: HideHierarchyFilter
-emptyHideHierarchyFilter = HideHierarchyFilter Nothing Set.empty Set.empty
+emptyHideHierarchyFilter = HideHierarchyFilter Set.empty
 
-_hhfSwapToHide :: EID -> HideHierarchyFilter -> HideHierarchyFilter
-_hhfSwapToHide eid hhf = hhf & showEIDsL %~ Set.delete eid & hideEIDsL %~ Set.insert eid
-
-_hhfSwapToShow :: EID -> HideHierarchyFilter -> HideHierarchyFilter
-_hhfSwapToShow eid hhf = hhf & hideEIDsL %~ Set.delete eid & showEIDsL %~ Set.insert eid
-
--- | Toggle between collapsed and not. Needs some logic
---
--- SOMEDAY minor bug: collapse+uncollapse is not idempotent but adds the item to `showEIDs`. I think
--- this is not visible right now but might be when the behavior of `hhfSetLevel` is changed.
+-- | Toggle between collapsed and not.
 hhfToggle :: LocalIdLabel -> HideHierarchyFilter -> HideHierarchyFilter
 hhfToggle lil@(eid, _) hhf
-  -- We match with equality here for the same reason as in hideHierarchyFilter below.
-  | (((gLocalLevel lil ==) <$> hhf.hideLevel) == Just True) && not (Set.member eid hhf.showEIDs) =
-      _hhfSwapToShow eid hhf
-  | Set.member eid hhf.hideEIDs = _hhfSwapToShow eid hhf
-  | otherwise = _hhfSwapToHide eid hhf
-
--- | Set level. For now we reset all specialized hide/show filter b/c I can't do anything intuitive
--- and this may as well be expected.
-hhfSetLevel :: Int -> HideHierarchyFilter -> HideHierarchyFilter
-hhfSetLevel lvl _hhf = emptyHideHierarchyFilter {hideLevel = Just lvl}
+  | Set.member eid hhf.hideEIDs = hhf & hideEIDsL %~ Set.delete eid
+  | otherwise = hhf & hideEIDsL %~ Set.insert eid
 
 -- | Build a hierarchy filter. This is _not_ meant to be selected directly by the user but as a tool
 -- for views.
@@ -469,23 +448,18 @@ hideHierarchyFilter hhf =
     }
  where
   name_ =
+    -- SOMEDAY simplify (it's from an earlier, more complex version)
     let parts =
           catMaybes
-            [ fmap show $ hhf.hideLevel
-            , case Set.size hhf.hideEIDs of
+            [ case Set.size hhf.hideEIDs of
                 0 -> Nothing
                 i -> Just ("-" ++ show i)
-            , case Set.size hhf.showEIDs of
-                0 -> Nothing
-                i -> Just ("+" ++ show i)
             ]
      in "Hide " ++ if null parts then "none" else concat parts
   go lilabel cs =
     -- isHiddenLevel matches with *equality* so that all descendants expand when we manual-exapand. Seems to be the right thing.
-    let isHiddenLevel = fromMaybe False ((gLocalLevel lilabel ==) <$> hhf.hideLevel)
-        isInHideList = Set.member (gEID lilabel) hhf.hideEIDs
-        isInShowList = Set.member (gEID lilabel) hhf.showEIDs
-     in if (isHiddenLevel || isInHideList) && not isInShowList
+    let isInHideList = Set.member (gEID lilabel) hhf.hideEIDs
+     in if isInHideList
           then
             -- Hide
             let lilabel' =

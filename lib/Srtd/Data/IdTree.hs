@@ -119,6 +119,14 @@ transformIdForestDownUpRec f = withIdForest $ transformForestDownUpRec _f
 
 -- go (i, x) cs = Node (i, go x [y | Node (_, y) _ <- cs]) cs
 
+-- | Exactly those IDs at a specified level.
+forestIdsAtLevel :: Int -> IdForest a b -> [a]
+forestIdsAtLevel lvl = go 1 . idForest
+ where
+  go l cs
+    | l == lvl = [i | Node (i, _) _ccs <- cs]
+    | otherwise = concat [go (l + 1) ccs | Node _ ccs <- cs]
+
 -- * Sorting
 
 sortIdForestBy :: (a -> a -> Ordering) -> Bool -> IdForest id a -> IdForest id a
