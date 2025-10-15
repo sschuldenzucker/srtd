@@ -1,0 +1,95 @@
+[palette]
+# COPIED from helix' flexoki_light theme
+
+tx = "#100F0F"
+tx-2 = "#6F6E69"
+tx-3 = "#B7B5AC"
+ui-3 = "#CECDC3"
+ui-2 = "#DAD8CE"
+ui = "#E6E4D9"
+bg-2 = "#F2F0E5"
+bg = "#FFFCF0"
+
+
+# Renamed these from shorthands to full names.
+red = "#AF3029"
+orange = "#BC5215"
+yellow = "#AD8301"
+green = "#66800B"
+cyan = "#24837B"
+blue = "#205EA6"
+plume = "#5E409D"
+mauve = "#A02F6F"
+
+[defaultAttr]
+bg = "bg"
+fg = "tx"
+
+[theme]
+
+"tab_bar" = {bg = "bg-2", fg = "tx-2"}
+"tab_bar.selected.tab_title" = {fg = "yellow", style = "underline"}
+
+"header_row" = {bg = "bg-2"}
+
+"section_header" = {style = "underline"}
+
+"filter_label" = {fg = "blue"}
+
+"selected" = {bg = "ui-2"}
+
+# SOMEDAY ui would be another option but both are subtle with selected.
+"text_match" = {bg = "ui-3"}
+# TODO this is too subtle.
+"selected.text_match" = {bg = "ui-3"}
+
+# TODO we should make another one that is yet more subtle, cf catppuccin
+"dates_column" = {bg = "bg-2"}
+"selected.dates_column" = {bg = "ui-2"}
+
+"collapsed_marker" = {fg = "tx-2"}
+
+# TODO colors really don't pop a lot here. That's an ergonomics issue.
+"status.next" = {fg = "green"}
+"status.waiting" = {fg = "mauve"}
+"status.project" = {fg = "green"}
+"status.later" = {fg = "cyan"}  # flexoki doesn't have teal
+"status.wip" = {fg = "yellow"}
+"status.done" = {fg = "tx-2"}
+"status.canceled" = {fg = "tx-2"}
+"status.someday" = {fg = "plume"}
+"status.open" = {fg = "cyan"}  # flexoki doesn't have sapphire
+
+# repeated
+"selected.status.next" = {fg = "green"}
+"selected.status.waiting" = {fg = "mauve"}
+"selected.status.project" = {fg = "green"}
+"selected.status.later" = {fg = "cyan"}  # flexoki doesn't have teal
+"selected.status.wip" = {fg = "yellow"}
+"selected.status.done" = {fg = "tx-2"}
+"selected.status.canceled" = {fg = "tx-2"}
+"selected.status.someday" = {fg = "plume"}
+"selected.status.open" = {fg = "cyan"}  # flexoki doesn't have sapphire
+
+"date.deadline" = {style = "underline"}
+"date.deadline.today" = {fg = "yellow", style = "underline"}
+"date.deadline.tomorrow" = {fg = "green", style = "underline"}
+"date.deadline.overdue" = {fg = "red", style = "underline"}
+
+"date.goalline.today" = {fg = "yellow"}
+"date.goalline.tomorrow" = {fg = "green"}
+"date.goalline.overdue" = {fg = "red"}
+
+"date.scheduled.today" = {fg = "yellow"}
+"date.scheduled.overdue" = {fg = "red"}
+
+"date.remind.today" = {fg = "green"}
+"date.remind.overdue" = {fg = "red"}
+
+"date.indirect" = {fg = "tx-2", style = "italic"}
+
+# TODO indirect dates: muted versions of the above.
+
+"date.last_modified" = {fg = "tx-2"}
+"search_entry.error" = {fg = "red"}
+
