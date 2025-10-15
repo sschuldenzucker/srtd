@@ -50,7 +50,7 @@ A theme is a toml file. Every theme defines three toplevel keys (all of which ar
 - `palette` is a mapping from free-form color names to color codes.
 - `inherits` (optional) is the name of a theme from which `palette` and `theme` should be inherited. Note that the other required entries still *have* to be there, even if empty. The inheriting theme can overwrite individual keys within these mappings, but nothing is deep-merged. Note that `defaultAttr` is *not* inherited!
 
-This is roughly a mix between Brick's themes (which do not support the color-name mapping layer, though) and helix's color scheme format (the only difference being that helix doesn't use a toplevel `theme` key, which I find confusing).
+This is roughly a mix between Brick's themes (which do not support the color-name mapping layer, though) and helix's color scheme format (the only difference being that helix doesn't use a toplevel `theme` key, which I find confusing). The color schemes for of the themes are based on the respective helix scheme (`/opt/homebrew/Cellar/helix/25.01.1/libexec/runtime/themes/` on a homebrew install).
 
 Like in helix, keys for sub-attrs must be *quoted*. I.e., to set the sub-attr `foo.bar`, you have to use this:
 
