@@ -865,10 +865,9 @@ renderItemDetails ztime (eid, llabel) =
             ]
       , -- SOMEDAY all these conversions are pretty fucking annoying. Maybe use lenses? Proper data
         -- structures for the different *Label things?
-        str "< "
-          <+> renderBreadcrumbs
-            ztime
-            (map localIdLabel2IdLabel . gBreadcrumbs $ llabel)
+        renderBreadcrumbs
+          ztime
+          (map localIdLabel2IdLabel . gBreadcrumbs $ llabel)
       ]
   botBox =
     vBox
