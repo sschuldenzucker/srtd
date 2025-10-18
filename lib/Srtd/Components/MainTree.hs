@@ -804,41 +804,35 @@ renderRoot ztime glabel breadcrumbs =
     [statusW, str " ", pathW]
  where
   statusW = renderStatus False (gStatus glabel) (gGlobalActionability glabel)
-  pathW = renderBreadcrumbs ztime glabel breadcrumbs
+  pathW = renderLabelWithBreadcrumbs ztime glabel breadcrumbs
 
--- SOMEDAY annoying these are two duplicate functions.
-
-renderBreadcrumbs :: ZonedTime -> Label -> [IdLabel] -> Widget n
-renderBreadcrumbs ztime rootLabel breadcrumbs = pathW
+renderLabelWithBreadcrumbs :: ZonedTime -> Label -> [IdLabel] -> Widget n
+renderLabelWithBreadcrumbs ztime rootLabel breadcrumbs = rootW <+> renderBreadcrumbs ztime breadcrumbs
  where
-  pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ rootLabel : map snd breadcrumbs
-  wrapBreadcrumbWidget (attr, dattr) w =
+  rootW = renderLabelShort ztime rootLabel
+
+-- NB we don't shade colors in the breadcrumbs so they "pop out", but I consider this a feature
+-- rather than a bug for now.
+renderBreadcrumbs :: ZonedTime -> [IdLabel] -> Widget n
+renderBreadcrumbs ztime breadcrumbs =
+  withAttr AppAttr.breadcrumbs $
+    hBox [x | (_, lbl) <- breadcrumbs, x <- [str " < ", renderLabelShort ztime lbl]]
+
+-- | Render a short (one-line version of the item) with dates but without status
+renderLabelShort :: ZonedTime -> Label -> Widget n
+renderLabelShort ztime (attr, dattr) =
+  hBox
+    [ str (name attr)
+    , maybe
+        emptyWidget
+        wrapDateWidget
+        (renderMostUrgentDateMaybe ztime False (dates attr) (daImpliedDates dattr))
+    ]
+ where
+  wrapDateWidget w =
+    -- SOMEDAY it's kinda stupid that this does the same calculation again as above
     let battr = mostUrgentDateAttr ztime False (dates attr) (daImpliedDates dattr)
      in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
-  mkBreadcrumbW label@(attr, dattr) =
-    hBox
-      [ str (name attr)
-      , maybe
-          emptyWidget
-          (wrapBreadcrumbWidget label)
-          (renderMostUrgentDateMaybe ztime False (dates attr) (daImpliedDates dattr))
-      ]
-
-renderBreadcrumbsOnly :: ZonedTime -> [IdLabel] -> Widget n
-renderBreadcrumbsOnly ztime breadcrumbs = pathW
- where
-  pathW = hBox $ intersperse (str " < ") . map mkBreadcrumbW $ map snd breadcrumbs
-  wrapBreadcrumbWidget (attr, dattr) w =
-    let battr = mostUrgentDateAttr ztime False (dates attr) (daImpliedDates dattr)
-     in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
-  mkBreadcrumbW label@(attr, dattr) =
-    hBox
-      [ str (name attr)
-      , maybe
-          emptyWidget
-          (wrapBreadcrumbWidget label)
-          (renderMostUrgentDateMaybe ztime False (dates attr) (daImpliedDates dattr))
-      ]
 
 -- Currently we only render the currently selected filter.
 renderFilters :: CList.CList Filter -> Widget n
@@ -872,7 +866,7 @@ renderItemDetails ztime (eid, llabel) =
       , -- SOMEDAY all these conversions are pretty fucking annoying. Maybe use lenses? Proper data
         -- structures for the different *Label things?
         str "< "
-          <+> renderBreadcrumbsOnly
+          <+> renderBreadcrumbs
             ztime
             (map localIdLabel2IdLabel . gBreadcrumbs $ llabel)
       ]

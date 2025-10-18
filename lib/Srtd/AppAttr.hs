@@ -28,3 +28,6 @@ follow_box = filter_label
 
 collapsed_marker :: AttrName
 collapsed_marker = attrName "collapsed_marker"
+
+breadcrumbs :: AttrName
+breadcrumbs = attrName "breadcrumbs"

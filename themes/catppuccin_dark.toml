@@ -66,6 +66,8 @@ fg = "text"
 # SOMEDAY maybe a bit too subtle.
 "selected" = {bg = "surface1"}
 
+"breadcrumbs" = { fg = "overlay1" }
+
 # And another instance of why the attr system sucks
 # SOMEDAY we may wanna choose something around the overlay/surface colors to optimize readability.
 "text_match" = {bg = "overlay0"}

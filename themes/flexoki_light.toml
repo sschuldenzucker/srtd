@@ -43,6 +43,8 @@ fg = "tx"
 
 "selected" = {bg = "ui-2"}
 
+"breadcrumbs" = {fg = "tx-3"}
+
 # SOMEDAY ui would be another option but both are subtle with selected.
 "text_match" = {bg = "ui-3"}
 # TODO this is too subtle.
