@@ -175,6 +175,7 @@ myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
     -- -> We _could_ instead in `attrMapDescend` weak-merge from the parent into our substructure but sounds like a mess.
     -- -> Rethink this. It seems _everything_ could use a working version of `withDescendAttr`. Do I just want different inheritance??
     -- -> What could solve our problem? Can we use some simple annotations in theme files?
+    -- -> Can I just replace this by better use of `withDefAttr`? (see e.g. selected)
     theAttrFun = withAttr AppAttr.tab_title . withMaybeSelected sel . withDescendAttr AppAttr.tab_bar
   renderTabBar pairs =
     withDefAttr AppAttr.tab_bar $
