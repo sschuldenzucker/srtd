@@ -21,6 +21,11 @@ blue = "#205EA6"
 plume = "#5E409D"
 mauve = "#A02F6F"
 
+# muted versions of main colors, by srs
+red1 = "#c97767"
+yellow1 = "#bf9b4d"
+green1 = "#8b9a4d"
+
 [defaultAttr]
 bg = "bg"
 fg = "tx"
@@ -88,7 +93,20 @@ fg = "tx"
 
 "date.indirect" = {fg = "tx-2", style = "italic"}
 
-# TODO indirect dates: muted versions of the above.
+"date.indirect.deadline" = {style = "italic,underline"}
+"date.indirect.deadline.today" = {fg = "yellow1"}
+"date.indirect.deadline.tomorrow" = {fg = "green1"}
+"date.indirect.deadline.overdue" = {fg = "red1"}
+
+"date.indirect.goalline.today" = {fg = "yellow1"}
+"date.indirect.goalline.tomorrow" = {fg = "green1"}
+"date.indirect.goalline.overdue" = {fg = "red1"}
+
+"date.indirect.scheduled.today" = {fg = "yellow1"}
+"date.indirect.scheduled.overdue" = {fg = "red1"}
+
+"date.indirect.remind.today" = {fg = "green1"}
+"date.indirect.remind.overdue" = {fg = "red1"}
 
 "date.last_modified" = {fg = "tx-2"}
 "search_entry.error" = {fg = "red"}
