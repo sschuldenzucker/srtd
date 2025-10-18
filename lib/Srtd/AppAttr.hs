@@ -8,6 +8,12 @@ import Brick.AttrMap (AttrName, attrName)
 tab_bar :: AttrName
 tab_bar = attrName "tab_bar"
 
+tab_title :: AttrName
+tab_title = attrName "tab_title"
+
+selected_tab :: AttrName
+selected_tab = attrName "selected"
+
 header_row :: AttrName
 header_row = attrName "header_row"
 

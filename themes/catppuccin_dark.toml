@@ -55,6 +55,7 @@ fg = "text"
 # "tab_bar.tab_title" = {}  # Unused
 # "tab_bar.selected.tab_title" = {fg = "mauve", bg = "base", style = "underline"}
 "tab_bar.selected.tab_title" = {fg = "mauve", style = "underline"}
+"selected.tab_title" = {fg = "red"}
 
 "header_row" = {bg = "crust"}
 

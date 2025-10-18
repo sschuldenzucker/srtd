@@ -19,6 +19,7 @@ import Data.List.Zipper qualified as LZ
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Ord (comparing)
 import Data.Text qualified as T
+import Data.Text.Lazy qualified as TL
 import Data.Time (getZonedTime)
 import GHC.Stack (HasCallStack)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -28,6 +29,7 @@ import Srtd.Alignment
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.AppTheme qualified as AppTheme
 import Srtd.Attr (EID (Vault))
+import Srtd.BrickAttrHelpers (attrMapDescend, attrMapKeys, withDescendAttr)
 import Srtd.CmdlineArgs qualified as CArgs
 import Srtd.Component
 import Srtd.Components.MainTree qualified as MainTree
@@ -37,6 +39,7 @@ import Srtd.ModelSaver qualified as ModelSaver
 import Srtd.ModelServer
 import Srtd.Ticker
 import System.Exit (ExitCode (..), exitFailure, exitWith)
+import Text.Pretty.Simple
 
 data AppState = AppState
   { asContext :: AppContext
@@ -86,6 +89,17 @@ main = do
   allAttrMaps <- map (second themeToAttrMap) <$> loadAllThemes
   let attrMapRing = ringSelectNamedTheme (fromMaybe defaultThemeName mtheme_name) . CList.fromList $ allAttrMaps
 
+  -- TODO DEBUG
+  glogL
+    INFO
+    ( TL.unpack $
+        pShowNoColor $
+          attrMapDescend (AppAttr.selected_tab) $
+            attrMapDescend (AppAttr.tab_bar) $
+              snd $
+                head allAttrMaps
+    )
+
   glogL INFO "App starting"
   modelServer <- startModelServer
   -- SOMEDAY should we be really careful about consistency between the modelserver and the saver?
@@ -134,6 +148,11 @@ main = do
     ExitFailure c -> glogL ERROR ("App did quit with error: exit code " ++ show c)
   exitWith exitCode
 
+withMaybeSelected :: Bool -> Widget n -> Widget n
+withMaybeSelected sel
+  | sel = withDescendAttr AppAttr.selected_tab
+  | otherwise = id
+
 myAppDraw :: AppState -> [Widget AppResourceName]
 myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
  where
@@ -144,11 +163,19 @@ myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
            in renderComponentWithOverlays tab0
      in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar asTabs <=> w0]
   renderTabTitle :: (AppComponent c () (), Ord n) => Bool -> n -> c -> Widget n
-  renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 25 $ txt (componentTitle c)
+  renderTabTitle sel rname c = clickable rname . theAttrFun . padLeftRight 1 . hLimit 25 $ txt (componentTitle c)
    where
-    theAttrName =
-      (if sel then AppAttr.tab_bar <> attrName "selected" else AppAttr.tab_bar)
-        <> attrName "tab_title"
+    -- TODO WIP This does NOT do what I want!
+    -- ONE problem is that this doesn't descend well when 'selected' is already defined (I have that!)
+    -- I descend into 'tab_bar'.
+    -- Then descending into 'selected' applies the attrs of *that*, but it's unrelated and I don't want that.
+    -- Also 'selected.tab_bar' now inherits the bg attr from 'selected', which I don't want.
+    -- Q: Is this just a name clash that's easy to fix? Or something worse?
+    -- -> Well we could avoid all name clashes but it's unintuitive. - Or is it not actually?
+    -- -> We _could_ instead in `attrMapDescend` weak-merge from the parent into our substructure but sounds like a mess.
+    -- -> Rethink this. It seems _everything_ could use a working version of `withDescendAttr`. Do I just want different inheritance??
+    -- -> What could solve our problem? Can we use some simple annotations in theme files?
+    theAttrFun = withAttr AppAttr.tab_title . withMaybeSelected sel . withDescendAttr AppAttr.tab_bar
   renderTabBar pairs =
     withDefAttr AppAttr.tab_bar $
       let (front, cur, back) = lzSplit3 pairs

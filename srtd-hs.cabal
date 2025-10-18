@@ -108,6 +108,7 @@ library
         template-haskell >= 2.19 && < 2.24,
         async ^>= 2.2.5,
         clock ^>= 0.8.4,
+        pretty-simple ^>= 4.1.4.0,
 
     exposed-modules:
         Srtd.Alignment,
@@ -115,6 +116,7 @@ library
         Srtd.AppTheme,
         Srtd.Attr,
         Srtd.Attr.TH,
+        Srtd.BrickAttrHelpers,
         Srtd.BrickHelpers,
         Srtd.BrickListHelpers,
         Srtd.CmdlineArgs,
