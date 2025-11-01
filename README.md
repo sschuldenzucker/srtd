@@ -60,7 +60,7 @@ To run `safe_run.sh` (with backups), you also need [timegaps](https://gehrcke.de
 
 See the keybindings overlay for help. Press `n` to create a new item, `s` to create a sub-items, `t` to assign statuses, and `d` to assign 4 kinds of due dates (deadline, goalline, scheduled, remind). Move items using `M-j/k`/`</>` or `M`. Use `v` to switch views/filters. Go back in submenus with `backspace` and exit submenus and overlays with `esc`. Press `C-q` from any screen to quit. Dates can be entered as ISO dates (`2025-10-29`) or in natural language (`tomorrow`/`tom`, `tue`, `in 1 week`/`1w`, etc.); time of day is supported (`13:00`). 
 
-Use `./safe_run.sh` to pull from a dev repo, compile, and run relatively safely with backups. See that script.
+Use `./safe_run.sh` to pull from a dev repo, compile, and run with backups. See that script. You'll need to change config variables.
 
 ## Development Docs
 
