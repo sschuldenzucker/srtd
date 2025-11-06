@@ -337,6 +337,7 @@ deleteKeymap =
     "Delete"
     -- TOOD some undo would be nice, lol.
     [ (kmLeafA_ (bind 'D') "Subtree" $ withCur $ \cur -> modifyModelAsync (deleteSubtree cur))
+    , (kmLeafA_ (bind 'd') "Single & splice" $ withCur $ \cur -> modifyModelAsync (deleteSingleSplice cur))
     ]
 
 setStatusKeymap :: Keymap (AppEventAction MainTree () ())

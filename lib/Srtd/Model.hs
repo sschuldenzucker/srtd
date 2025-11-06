@@ -497,6 +497,10 @@ modifyAttrByEID tgt f = updateDerivedAttrs . (forestL %~ mapIdForestWithIds upda
 deleteSubtree :: (?mue :: ModelUpdateEnv) => EID -> Model -> Model
 deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterIdForestWithIds (\eid' _ -> eid' /= eid))
 
+-- | Delete _only_ the given ID, splicing its children into the parent at the node's position
+deleteSingleSplice :: (?mue :: ModelUpdateEnv) => EID -> Model -> Model
+deleteSingleSplice eid = updateDerivedAttrs . (forestL %~ filterSpliceIdForestWithIds (\eid' _ -> eid' /= eid))
+
 -- | Insert new node relative to a target using the given 'InsertWalker'.
 --
 -- The caller needs to make sure that the provided uuid is actually new, probably using `UUID.nextRandom`.

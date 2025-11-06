@@ -76,6 +76,17 @@ filterIdForestWithIds p = withIdForest filter'
  where
   filter' forest = [Node l (filter' children) | Node l children <- forest, uncurry p l]
 
+-- | Like 'filterIdForestWithIds' but don't remove non-matching subtrees but splice their children
+-- into the parent.
+--
+-- Filtering does _not_ recur into spliced children! (this is b/c we dont' need that rn)
+filterSpliceIdForestWithIds :: (id -> a -> Bool) -> IdForest id a -> IdForest id a
+filterSpliceIdForestWithIds p = withIdForest filter'
+ where
+  filter' forest =
+    forest >>= \(Node l cs) ->
+      if uncurry p l then [Node l (filter' cs)] else cs
+
 -- | Modify the forest below the given target ID by a function. No-op if the ID is not found.
 onForestBelowId ::
   (Eq id) => id -> (Forest (id, a) -> Forest (id, a)) -> IdForest id a -> IdForest id a
