@@ -27,6 +27,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (UTCTime, ZonedTime, zonedTimeToUTC, zonedTimeZone)
+import Data.Tree (Tree (Node))
 import Data.UUID.V4 (nextRandom)
 import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
@@ -281,6 +282,7 @@ rootKeymap =
                 notFoundToAER_ pullNewModel
             )
         )
+      , kmSub (bind ' ') spaceKeymap
       ]
     )
     `kmUnion` collapseLevelKeymap
@@ -520,6 +522,30 @@ searchKeymap =
       , (kmLeafA_ (bind 'l') "Clear" $ mtSearchRxL .= Nothing)
       , (kmLeafA_ (ctrl 'l') "Clear" $ mtSearchRxL .= Nothing)
       ]
+
+-- | Catchall keymap for variants and stuff
+spaceKeymap :: Keymap (AppEventAction MainTree () ())
+spaceKeymap =
+  kmMake
+    "Space"
+    [ kmLeafA
+        (bind '-')
+        "Collapse children"
+        -- TODO This lets us _collapse_ children but would be good to also uncollapse when used again.
+        -- It shouldn't be toggle though I think.
+        ( withCurOrElse aerContinue $ \cur -> do
+            -- See also collapseLevelKeymap
+            normalFilter <- gets (fromJust . CList.focus . mtFilters)
+            model' <- liftIO $ getModel (acModelServer ?actx)
+            root <- gets mtRoot
+            notFoundToAER_ $ do
+              subtree <- pureET $ translateAppFilterContext $ runFilter normalFilter root model'
+              (Node _ cs) <- pureET $ maybeToEither IdNotFoundError $ forestFindTree cur (stForest subtree)
+              mtHideHierarchyFilterL
+                %= (hhfSetCollapseds [cur] False . hhfSetCollapseds [gEID c | (Node c _) <- cs] True)
+              pullNewModel
+        )
+    ]
 
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String

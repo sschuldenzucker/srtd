@@ -171,12 +171,14 @@ filterSubtree p = stForestL %~ (filterIdForest p)
 flattenSubtreePreorder :: Subtree -> Subtree
 flattenSubtreePreorder = stForestL %~ (withIdForest $ forestFlatten)
 
--- TODO we may not need this anymore
 forestFindTreeWithBreadcrumbs :: (Eq id) => id -> IdForest id a -> Maybe ([(id, a)], Tree (id, a))
 forestFindTreeWithBreadcrumbs tgt forest = find (\(_, Node (i, _) _) -> i == tgt) $ treesWithIdBreadcrumbs
  where
   -- Mogrify b/c forestTreesWithBreadcrumbs also returns the attrs, which we don't care about here.
   treesWithIdBreadcrumbs = forestTreesWithBreadcrumbs . idForest $ forest
+
+forestFindTree :: (Eq id) => id -> IdForest id a -> Maybe (Tree (id, a))
+forestFindTree tgt forest = snd <$> forestFindTreeWithBreadcrumbs tgt forest
 
 -- | Add local derived attrs across a subtree.
 --
@@ -432,10 +434,17 @@ emptyHideHierarchyFilter :: HideHierarchyFilter
 emptyHideHierarchyFilter = HideHierarchyFilter Set.empty
 
 -- | Toggle between collapsed and not.
+--
+-- TODO refactor input wouldn't need to be a label, eid is enough.
 hhfToggle :: LocalIdLabel -> HideHierarchyFilter -> HideHierarchyFilter
 hhfToggle lil@(eid, _) hhf
   | Set.member eid hhf.hideEIDs = hhf & hideEIDsL %~ Set.delete eid
   | otherwise = hhf & hideEIDsL %~ Set.insert eid
+
+hhfSetCollapseds :: [EID] -> Bool -> HideHierarchyFilter -> HideHierarchyFilter
+hhfSetCollapseds eids val = hideEIDsL %~ \s -> f s (Set.fromList eids)
+ where
+  f = if val then Set.union else Set.difference
 
 -- | Build a hierarchy filter. This is _not_ meant to be selected directly by the user but as a tool
 -- for views.
