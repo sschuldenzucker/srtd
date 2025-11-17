@@ -269,8 +269,8 @@ rootKeymap =
       , ( kmLeafA
             (bind '-')
             "Un/collapse"
-            ( withCurWithAttrOrElse aerContinue $ \curl -> do
-                modify (mtHideHierarchyFilterL %~ hhfToggle curl)
+            ( withCurOrElse aerContinue $ \cur -> do
+                modify (mtHideHierarchyFilterL %~ hhfToggle cur)
                 notFoundToAER_ pullNewModel
             )
         )

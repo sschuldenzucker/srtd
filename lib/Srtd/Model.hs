@@ -434,10 +434,8 @@ emptyHideHierarchyFilter :: HideHierarchyFilter
 emptyHideHierarchyFilter = HideHierarchyFilter Set.empty
 
 -- | Toggle between collapsed and not.
---
--- TODO refactor input wouldn't need to be a label, eid is enough.
-hhfToggle :: LocalIdLabel -> HideHierarchyFilter -> HideHierarchyFilter
-hhfToggle lil@(eid, _) hhf
+hhfToggle :: EID -> HideHierarchyFilter -> HideHierarchyFilter
+hhfToggle eid hhf
   | Set.member eid hhf.hideEIDs = hhf & hideEIDsL %~ Set.delete eid
   | otherwise = hhf & hideEIDsL %~ Set.insert eid
 
