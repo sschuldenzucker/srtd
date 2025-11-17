@@ -539,10 +539,16 @@ spaceKeymap =
             model' <- liftIO $ getModel (acModelServer ?actx)
             root <- gets mtRoot
             notFoundToAER_ $ do
+              -- Fetch a new model here. This lets us do this even if this node is collapsed.
               subtree <- pureET $ translateAppFilterContext $ runFilter normalFilter root model'
               (Node _ cs) <- pureET $ maybeToEither IdNotFoundError $ forestFindTree cur (stForest subtree)
+              let c_eids = [gEID c | (Node c _) <- cs]
+              -- This allows to "undo" the child collapsing by child-collapsing again.
+              let f hhf =
+                    let val = hhfIsCollapsed cur hhf || (not $ all (\eid -> hhfIsCollapsed eid hhf) c_eids)
+                     in hhfSetCollapseds c_eids val hhf
               mtHideHierarchyFilterL
-                %= (hhfSetCollapseds [cur] False . hhfSetCollapseds [gEID c | (Node c _) <- cs] True)
+                %= (hhfSetCollapseds [cur] False . f)
               pullNewModel
         )
     ]

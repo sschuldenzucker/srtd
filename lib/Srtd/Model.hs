@@ -446,6 +446,9 @@ hhfSetCollapseds eids val = hideEIDsL %~ \s -> f s (Set.fromList eids)
  where
   f = if val then Set.union else Set.difference
 
+hhfIsCollapsed :: EID -> HideHierarchyFilter -> Bool
+hhfIsCollapsed eid hhf = Set.member eid hhf.hideEIDs
+
 -- | Build a hierarchy filter. This is _not_ meant to be selected directly by the user but as a tool
 -- for views.
 hideHierarchyFilter :: HideHierarchyFilter -> Filter
