@@ -117,7 +117,7 @@ _forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> 
       , daEarliestAutodates =
           foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
       , daLatestAutodates =
-          foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
+          foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daLatestAutodates . snd) $ clabels
       , daEarliestDates =
           foldl'
             (pointwiseChooseAttrDates chooseMin tz)
