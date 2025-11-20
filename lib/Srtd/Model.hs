@@ -416,6 +416,22 @@ f_deepByDates =
         ]
     tz = fcTimeZone ?fctx
 
+-- EXPERIMENTAL
+-- Excludes explicit LATER and SOMEDAY projects b/c these need separate review anyways.
+-- To assess project age
+f_NotDelayedByLastModified :: Filter
+f_NotDelayedByLastModified =
+  Filter
+    { fiName = "non-delayed by last modified"
+    , fiIncludeDone = False
+    , fiPostprocess = go
+    }
+ where
+  go :: (?fctx :: FilterContext) => STForest -> STForest
+  go = sortIdForestBy cmp True . filterIdForest p
+  p llabel = gLocalActionability llabel <= Open
+  cmp = comparing (lastStatusModified . gLatestAutodates)
+
 -- | Intermediate structure to build the filter for hiding levels.
 --
 -- Note that 'hiding' is the same as just filtering out at the data level but is different from a

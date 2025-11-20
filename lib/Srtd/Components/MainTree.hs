@@ -162,6 +162,7 @@ defaultFilters :: [Filter]
 defaultFilters =
   [ f_notDone
   , f_deepByDates
+  , f_NotDelayedByLastModified
   , f_flatByDates
   , f_nextFlatByDates
   , f_waitingFlatByDates
@@ -302,6 +303,7 @@ viewKeymap =
         , ('F', "flat, by simple urgency")
         , ('N', "flat next, by simple urgency")
         , ('W', "flat waiting, by simple urgency")
+        , ('m', "non-delayed by last modified")
         ]
         ++ [ kmLeafA_ (ctrl 'f') "Toggle follow item" (mtDoFollowItemL %= not)
            ]
