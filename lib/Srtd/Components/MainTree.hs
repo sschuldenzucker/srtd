@@ -532,9 +532,7 @@ spaceKeymap =
     "Space"
     [ kmLeafA
         (bind '-')
-        "Collapse children"
-        -- TODO This lets us _collapse_ children but would be good to also uncollapse when used again.
-        -- It shouldn't be toggle though I think.
+        "Toggle collapse children"
         ( withCurOrElse aerContinue $ \cur -> do
             -- See also collapseLevelKeymap
             normalFilter <- gets (fromJust . CList.focus . mtFilters)
