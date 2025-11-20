@@ -770,8 +770,8 @@ renderRow
   ( ListIdLabel
       lvl
       _
-      llabel@( ( Attr {name, status, dates, autoDates = AttrAutoDates {lastStatusModified}}
-                 , DerivedAttr {daImpliedDates}
+      llabel@( ( Attr {name, status, dates, autoDates = AttrAutoDates {}}
+                 , DerivedAttr {daImpliedDates, daLatestAutodates}
                  )
                , _
                )
@@ -813,7 +813,10 @@ renderRow
     -- was: theDates = daImpliedDates
     theDates = gEarliestImpliedOrChildDates (zonedTimeZone ztime) llabel
     dateW = renderMostUrgentDate ztime sel dates theDates
-    lastStatusModifiedW = renderLastModified ztime sel $ cropDate (zonedTimeZone ztime) (DateAndTime lastStatusModified)
+    -- EXPERIMENTAL: Show *latest* lastStatusModified including children, not just of the item itself.
+    lastStatusModifiedW =
+      renderLastModified ztime sel $
+        cropDate (zonedTimeZone ztime) (DateAndTime (lastStatusModified daLatestAutodates))
     statusW = renderStatus sel status (gLocalActionability llabel)
     nameW = case mrx of
       Nothing -> strTruncateAvailable name
