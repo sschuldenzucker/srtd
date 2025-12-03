@@ -703,7 +703,7 @@ makeWithFilters root filters hhf doFollowItem model rname = do
 
 translateAppFilterContext :: (?actx :: AppContext) => ((?fctx :: FilterContext) => a) -> a
 translateAppFilterContext x =
-  let ?fctx = FilterContext {fcTimeZone = zonedTimeZone . acZonedTime $ ?actx}
+  let ?fctx = FilterContext {fcZonedTime = acZonedTime $ ?actx}
    in x
 
 forestToBrickList :: AppResourceName -> STForest -> MyList
@@ -1009,10 +1009,7 @@ instance AppComponent MainTree () () where
       now = acZonedTime ?actx
 
   handleEvent ev =
-    -- LATER when filters become more fancy and filter something wrt. the current time, this *may*
-    -- need to process the Tick event and update its filter. (we probably don't wanna do this on
-    -- \*every* event though to keep it usable, and maybe we don't even wanna process Tick in this
-    -- way. If it ever matters, manual reload may be better.)
+    -- TODO process the Tick event and update its filter b/c last-modified now depends on time (in a hacky way). - Or maybe explicitly don't and add a manual refresh??
     wrappingActions $ do
       listRName <- use (mtListL . L.listNameL)
       case ev of

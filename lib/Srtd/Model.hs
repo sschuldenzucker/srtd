@@ -12,7 +12,7 @@ import Data.Maybe (catMaybes, fromMaybe)
 import Data.Ord (comparing)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Time (TimeZone)
+import Data.Time (TimeZone, ZonedTime (zonedTimeZone), addUTCTime, zonedTimeToUTC)
 import Data.Tree
 import Data.UUID (UUID)
 import GHC.Generics
@@ -254,8 +254,11 @@ stParentEID st llabel = case gBreadcrumbs llabel of
 -- from the ModelServer). If we pull them even further apart (e.g. going async somewhat), we may want
 -- to review.
 data FilterContext = FilterContext
-  { fcTimeZone :: TimeZone
+  { fcZonedTime :: ZonedTime
   }
+
+fcTimeZone :: FilterContext -> TimeZone
+fcTimeZone = zonedTimeZone . fcZonedTime
 
 -- | A Filter applies various operations like - uh - filtering, sorting, and restructuring to
 -- a subtree.
