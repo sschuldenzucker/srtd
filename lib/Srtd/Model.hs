@@ -432,7 +432,11 @@ f_NotDelayedByLastModified =
  where
   go :: (?fctx :: FilterContext) => STForest -> STForest
   go = sortIdForestBy cmp True . filterIdForest p
-  p llabel = gLocalActionability llabel <= Open
+  p llabel =
+    -- HACK: Keep items visible if created within the last 5 mins. This is for adding items.
+    -- NB the Num instance of NominalDiffTime corresponds to seconds.
+    let cutoffTime = addUTCTime (-5 * 60) ((zonedTimeToUTC . fcZonedTime) ?fctx)
+     in gLocalActionability llabel <= Open || (created . gLatestAutodates $ llabel) >= cutoffTime
   cmp = comparing (lastStatusModified . gLatestAutodates)
 
 -- | Intermediate structure to build the filter for hiding levels.
