@@ -9,7 +9,7 @@ import Data.Aeson hiding ((.=))
 import Data.Function (on)
 import Data.List (find, foldl', sortBy)
 import Data.Maybe (catMaybes, fromMaybe)
-import Data.Ord (comparing)
+import Data.Ord (Down (..), comparing)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Time (TimeZone, ZonedTime (zonedTimeZone), addUTCTime, zonedTimeToUTC)
@@ -381,7 +381,7 @@ f_nextFlatByDates =
 f_waitingFlatByDates :: Filter
 f_waitingFlatByDates =
   Filter
-    { fiName = "flat waiting, by simple urgency"
+    { fiName = "flat waiting, by urgency + age"
     , fiIncludeDone = False
     , fiPostprocess = go
     }
@@ -395,6 +395,7 @@ f_waitingFlatByDates =
     cmp llabel1 llabel2 =
       mconcat
         [ (compareAttrDates tz `on` gImpliedDates) llabel1 llabel2
+        , comparing (lastStatusModified . gLatestAutodates) llabel1 llabel2
         -- , comparing gLocalActionability llabel1 llabel2
         ]
     tz = fcTimeZone ?fctx

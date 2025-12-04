@@ -296,13 +296,14 @@ viewKeymap =
   kmMake
     "Filter"
     ( map
+        -- TODO addressing by description suuuucks and is dangerous.
         mkMapping
         [ ('n', "not done")
         , ('a', "all")
         , ('u', "by simple urgency")
         , ('F', "flat, by simple urgency")
         , ('N', "flat next, by simple urgency")
-        , ('W', "flat waiting, by simple urgency")
+        , ('W', "flat waiting, by urgency + age")
         , ('m', "non-delayed by last modified")
         ]
         ++ [ kmLeafA_ (ctrl 'f') "Toggle follow item" (mtDoFollowItemL %= not)
