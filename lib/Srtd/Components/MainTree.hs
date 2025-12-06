@@ -1187,7 +1187,7 @@ modifyModelSync f = do
     modifyModelOnServer (acModelServer ?actx) f
     getModel (acModelServer ?actx)
   subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
-  let list' = resetListPosition mtDoFollowItem mtList $ forestToBrickList (getName mtList) (stForest subtree)
+  let list' = resetListPosition mtDoFollowItem s $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
 
 modifyModelSync_ ::
@@ -1224,34 +1224,43 @@ pullNewModel = do
   let filter_ = mtFilter s
   model' <- liftIO $ getModel (acModelServer ?actx)
   subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
-  let list' = resetListPosition mtDoFollowItem mtList $ forestToBrickList (getName mtList) (stForest subtree)
+  let list' = resetListPosition mtDoFollowItem s $ forestToBrickList (getName mtList) (stForest subtree)
   put s {mtSubtree = subtree, mtList = list'}
 
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
 -- | Choose between follow or no-follow using a flag
-resetListPosition :: Bool -> MyList -> MyList -> MyList
+resetListPosition :: Bool -> MainTree -> MyList -> MyList
 resetListPosition True = resetListPositionFollow
 resetListPosition False = resetListPositionIndex
 
 -- | Tries preserve the list position by index  only.
-resetListPositionIndex :: MyList -> MyList -> MyList
-resetListPositionIndex old new = case L.listSelectedElement old of
+resetListPositionIndex :: MainTree -> MyList -> MyList
+resetListPositionIndex old new = case L.listSelectedElement (mtList old) of
   Nothing -> new -- `old` is empty
   Just (ix_, _) -> L.listMoveTo ix_ new
 
--- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the parents or, then the current position.
+-- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the siblings or, then parents or, then the current position.
 -- EXPERIMENTAL. This may not always be desired actually.
-resetListPositionFollow :: MyList -> MyList -> MyList
-resetListPositionFollow old new = case L.listSelectedElement old of
+resetListPositionFollow :: MainTree -> MyList -> MyList
+resetListPositionFollow old new = case L.listSelectedElement (mtList old) of
   Nothing -> new -- `old` is empty
   Just (ix_, tgtItm) ->
-    let tgtEIDs = gEID tgtItm : map gEID (gBreadcrumbs tgtItm)
-     in -- Try to find the previously selected element or a parent.
-        asum (map tryGoToEID tgtEIDs)
-          -- If we can't find
-          & fromMaybe (L.listMoveTo ix_ new)
+    let
+      selEID = gEID tgtItm
+      selz = zForestFindId selEID (stForest . mtSubtree $ old)
+      tgtEIDs =
+        catMaybes $
+          (Just selEID)
+            : (fmap zGetId . goNextSibling =<< selz)
+            : (fmap zGetId . goPrevSibling =<< selz)
+            : map (Just . gEID) (gBreadcrumbs tgtItm)
+     in
+      -- Try to find the previously selected element or a parent.
+      asum (map tryGoToEID tgtEIDs)
+        -- If we can't find
+        & fromMaybe (L.listMoveTo ix_ new)
  where
   tryGoToEID eid =
     Vec.findIndex (\itm -> lilEID itm == eid) (L.listElements new) <&> \ix' ->
@@ -1273,7 +1282,7 @@ setResourceName :: AppResourceName -> MainTree -> MainTree
 setResourceName rname state =
   state
     { mtList =
-        resetListPositionIndex (mtList state) $
+        resetListPositionIndex state $
           forestToBrickList (MainListFor rname) (stForest . mtSubtree $ state)
     , mtResourceName = rname
     }
