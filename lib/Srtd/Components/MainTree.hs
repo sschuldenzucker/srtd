@@ -503,7 +503,23 @@ goKeymap =
               moveToEID (gEID par)
               mtListL %= scrollListToEID cur
       )
+    , kmLeafA_ (bind 't') "Window top" $ withViewport $ \vp -> do
+        let tgtIx = (vp ^. vpTop) + Config.scrolloff
+        moveListToIndex tgtIx
+    , kmLeafA_ (bind 'b') "Window bottom" $ withViewport $ \vp -> do
+        let tgtIx = (vp ^. vpTop + snd (vp ^. vpSize)) - Config.scrolloff
+        moveListToIndex tgtIx
+    , kmLeafA_ (bind 'c') "Window center" $ withViewport $ \vp -> do
+        let tgtIx = (vp ^. vpTop + snd (vp ^. vpSize) `div` 2)
+        moveListToIndex tgtIx
     ]
+ where
+  withViewport go = do
+    l <- gets mtList
+    mvp <- lookupViewport (getName l)
+    case mvp of
+      Nothing -> return ()
+      Just vp -> go vp
 
 searchKeymap :: Keymap (AppEventAction MainTree () b)
 searchKeymap =
