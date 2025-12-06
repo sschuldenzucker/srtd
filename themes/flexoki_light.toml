@@ -23,7 +23,7 @@ mauve = "#A02F6F"
 
 # muted versions of main colors, by srs
 red1 = "#c97767"
-yellow1 = "#bf9b4d"
+yellow1 = "#caa556"
 green1 = "#8b9a4d"
 
 [defaultAttr]
