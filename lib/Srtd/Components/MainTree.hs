@@ -51,6 +51,7 @@ import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.RegexSearchEntryOverlay
 import Srtd.Components.TestOverlay (newTestOverlay)
+import Srtd.Config qualified as Config
 import Srtd.Data.IdTree
 import Srtd.Data.TreeZipper
 import Srtd.Dates (DateOrTime (..), cropDate, prettyAbsolute)
@@ -284,6 +285,8 @@ rootKeymap =
             )
         )
       , kmSub (bind ' ') spaceKeymap
+      , kmLeafA_ (bind 'j') "Move down" (moveListBy 1)
+      , kmLeafA_ (bind 'k') "Move up" (moveListBy (-1))
       ]
     )
     `kmUnion` collapseLevelKeymap
@@ -473,9 +476,9 @@ goKeymap =
   kmMake
     "Go to"
     -- We need to redefine 'g' b/c we just overwrote the default binding from list.
-    [ kmLeafA_ (bind 'g') "Top" $ mtListL %= L.listMoveToBeginning
+    [ kmLeafA_ (bind 'g') "Top" $ moveListToBeginning
     , -- For completeness
-      kmLeafA_ (bind 'e') "End" $ mtListL %= L.listMoveToEnd
+      kmLeafA_ (bind 'e') "End" $ moveListToEnd
     , ( kmLeafA (binding KBS []) "De-hoist, keep pos" $ do
           -- SOMEDAY some code duplication vs the other de-hoist.
           mt <- get
@@ -1023,17 +1026,11 @@ instance AppComponent MainTree () () where
         (VtyEvent (EvKey KUp [])) -> handleEvent (VtyEvent (EvKey (KChar 'k') []))
         -- Mouse support
         (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
-          | rname' == listRName -> aerVoid $ mtListL %= L.listMoveTo rown
-        -- SOMEDAY ideally, we could actually scroll the list while keeping the selection the same
-        -- (except if it would go out of bounds), but Brick lists don't provide that feature.
-        -- Implementing this may be related to implementing a "scrolloff" type feature later. I
-        -- probably have to reach into the List implementation for this. I'm really not quite sure
-        -- how it remembers its scroll position tbh. Something with viewports and Brick's 'visible'.
-        -- I *think* we can just append the right visibility request (from Brick.Types.Internal).
+          | rname' == listRName -> aerVoid $ moveListToIndex rown
         (MouseDown rname' BScrollDown [] _)
-          | rname' == listRName -> aerVoid $ mtListL %= L.listMoveBy 3
+          | rname' == listRName -> aerVoid $ moveListBy 3
         (MouseDown rname' BScrollUp [] _)
-          | rname' == listRName -> aerVoid $ mtListL %= L.listMoveBy (-3)
+          | rname' == listRName -> aerVoid $ moveListBy (-3)
         -- zoom mtListL $ L.listMoveByPages (0.3 :: Double)
         -- Keymap
         (VtyEvent e@(EvKey key mods)) -> do
@@ -1179,7 +1176,7 @@ modifyModelSync ::
   -- This is `ExceptT IdNotFoundError (EventM n MainTree) ()` but I'm not using it that much.
   EventMOrNotFound n MainTree ()
 modifyModelSync f = do
-  s@(MainTree {mtRoot, mtList, mtDoFollowItem}) <- get
+  s@(MainTree {mtRoot}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
@@ -1187,8 +1184,7 @@ modifyModelSync f = do
     modifyModelOnServer (acModelServer ?actx) f
     getModel (acModelServer ?actx)
   subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
-  let list' = resetListPosition mtDoFollowItem s $ forestToBrickList (getName mtList) (stForest subtree)
-  put s {mtSubtree = subtree, mtList = list'}
+  lift $ replaceSubtree subtree
 
 modifyModelSync_ ::
   (?actx :: AppContext) =>
@@ -1220,51 +1216,77 @@ modifyModelAsync f = liftIO $ modifyModelOnServer (acModelServer ?actx) f
 
 pullNewModel :: (?actx :: AppContext) => EventMOrNotFound n MainTree ()
 pullNewModel = do
-  s@(MainTree {mtRoot, mtList, mtDoFollowItem}) <- get
+  s@(MainTree {mtRoot}) <- get
   let filter_ = mtFilter s
   model' <- liftIO $ getModel (acModelServer ?actx)
   subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
-  let list' = resetListPosition mtDoFollowItem s $ forestToBrickList (getName mtList) (stForest subtree)
-  put s {mtSubtree = subtree, mtList = list'}
+  lift $ replaceSubtree subtree
+
+-- | Replace the current subtree by a new one, updating selected item and viewport position accordingly.
+replaceSubtree :: Subtree -> EventM n MainTree ()
+replaceSubtree subtree = do
+  old <- get
+  let list' = forestToBrickList (getName . mtList $ old) (stForest subtree)
+  put old {mtSubtree = subtree, mtList = list'}
+  resetListPosition (mtDoFollowItem old) old
 
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
 -- | Choose between follow or no-follow using a flag
-resetListPosition :: Bool -> MainTree -> MyList -> MyList
+resetListPosition :: Bool -> MainTree -> EventM n MainTree ()
 resetListPosition True = resetListPositionFollow
 resetListPosition False = resetListPositionIndex
 
 -- | Tries preserve the list position by index  only.
-resetListPositionIndex :: MainTree -> MyList -> MyList
-resetListPositionIndex old new = case L.listSelectedElement (mtList old) of
-  Nothing -> new -- `old` is empty
-  Just (ix_, _) -> L.listMoveTo ix_ new
+-- TODO needed?? This is the default behavior I think
+resetListPositionIndex :: MainTree -> EventM n MainTree ()
+resetListPositionIndex old = case L.listSelectedElement (mtList old) of
+  Nothing -> return ()
+  Just (ix_, _) -> moveListToIndex ix_
 
 -- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the siblings or, then parents or, then the current position.
 -- EXPERIMENTAL. This may not always be desired actually.
-resetListPositionFollow :: MainTree -> MyList -> MyList
-resetListPositionFollow old new = case L.listSelectedElement (mtList old) of
-  Nothing -> new -- `old` is empty
-  Just (ix_, tgtItm) ->
-    let
-      selEID = gEID tgtItm
-      selz = zForestFindId selEID (stForest . mtSubtree $ old)
-      tgtEIDs =
-        catMaybes $
-          (Just selEID)
-            : (fmap zGetId . goNextSibling =<< selz)
-            : (fmap zGetId . goPrevSibling =<< selz)
-            : map (Just . gEID) (gBreadcrumbs tgtItm)
-     in
-      -- Try to find the previously selected element or a parent.
-      asum (map tryGoToEID tgtEIDs)
-        -- If we can't find
-        & fromMaybe (L.listMoveTo ix_ new)
+resetListPositionFollow :: MainTree -> EventM n MainTree ()
+resetListPositionFollow old =
+  gets mtList >>= \new -> case L.listSelectedElement (mtList old) of
+    Nothing -> return () -- `old` is empty
+    Just (ix_, tgtItm) ->
+      let
+        selEID = gEID tgtItm
+        selz = zForestFindId selEID (stForest . mtSubtree $ old)
+        tgtEIDs =
+          catMaybes $
+            (Just selEID)
+              : (fmap zGetId . goNextSibling =<< selz)
+              : (fmap zGetId . goPrevSibling =<< selz)
+              : map (Just . gEID) (gBreadcrumbs tgtItm)
+       in
+        -- Try to find the previously selected element or a parent.
+        asum (map (\eid -> tryGoToEID eid new) tgtEIDs)
+          -- If we can't find
+          & fromMaybe (moveListToIndex ix_)
  where
-  tryGoToEID eid =
+  tryGoToEID eid new =
     Vec.findIndex (\itm -> lilEID itm == eid) (L.listElements new) <&> \ix' ->
-      L.listMoveTo ix' new
+      moveListToIndex ix'
+
+-- SOMEDAY may be worth making a ListWithScrolloff wrapper widget instead of these specialized functions.
+-- Unclear if beneficial.
+
+-- TODO implement our features
+
+moveListToIndex :: Int -> EventM n MainTree ()
+moveListToIndex i = mtListL %= L.listMoveTo i
+
+moveListToBeginning :: EventM n MainTree ()
+moveListToBeginning = mtListL %= L.listMoveToBeginning
+
+moveListToEnd :: EventM n MainTree ()
+moveListToEnd = mtListL %= L.listMoveToEnd
+
+moveListBy :: Int -> EventM n MainTree ()
+moveListBy n = mtListL %= L.listMoveBy n
 
 mtGoSubtreeFromCur :: GoWalker LocalIdLabel -> MainTree -> MainTree
 mtGoSubtreeFromCur go mt = fromMaybe mt mres
@@ -1281,8 +1303,6 @@ mtGoSubtreeFromCur go mt = fromMaybe mt mres
 setResourceName :: AppResourceName -> MainTree -> MainTree
 setResourceName rname state =
   state
-    { mtList =
-        resetListPositionIndex state $
-          forestToBrickList (MainListFor rname) (stForest . mtSubtree $ state)
+    { mtList = mtList state & L.listNameL .~ MainListFor rname
     , mtResourceName = rname
     }
