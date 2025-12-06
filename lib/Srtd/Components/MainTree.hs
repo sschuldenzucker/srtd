@@ -19,6 +19,7 @@ import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
+import Control.Monad.Trans.Maybe
 import Data.CircularList qualified as CList
 import Data.Functor (void)
 import Data.List (intersperse)
@@ -287,6 +288,7 @@ rootKeymap =
       , kmSub (bind ' ') spaceKeymap
       , kmLeafA_ (bind 'j') "Move down" (moveListBy 1)
       , kmLeafA_ (bind 'k') "Move up" (moveListBy (-1))
+      , kmSub (bind 'z') viewportKeymap
       ]
     )
     `kmUnion` collapseLevelKeymap
@@ -556,6 +558,32 @@ spaceKeymap =
               pullNewModel
         )
     ]
+
+viewportKeymap :: Keymap (AppEventAction MainTree () ())
+viewportKeymap =
+  kmMake
+    "Viewport"
+    -- These all don't respect item height != 1
+    -- These all respect our scrolloff without doing this manually b/c they're dominated by our
+    -- visibility requests in the rendering routine.
+    [ kmLeafA_ (bind 't') "Align to top" $ withSelIxViewportName $ \seli vp n -> do
+        setTop (viewportScroll n) seli
+    , kmLeafA_ (bind 'b') "Align to bottom" $ withSelIxViewportName $ \seli vp n -> do
+        let vpHeight = snd (vp ^. vpSize)
+            topOff = max 0 (seli - vpHeight)
+        setTop (viewportScroll n) topOff
+    , kmLeafA_ (bind 'z') "Align to center" $ withSelIxViewportName $ \seli vp n -> do
+        let vpHeight = snd (vp ^. vpSize)
+            topOff = max 0 (seli - vpHeight `div` 2)
+        setTop (viewportScroll n) topOff
+    ]
+ where
+  withSelIxViewportName go = void $ runMaybeT $ do
+    l <- gets mtList
+    let n = getName l
+    seli <- hoistMaybe (L.listSelected l)
+    vp <- MaybeT $ lookupViewport n
+    lift $ go seli vp n
 
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String

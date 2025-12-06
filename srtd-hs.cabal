@@ -108,6 +108,7 @@ library
         template-haskell >= 2.19 && < 2.24,
         async ^>= 2.2.5,
         clock ^>= 0.8.4,
+        transformers ^>= 0.6,
 
     exposed-modules:
         Srtd.Alignment,
