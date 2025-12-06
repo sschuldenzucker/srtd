@@ -12,6 +12,12 @@ import Lens.Micro.Platform (Lens')
 import Text.Regex.TDFA
 import Text.Regex.TDFA.Text ()
 
+-- | if-then-else as a function.
+--
+-- It's really not clear to me why _this_ is the one we don't have by default.
+if' :: Bool -> a -> a -> a
+if' b x y = if b then x else y
+
 -- Enables regex support for Text
 
 maybeToEither :: a -> Maybe b -> Either a b
