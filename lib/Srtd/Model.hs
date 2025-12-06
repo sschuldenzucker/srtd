@@ -347,7 +347,9 @@ f_flatByDates =
     p llabel = gStatus llabel /= None || not (isDatesEmpty $ gDates llabel)
     cmp llabel1 llabel2 =
       mconcat
-        [ (compareAttrDates tz `on` gImpliedDates) llabel1 llabel2
+        -- put WIP first. This is usually desired.
+        [ comparing (min Next . gLocalActionability) llabel1 llabel2
+        , (compareAttrDates tz `on` gImpliedDates) llabel1 llabel2
         , comparing gLocalActionability llabel1 llabel2
         ]
     tz = fcTimeZone ?fctx
@@ -415,7 +417,9 @@ f_deepByDates =
    where
     cmp llabel1 llabel2 =
       mconcat
-        [ (compareAttrDates tz `on` gEarliestImpliedOrChildDates tz) llabel1 llabel2
+        -- put WIP first. This is usually desired.
+        [ comparing (min Next . gLocalActionability) llabel1 llabel2
+        , (compareAttrDates tz `on` gEarliestImpliedOrChildDates tz) llabel1 llabel2
         , comparing gLocalActionability llabel1 llabel2
         ]
     tz = fcTimeZone ?fctx
