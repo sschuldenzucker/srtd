@@ -765,10 +765,12 @@ maybePrefixSelAttr :: Bool -> AttrName -> AttrName
 maybePrefixSelAttr True a = AppAttr.selected_item_row <> a
 maybePrefixSelAttr False a = a
 
-renderRow :: ZonedTime -> Maybe Regex -> Bool -> ListIdLabel -> Widget n
+renderRow :: ZonedTime -> Maybe Regex -> Maybe Int -> Int -> Bool -> ListIdLabel -> Widget n
 renderRow
   ztime
   mrx
+  mseli
+  i
   sel
   -- SOMEDAY these can be made way simpler using universal accessors (`g*`)
   ( ListIdLabel
@@ -780,26 +782,33 @@ renderRow
                , _
                )
     ) =
-    withSelAttr sel $
-      hBox $
-        -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
-        -- alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
-        -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
-        -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
-        -- I think it's so we don't have two greedy widgets or something.
-        -- TODO attr management really broken here, and I'm not sure how I'd fix.
-        [ withDefAttr (maybePrefixSelAttr sel $ attrName "dates_column") . hBox $
-            [ lastStatusModifiedW
-            , str " "
-            , dateW
-            ]
-        , indentW
-        , collapsedW
-        , statusW
-        , str " "
-        , padRight Max nameW
-        ]
+    visi $
+      withSelAttr sel $
+        hBox $
+          -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
+          -- alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
+          -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
+          -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
+          -- I think it's so we don't have two greedy widgets or something.
+          -- TODO attr management really broken here, and I'm not sure how I'd fix.
+          [ withDefAttr (maybePrefixSelAttr sel $ attrName "dates_column") . hBox $
+              [ lastStatusModifiedW
+              , str " "
+              , dateW
+              ]
+          , indentW
+          , collapsedW
+          , statusW
+          , str " "
+          , padRight Max nameW
+          ]
    where
+    -- Scrolloff
+    visi = case mseli of
+      Nothing -> id -- either nothing selected OR window too small
+      Just seli ->
+        if seli - Config.scrolloff <= i && i <= seli + Config.scrolloff then visible else id
+
     -- The first level doesn't take indent b/c deadlines are enough rn.
     indentW = str (concat (replicate lvl "    "))
     collapsedW =
@@ -1003,7 +1012,14 @@ instance AppComponent MainTree () () where
           renderRoot now rootLabel breadcrumbs
             <+> (padLeft Max (renderFilters mtFilters <+> str " " <+> doFollowBox))
       doFollowBox = withDefAttr AppAttr.follow_box $ str (if mtDoFollowItem then "(follow)" else "(keep)")
-      box = headrow <=> L.renderList (renderRow now mtSearchRx) True mtList
+      listW = Widget Greedy Fixed $ do
+        c <- getContext
+        -- NB this doesn't quite work as expected, but it avoids a situation where the selected row
+        -- wouldn't be visible anymore, which is all we need for now.
+        let canFitScrolloff = availHeight c >= Config.scrolloff
+            mseli = if canFitScrolloff then (L.listSelected mtList) else Nothing
+        render $ L.renderListWithIndex (renderRow now mtSearchRx mseli) True mtList
+      box = headrow <=> listW
       detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
         (True, Just illabel) -> Just ("Item Details", renderItemDetails now illabel)
         _ -> Nothing
