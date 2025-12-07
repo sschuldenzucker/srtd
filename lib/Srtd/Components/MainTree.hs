@@ -590,6 +590,8 @@ viewportKeymap =
         let vpHeight = snd (vp ^. vpSize)
             topOff = max 0 (seli - vpHeight `div` 2)
         setTop (viewportScroll n) topOff
+    , kmLeafA_ (bind 'j') "Scroll down" $ scrollListBy 3
+    , kmLeafA_ (bind 'k') "Scroll up" $ scrollListBy (-3)
     ]
  where
   withSelIxViewportName go = void $ runMaybeT $ do
