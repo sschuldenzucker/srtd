@@ -508,7 +508,7 @@ goKeymap =
         let tgtIx = (vp ^. vpTop) + Config.scrolloff
         moveListToIndex tgtIx
     , kmLeafA_ (bind 'b') "Window bottom" $ withViewport $ \vp -> do
-        let tgtIx = (vp ^. vpTop + snd (vp ^. vpSize)) - Config.scrolloff
+        let tgtIx = (vp ^. vpTop + snd (vp ^. vpSize)) - Config.scrolloff - 1
         moveListToIndex tgtIx
     , kmLeafA_ (bind 'c') "Window center" $ withViewport $ \vp -> do
         let tgtIx = (vp ^. vpTop + snd (vp ^. vpSize) `div` 2)
