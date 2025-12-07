@@ -22,7 +22,7 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 import Data.CircularList qualified as CList
 import Data.Functor (void)
-import Data.List (intersperse, maximumBy)
+import Data.List (intersperse, maximumBy, minimumBy)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe)
 import Data.Ord (comparing)
 import Data.Set qualified as Set
@@ -1298,17 +1298,34 @@ scrollListBy n = void $ runMaybeT $ do
   name <- gets (getName . mtList)
   vp <- MaybeT $ lookupViewport name
   seli <- MaybeT $ gets (L.listSelected . mtList)
+  listHeight <- gets (Vec.length . L.listElements . mtList)
   lift $ do
-    -- Handle when we reach the selected item (including scrolloff): then the selection has to move!
-    let top = vp ^. vpTop
-        height = vp ^. vpSize & snd
-        bottom = top + height
-        scrolloff = if (height < Config.scrolloff) then 0 else Config.scrolloff
-        moveOffTop = max 0 (top + n + scrolloff - seli)
-        moveOffBottom = min 0 (bottom + n - scrolloff - seli)
-        moveAmount = maximumBy (comparing abs) [moveOffTop, moveOffBottom]
+    let viewTop = vp ^. vpTop
+        viewHeight = vp ^. vpSize & snd
+        viewBottom = viewTop + viewHeight - 1
+        listBottom = listHeight - 1
+        -- Decision taken in render routine, see there
+        -- SOMEDAY just like in the render routine, I feel this doesn't work quite precisely.
+        scrolloff = if (viewHeight >= Config.scrolloff) then Config.scrolloff else 0
+        -- Actual scroll amount, taking into account that we stop at the top/bottom of the list.
+        n' =
+          minimumBy
+            (comparing abs)
+            [ max 0 (viewTop + n) - viewTop
+            , min listBottom (viewBottom + n) - viewBottom
+            ]
+        -- Amount we need to move the selection in case we'd cross it with the top/bottom of the
+        -- view by scrolling.
+        -- If we don't move the selection ourselves, scrolling doesn't either, and visibility
+        -- constraints make it so nothing scrolls actually.
+        moveAmount =
+          maximumBy
+            (comparing abs)
+            [ max 0 (viewTop + n' + scrolloff - seli)
+            , min 0 (viewBottom + n' - scrolloff - seli)
+            ]
     moveListBy moveAmount
-    vScrollBy (viewportScroll name) n
+    vScrollBy (viewportScroll name) n'
 
 -- | Choose between follow or no-follow using a flag
 resetListPosition :: Bool -> MainTree -> EventM n MainTree ()
