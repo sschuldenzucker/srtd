@@ -22,8 +22,9 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 import Data.CircularList qualified as CList
 import Data.Functor (void)
-import Data.List (intersperse)
+import Data.List (intersperse, maximumBy)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe)
+import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -515,11 +516,8 @@ goKeymap =
     ]
  where
   withViewport go = do
-    l <- gets mtList
-    mvp <- lookupViewport (getName l)
-    case mvp of
-      Nothing -> return ()
-      Just vp -> go vp
+    mvp <- lookupViewport =<< gets (getName . mtList)
+    maybe (return ()) go mvp
 
 searchKeymap :: Keymap (AppEventAction MainTree () b)
 searchKeymap =
@@ -1088,9 +1086,9 @@ instance AppComponent MainTree () () where
         (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
           | rname' == listRName -> aerVoid $ moveListToIndex rown
         (MouseDown rname' BScrollDown [] _)
-          | rname' == listRName -> aerVoid $ moveListBy 3
+          | rname' == listRName -> aerVoid $ scrollListBy 3
         (MouseDown rname' BScrollUp [] _)
-          | rname' == listRName -> aerVoid $ moveListBy (-3)
+          | rname' == listRName -> aerVoid $ scrollListBy (-3)
         -- zoom mtListL $ L.listMoveByPages (0.3 :: Double)
         -- Keymap
         (VtyEvent e@(EvKey key mods)) -> do
@@ -1292,6 +1290,23 @@ replaceSubtree subtree = do
 
 scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
+
+scrollListBy :: Int -> EventM AppResourceName MainTree ()
+scrollListBy n = void $ runMaybeT $ do
+  name <- gets (getName . mtList)
+  vp <- MaybeT $ lookupViewport name
+  seli <- MaybeT $ gets (L.listSelected . mtList)
+  lift $ do
+    -- Handle when we reach the selected item (including scrolloff): then the selection has to move!
+    let top = vp ^. vpTop
+        height = vp ^. vpSize & snd
+        bottom = top + height
+        scrolloff = if (height < Config.scrolloff) then 0 else Config.scrolloff
+        moveOffTop = max 0 (top + n + scrolloff - seli)
+        moveOffBottom = min 0 (bottom + n - scrolloff - seli)
+        moveAmount = maximumBy (comparing abs) [moveOffTop, moveOffBottom]
+    moveListBy moveAmount
+    vScrollBy (viewportScroll name) n
 
 -- | Choose between follow or no-follow using a flag
 resetListPosition :: Bool -> MainTree -> EventM n MainTree ()
