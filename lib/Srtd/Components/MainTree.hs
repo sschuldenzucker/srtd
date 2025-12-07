@@ -1069,14 +1069,25 @@ instance AppComponent MainTree () () where
           renderRoot now rootLabel breadcrumbs
             <+> (padLeft Max (renderFilters mtFilters <+> str " " <+> doFollowBox))
       doFollowBox = withDefAttr AppAttr.follow_box $ str (if mtDoFollowItem then "(follow)" else "(keep)")
-      listW = Widget Greedy Fixed $ do
+      listW = Widget Greedy Greedy $ do
         c <- getContext
         -- NB this doesn't quite work as expected, but it avoids a situation where the selected row
         -- wouldn't be visible anymore, which is all we need for now.
         let canFitScrolloff = availHeight c >= Config.scrolloff
             mseli = if canFitScrolloff then (L.listSelected mtList) else Nothing
         render $ L.renderListWithIndex (renderRow now mtSearchRx mseli) True mtList
-      box = headrow <=> listW
+      statusBarW =
+        withDefAttr AppAttr.header_row $
+          txt " CUR" <+> selectedBreadcrumbsW <+> (padLeft Max statusBarRightW)
+      selectedBreadcrumbsW = case mtCurWithAttr s of
+        Nothing -> emptyWidget
+        Just illabel ->
+          overrideAttr AppAttr.breadcrumbs AppAttr.header_row $
+            renderBreadcrumbs (acZonedTime ?actx) (map localIdLabel2IdLabel . gBreadcrumbs $ illabel)
+      statusBarRightW = almostEmptyWidget
+      cmdBarW = almostEmptyWidget -- nothing here yet, just reserving some space
+      -- box = headrow <=> listW <=> statusBarW <=> cmdBarW
+      box = vBox [headrow, listW, statusBarW, cmdBarW]
       detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
         (True, Just illabel) -> Just ("Item Details", renderItemDetails now illabel)
         _ -> Nothing
