@@ -1374,7 +1374,8 @@ resetListPositionFollow old =
 -- SOMEDAY may be worth making a ListWithScrolloff wrapper widget instead of these specialized functions.
 -- Unclear if beneficial.
 
--- TODO implement our features
+-- SOMEDAY I added these b/c I felt moving now needed some special treatment for scrolloff, but turned out it doesn't.
+-- If it really doesn't in the end, we can remove these indirections.
 
 moveListToIndex :: Int -> EventM n MainTree ()
 moveListToIndex i = mtListL %= L.listMoveTo i
