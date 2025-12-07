@@ -550,6 +550,12 @@ insertNewNormalWithNewId uuid attr tgt go (Model forest) = updateDerivedAttrs $ 
   -- we can re-use code.
   forest' = forestInsertLabelRelToId tgt go (EIDNormal uuid) (attr, emptyDerivedAttr attr) forest
 
+insertNewNormalAsParentWithNewId ::
+  (?mue :: ModelUpdateEnv) => UUID -> Attr -> EID -> Model -> Model
+insertNewNormalAsParentWithNewId uuid attr tgt (Model forest) = updateDerivedAttrs $ Model forest'
+ where
+  forest' = forestInsertLabelAsParentOfId tgt (EIDNormal uuid) (attr, emptyDerivedAttr attr) forest
+
 -- | Move the subtree below the given target to a new position. See 'forestMoveSubtreeRelFromForestId'.
 moveSubtreeRelFromForest ::
   (?mue :: ModelUpdateEnv) =>

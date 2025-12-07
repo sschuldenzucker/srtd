@@ -158,6 +158,15 @@ forestInsertLabelRelToId tgt go i label forest = fromMaybe forest $ do
  where
   forestLoc = Z.fromForest . idForest $ forest
 
+forestInsertLabelAsParentOfId ::
+  (Eq id) => id -> id -> a -> IdForest id a -> IdForest id a
+forestInsertLabelAsParentOfId tgt i label forest = fromMaybe forest $ do
+  tgtLoc <- zFindId tgt forestLoc
+  let postLoc = Z.modifyTree (\n -> Node (i, label) [n]) tgtLoc
+  return $ IdForest $ Z.forest . zForestRoot $ postLoc
+ where
+  forestLoc = Z.fromForest . idForest $ forest
+
 -- * Moving nodes
 
 -- | Given a `tgt` and an `anchor` and a walker to go from the anchor to an insert position, move `tgt` there.

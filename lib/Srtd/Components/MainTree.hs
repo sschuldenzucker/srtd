@@ -571,6 +571,19 @@ spaceKeymap =
                 %= (hhfSetCollapseds [cur] False . f)
               pullNewModel
         )
+    , kmLeafA_ (bind 'n') "New as parent" $ withCur $ \cur -> do
+        -- Copied from 'pushInsertNewItemRelToCur' but that function can't handle "insert as parent".
+        let cb name = do
+              let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ ?actx) name
+              uuid <- liftIO nextRandom
+              eok <- runExceptT $ modifyModelSync $ insertNewNormalAsParentWithNewId uuid attr cur
+              case eok of
+                Left _err -> return Canceled
+                Right () -> do
+                  let eid = EIDNormal uuid
+                  mtListL %= scrollListToEID eid
+                  aerContinue
+        pushOverlay (newNodeOverlay "" "New Item as Parent") overlayNoop cb
     ]
 
 viewportKeymap :: Keymap (AppEventAction MainTree () ())
