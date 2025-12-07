@@ -1294,37 +1294,43 @@ scrollListToEID :: EID -> MyList -> MyList
 scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
 scrollListBy :: Int -> EventM AppResourceName MainTree ()
-scrollListBy n = void $ runMaybeT $ do
-  name <- gets (getName . mtList)
+scrollListBy n = zoom mtListL $ listScrollMoveBy n
+
+-- | Scroll a list by the specified amount, moving the selection when we reach the top/bottom.
+listScrollMoveBy :: (Ord n) => Int -> EventM n (L.List n e) ()
+listScrollMoveBy n = void . runMaybeT $ do
+  li <- get
+  let name = getName li
   vp <- MaybeT $ lookupViewport name
-  seli <- MaybeT $ gets (L.listSelected . mtList)
-  listHeight <- gets (Vec.length . L.listElements . mtList)
+  seli <- hoistMaybe (L.listSelected li)
   lift $ do
-    let viewTop = vp ^. vpTop
-        viewHeight = vp ^. vpSize & snd
-        viewBottom = viewTop + viewHeight - 1
-        listBottom = listHeight - 1
-        -- Decision taken in render routine, see there
-        -- SOMEDAY just like in the render routine, I feel this doesn't work quite precisely.
-        scrolloff = if (viewHeight >= Config.scrolloff) then Config.scrolloff else 0
-        -- Actual scroll amount, taking into account that we stop at the top/bottom of the list.
-        n' =
-          minimumBy
-            (comparing abs)
-            [ max 0 (viewTop + n) - viewTop
-            , min listBottom (viewBottom + n) - viewBottom
-            ]
-        -- Amount we need to move the selection in case we'd cross it with the top/bottom of the
-        -- view by scrolling.
-        -- If we don't move the selection ourselves, scrolling doesn't either, and visibility
-        -- constraints make it so nothing scrolls actually.
-        moveAmount =
-          maximumBy
-            (comparing abs)
-            [ max 0 (viewTop + n' + scrolloff - seli)
-            , min 0 (viewBottom + n' - scrolloff - seli)
-            ]
-    moveListBy moveAmount
+    let
+      viewTop = vp ^. vpTop
+      viewHeight = vp ^. vpSize & snd
+      viewBottom = viewTop + viewHeight - 1
+      listHeight = Vec.length . L.listElements $ li
+      listBottom = listHeight - 1
+      -- Decision taken in render routine, see there
+      -- SOMEDAY just like in the render routine, I feel this doesn't work quite precisely.
+      scrolloff = if (viewHeight >= Config.scrolloff) then Config.scrolloff else 0
+      -- Actual scroll amount, taking into account that we stop at the top/bottom of the list.
+      n' =
+        minimumBy
+          (comparing abs)
+          [ max 0 (viewTop + n) - viewTop
+          , min listBottom (viewBottom + n) - viewBottom
+          ]
+      -- Amount we need to move the selection in case we'd cross it with the top/bottom of the
+      -- view by scrolling.
+      -- If we don't move the selection ourselves, scrolling doesn't either, and visibility
+      -- constraints make it so nothing scrolls actually.
+      moveAmount =
+        maximumBy
+          (comparing abs)
+          [ max 0 (viewTop + n' + scrolloff - seli)
+          , min 0 (viewBottom + n' - scrolloff - seli)
+          ]
+    put $ L.listMoveBy moveAmount li
     vScrollBy (viewportScroll name) n'
 
 -- | Choose between follow or no-follow using a flag
