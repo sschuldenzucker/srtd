@@ -18,6 +18,12 @@ import Text.Regex.TDFA.Text ()
 if' :: Bool -> a -> a -> a
 if' b x y = if b then x else y
 
+-- | case selection
+select :: a -> [(Bool, a)] -> a
+select xElse [] = xElse
+select _ ((True, x) : _) = x
+select xElse ((False, _) : cs) = select xElse cs
+
 -- Enables regex support for Text
 
 maybeToEither :: a -> Maybe b -> Either a b
