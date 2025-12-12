@@ -55,6 +55,7 @@ import Srtd.Components.RegexSearchEntryOverlay
 import Srtd.Components.TestOverlay (newTestOverlay)
 import Srtd.Config qualified as Config
 import Srtd.Data.IdTree
+import Srtd.Data.MapLike qualified as MapLike
 import Srtd.Data.TreeZipper
 import Srtd.Dates (DateOrTime (..), cropDate, prettyAbsolute)
 import Srtd.Keymap
@@ -1046,6 +1047,42 @@ renderItemDetails ztime (eid, llabel) =
   padFirstCell (h : t) = padRight (Pad 2) h : t
   sectionHeaderAttr = attrName "section_header"
 
+renderStatusActionabilityCounts :: StatusActionabilityCounts -> Widget n
+renderStatusActionabilityCounts sac =
+  -- We use a special structure here b/c we feel it's best for performance not to vary the widgets we create.
+  -- SOMEDAY is that true?
+  hBox . mapLast (\f -> f emptyWidget) (\f -> f (str " ")) $
+    [ maybeRenderIndicatorSingle WIP
+    , maybeRenderIndicatorSingle Next
+    , maybeRenderIndicatorSingle Waiting
+    , maybeRenderIndicatorSingle Later
+    , maybeRenderIndicatorSingle Open
+    ]
+      ++ map maybeRenderIndicatorProject displayedProjectActionabilities
+      ++ [stuckProjectActionabilitiesW]
+ where
+  maybeRenderIndicatorSingle s sep =
+    let n = MapLike.findWithDefault 0 s . sacSingleStatuses $ sac
+     in if n == 0
+          then emptyWidget
+          else hBox [renderStatus False s s, str . show $ n, sep]
+  maybeRenderIndicatorProject a sep =
+    let n = MapLike.findWithDefault 0 a . sacProjects $ sac
+     in if n == 0
+          then emptyWidget
+          else hBox [renderStatus False Project a, str . show $ n, sep]
+  displayedProjectActionabilities = [WIP, Next, Waiting, Later]
+  stuckProjectActionabilitiesW sep =
+    let
+      totalProjects = MapLike.findWithDefault 0 Project $ sacSingleStatuses sac
+      n =
+        totalProjects
+          - sum [MapLike.findWithDefault 0 a (sacProjects sac) | a <- displayedProjectActionabilities]
+     in
+      if n == 0
+        then emptyWidget
+        else hBox [renderStatus False Project Someday, str . show $ n, sep]
+
 -- | We use `Confirmed ()` to indicate that the user *asked* to exit and `Canceled ()` to indicate
 -- that there was some kind of issue and the tab had to close (e.g., the parent was deleted.)
 --
@@ -1084,7 +1121,15 @@ instance AppComponent MainTree () () where
         Just illabel ->
           overrideAttr AppAttr.breadcrumbs AppAttr.header_row $
             renderBreadcrumbs (acZonedTime ?actx) (map localIdLabel2IdLabel . gBreadcrumbs $ illabel)
-      statusBarRightW = almostEmptyWidget
+      statusBarRightW =
+        hBox
+          [ maybe emptyWidget (renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr) $
+              mtCurWithAttr s
+          , str "  |  "
+          , renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr $ rootLabel
+          , -- Spacer b/c I find it hard to read stuff at the right side of the screen
+            str " "
+          ]
       cmdBarW = almostEmptyWidget -- nothing here yet, just reserving some space
       -- box = headrow <=> listW <=> statusBarW <=> cmdBarW
       box = vBox [headrow, listW, statusBarW, cmdBarW]
