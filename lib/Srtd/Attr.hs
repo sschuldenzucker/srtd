@@ -337,7 +337,10 @@ sacForParent s_ a_ sac = case (s_, a_) of
   -- No double counting for NEXT items with WIP children
   (Next, WIP) -> sac
   -- Projects and Opens are counted but not double counted with the same actionability up the hierarchy.
-  (s@Project, a) -> case EnumMap.lookup a (sacProjects sac) of
+  -- EXPERIMENTAL. Limit stats within projects, intentional for status bar.
+  -- SOMEDAY there's a weird split in heavy lifting vs gGlobalActionability here. (this code only works b/c `a` is coming from that code.)
+  -- SOMEDAY maybe there should be two routines and accounting members: one that compute "deep counts", one that computes "shallow counts". We currently only use this for the status bar, so we don't need "deep" but may be useful at some point.
+  {- (s@Project, a) -> case EnumMap.lookup a (sacProjects sac) of
     Just _ -> sac
     Nothing ->
       sac
@@ -346,7 +349,13 @@ sacForParent s_ a_ sac = case (s_, a_) of
         & sacSingleStatusesL
         %~ EnumMap.insertWith (+) s 1
         & sacTotalL
-        %~ (+ 1)
+        %~ (+ 1) -}
+  (s@Project, a) ->
+    StatusActionabilityCounts
+      (sacTotal sac + 1) -- SOMEDAY inconsistency to the other counts. Ok for "size" metric but...
+      (EnumMap.insert s 1 $ sacSingleStatuses sac)
+      (sacOpens sac)
+      (EnumMap.fromList [(a, 1)])
   (s@Open, a) | a <= Open -> case EnumMap.lookup a (sacOpens sac) of
     Just _ -> sac
     Nothing ->
