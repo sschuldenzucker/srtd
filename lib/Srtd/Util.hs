@@ -81,6 +81,22 @@ forEmptyList :: b -> ([a] -> b) -> [a] -> b
 forEmptyList dflt _ [] = dflt
 forEmptyList _ f xs = f xs
 
+-- | Like 'map' but with different functions for the first and last element.
+mapFirstLast :: (a -> b) -> (a -> b) -> (a -> b) -> [a] -> [b]
+mapFirstLast _ _ _ [] = []
+mapFirstLast f g h (x : xs) = f x : mapLast g h xs
+
+-- | Like 'map' but with a different function for the first element.
+mapFirst :: (a -> b) -> (a -> b) -> [a] -> [b]
+mapFirst _ _ [] = []
+mapFirst f h (x : xs) = f x : map h xs
+
+-- | Like 'map' but with a different function for the last element.
+mapLast :: (a -> b) -> (a -> b) -> [a] -> [b]
+mapLast _ _ [] = []
+mapLast g _ [x] = [g x]
+mapLast g h (x : xs) = h x : mapLast g h xs
+
 -- * Basic tree helpers
 
 -- | The sane `fmap` instance. (the default is the list instance, which isn't normally desired.)
