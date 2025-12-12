@@ -9,6 +9,8 @@ import Control.Arrow (second)
 import Control.Monad (liftM2)
 import Data.Aeson
 import Data.Aeson.Types (typeMismatch)
+import Data.EnumMap.Strict (EnumMap)
+import Data.EnumMap.Strict qualified as EnumMap
 import Data.Function (on)
 import Data.Functor.Apply
 import Data.List (minimumBy)
@@ -61,7 +63,7 @@ data Status
     Canceled
   | -- | Done. (NB there's no 'archived' tag right now)
     Done
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Generic, Enum)
 
 suffixLenses ''Status
 
@@ -292,6 +294,83 @@ setLastStatusModified now = autoDatesL %~ ((lastModifiedL .~ now) . (lastStatusM
 
 -- * Global Derived Attr
 
+-- | Counts for visible children by status and actionability. Children are "visible" when their
+-- status is not dominated (e.g., a NEXT item below another NEXT item is not visible), and generally we
+-- avoid double counting.
+--
+-- NOTE This is not fully type safe: not all instances are valid. See 'gGlobalActionability'. The
+-- data structure is generally questionable, see below.
+--
+-- SOMEDAY make it type safe.
+--
+-- SOMEDAY OR collapse the structure to something like (status -> (n, status -> n)) where the second
+-- layer is actionability and isn't always there. Maybe.
+data StatusActionabilityCounts
+  = StatusActionabilityCounts
+  { sacTotal :: Int
+  -- ^ Total across all visible items. "Active size" indicator.
+  , sacSingleStatuses :: EnumMap Status Int
+  -- ^ Mapping from status to number of visible child items with that status
+  --
+  -- SOMEDAY if it's a bottleneck, use a vector (with default 0s this is well defined). Or just a big struct.
+  , sacOpens :: EnumMap Status Int
+  -- ^ OPEN items by actionability. For the total number of OPEN items see `sacSingleStatuses`.
+  , sacProjects :: EnumMap Status Int
+  -- ^ PROJECT items by actionability. For the total number of PROJECT items see `sacSingleStatuses`.
+  }
+  deriving (Show)
+
+suffixLenses ''StatusActionabilityCounts
+
+sacEmpty :: StatusActionabilityCounts
+sacEmpty = StatusActionabilityCounts 0 EnumMap.empty EnumMap.empty EnumMap.empty
+
+-- | StatusActionabilityCounts for the parent with given status and actionability. This handles
+-- visibility / transparency rules for counting.
+--
+-- SOMEDAY this is the third time we reproduce this pattern, together with g{Global,Local}Actionability.
+-- Make some abstraction for it to only have it in one place.
+sacForParent :: Status -> Status -> StatusActionabilityCounts -> StatusActionabilityCounts
+sacForParent s_ a_ sac = case (s_, a_) of
+  -- None aren't counted
+  (None, _) -> sac
+  -- No double counting for NEXT items with WIP children
+  (Next, WIP) -> sac
+  -- Projects and Opens are counted but not double counted with the same actionability up the hierarchy.
+  (s@Project, a) -> case EnumMap.lookup a (sacProjects sac) of
+    Just _ -> sac
+    Nothing ->
+      sac
+        & sacProjectsL
+        %~ EnumMap.insert a 1
+        & sacSingleStatusesL
+        %~ EnumMap.insertWith (+) s 1
+        & sacTotalL
+        %~ (+ 1)
+  (s@Open, a) | a <= Open -> case EnumMap.lookup a (sacOpens sac) of
+    Just _ -> sac
+    Nothing ->
+      sac
+        & sacOpensL
+        %~ EnumMap.insert a 1
+        & sacSingleStatusesL
+        %~ EnumMap.insertWith (+) s 1
+        & sacTotalL
+        %~ (+ 1)
+  -- All other statuses do not inherit anything
+  (s, _) -> StatusActionabilityCounts 1 (EnumMap.fromList [(s, 1)]) EnumMap.empty EnumMap.empty
+
+-- | Union sacs across siblings
+sacUnionForSiblings ::
+  [StatusActionabilityCounts] -> StatusActionabilityCounts
+sacUnionForSiblings sacs =
+  StatusActionabilityCounts
+    { sacTotal = sum . map sacTotal $ sacs
+    , sacSingleStatuses = EnumMap.unionsWith (+) . map sacSingleStatuses $ sacs
+    , sacOpens = EnumMap.unionsWith (+) . map sacOpens $ sacs
+    , sacProjects = EnumMap.unionsWith (+) . map sacProjects $ sacs
+    }
+
 -- | Derived properties. These are *not* saved but recomputed live as needed.
 data DerivedAttr = DerivedAttr
   { daChildActionability :: Status
@@ -315,6 +394,17 @@ data DerivedAttr = DerivedAttr
   , daImpliedDates :: AttrDates
   -- ^ Point-wise earliest dates coming from the *parent* and including this node. This is the
   -- correct thing if you want to know, e.g., the deadline of this node if it's under a project.
+  , daNDescendantsByActionability :: StatusActionabilityCounts
+  -- ^ Number of ancestors (excluding the item itself) with given (status, child actionability). Not found
+  -- corresponds to 0.
+  --
+  -- Note: Not all of these combinations are valid! Specifically, only the (x, a) are valid that can
+  -- result from gGlobalActionability. SOMEDAY we may wanna make a type that captures that, for everywhere.
+  --
+  -- SOMEDAY This data structure optimizes for lookup, but not for creation, and doesn't optimize
+  -- for the fact that the key set is small. Very unclear if it matters at all.
+  --
+  -- TODO this data structure may also just be the wrong one for usage. Review! - Actually rewrite this into what rendering actually wants to display. This matters!
   }
   deriving (Show)
 
@@ -330,6 +420,7 @@ emptyDerivedAttr attr =
     , daEarliestDates = dates attr
     , daLatestDates = dates attr
     , daImpliedDates = dates attr
+    , daNDescendantsByActionability = sacEmpty
     }
 
 -- | Label (i.e., content) of an element in the global tree of items in memory
@@ -477,6 +568,8 @@ instance HasEID (EID, a) where getEID = fst
 --
 -- Treat Nothing and Project statuses as transparent (they consider children) and everything else
 -- not (they consider the item only)
+--
+-- SOMEDAY naming is bad, should explicitly mention children
 gGlobalActionability :: (HasAttr a, HasDerivedAttr a) => a -> Status
 gGlobalActionability x = case (gStatus x, gChildActionability x) of
   (None, a) -> a

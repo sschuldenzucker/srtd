@@ -131,8 +131,10 @@ _forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> 
       , -- Writing this as fold to match the above, but `mplabel` is just a Maybe, not a list.
         daImpliedDates =
           foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . fmap (daImpliedDates . snd) $ mplabel
+      , daNDescendantsByActionability = sacUnionForSiblings . map addNodeToActionabilityCount $ clabels
       }
   tz = mueTimeZone ?mue
+  addNodeToActionabilityCount label@(attr, dattr) = sacForParent (status attr) (gGlobalActionability label) (daNDescendantsByActionability dattr)
 
 diskModelToModel :: (?mue :: ModelUpdateEnv) => DiskModel -> Model
 diskModelToModel (DiskModel forest) = Model (_forestMakeDerivedAttrs forest)
@@ -355,6 +357,8 @@ f_flatByDates =
     tz = fcTimeZone ?fctx
 
 -- | Flat list of next and WIP tasks, ordered by dates. This is a simple "do mode".
+--
+-- TODO This doesn't ignore NEXT / WIP items below other NEXT / WIP items, which means that there will be children *and* parents shown here. We can use the new counter to avoid this. (should we though??)
 f_nextFlatByDates :: Filter
 f_nextFlatByDates =
   Filter

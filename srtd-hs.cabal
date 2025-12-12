@@ -109,6 +109,7 @@ library
         async ^>= 2.2.5,
         clock ^>= 0.8.4,
         transformers ^>= 0.6,
+        enummapset ^>= 0.7,
 
     exposed-modules:
         Srtd.Alignment,
@@ -128,6 +129,7 @@ library
         Srtd.Components.RegexSearchEntryOverlay,
         Srtd.Config,
         Srtd.Data.IdTree,
+        Srtd.Data.MapLike,
         Srtd.Data.TreeZipper,
         Srtd.Dates,
         Srtd.Keymap,
