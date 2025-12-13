@@ -1103,8 +1103,8 @@ instance AppComponent MainTree () () where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
       headrow =
         withDefAttr AppAttr.header_row $
-          renderRoot now rootLabel breadcrumbs
-            <+> (padLeft Max (renderFilters mtFilters <+> str " " <+> doFollowBox))
+          (padRight Max $ renderRoot now rootLabel breadcrumbs)
+            <+> (str "  " <+> renderFilters mtFilters <+> str " " <+> doFollowBox)
       doFollowBox = withDefAttr AppAttr.follow_box $ str (if mtDoFollowItem then "(follow)" else "(keep)")
       listW = Widget Greedy Greedy $ do
         c <- getContext
@@ -1115,7 +1115,7 @@ instance AppComponent MainTree () () where
         render $ L.renderListWithIndex (renderRow now mtSearchRx mseli) True mtList
       statusBarW =
         withDefAttr AppAttr.header_row $
-          txt " CUR" <+> selectedBreadcrumbsW <+> (padLeft Max statusBarRightW)
+          padRight Max (txt " CUR" <+> selectedBreadcrumbsW) <+> statusBarRightW
       selectedBreadcrumbsW = case mtCurWithAttr s of
         Nothing -> emptyWidget
         Just illabel ->
