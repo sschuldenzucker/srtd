@@ -1051,16 +1051,24 @@ renderStatusActionabilityCounts :: StatusActionabilityCounts -> Widget n
 renderStatusActionabilityCounts sac =
   -- We use a special structure here b/c we feel it's best for performance not to vary the widgets we create.
   -- SOMEDAY is that true?
-  hBox . mapLast (\f -> f emptyWidget) (\f -> f (str " ")) $
-    [ maybeRenderIndicatorSingle WIP
-    , maybeRenderIndicatorSingle Next
-    , maybeRenderIndicatorSingle Waiting
-    , maybeRenderIndicatorSingle Later
-    , maybeRenderIndicatorSingle Open
+  -- SOMEDAY show Done/Canceled statuses?
+  hBox $
+    [ hBox
+        . mapLast (\f -> f emptyWidget) (\f -> f (str " "))
+        $ [ maybeRenderIndicatorSingle WIP
+          , maybeRenderIndicatorSingle Next
+          , maybeRenderIndicatorSingle Waiting
+          -- , maybeRenderIndicatorSingle Later
+          -- , maybeRenderIndicatorSingle Open
+          ]
+    , str "  " -- separator between individual items and projects
+    , hBox . mapLast (\f -> f emptyWidget) (\f -> f (str " ")) $
+        map maybeRenderIndicatorProject displayedProjectActionabilities
+          ++ [stuckProjectActionabilitiesW]
     ]
-      ++ map maybeRenderIndicatorProject displayedProjectActionabilities
-      ++ [stuckProjectActionabilitiesW]
  where
+  -- Not rendering Opens by actionability b/c I think that's too much information
+  -- SOMEDAY alt, if n == 0, show the number and the indicator but in standard gray. Could make it less busy.
   maybeRenderIndicatorSingle s sep =
     let n = MapLike.findWithDefault 0 s . sacSingleStatuses $ sac
      in if n == 0
@@ -1071,7 +1079,8 @@ renderStatusActionabilityCounts sac =
      in if n == 0
           then emptyWidget
           else hBox [renderStatus False Project a, str . show $ n, sep]
-  displayedProjectActionabilities = [WIP, Next, Waiting, Later]
+  -- Not displaying LATER b/c I think that's basically stuck and we need to prune down items.
+  displayedProjectActionabilities = [WIP, Next, Waiting]
   stuckProjectActionabilitiesW sep =
     let
       totalProjects = MapLike.findWithDefault 0 Project $ sacSingleStatuses sac
@@ -1125,7 +1134,7 @@ instance AppComponent MainTree () () where
         hBox
           [ maybe emptyWidget (renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr) $
               mtCurWithAttr s
-          , str "  |  "
+          , str "   |   "
           , renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr $ rootLabel
           , -- Spacer b/c I find it hard to read stuff at the right side of the screen
             str " "
