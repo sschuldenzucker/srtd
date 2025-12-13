@@ -5,20 +5,12 @@ import Brick
 -- | Like `str` but truncate when we don't have enough space. Does *not* insert a "..." ellipsis or so.
 --
 -- Useful pretty much only in the context of an 'hBox' where something else occurs to the right.
+--
+-- SOMEDAY I'm honestly not sure this actually works or if it's just lucky circumstances. Hacky implementation.
 strTruncateAvailable :: String -> Widget n
 strTruncateAvailable s =
   -- very easy!
   let (Widget _ _ r) = (str s)
-   in Widget Greedy Fixed r
-
--- | Generalized version of 'strTruncateAvailable'. Flaky. You *have* to check if this actually
--- works for your widget!
---
--- SOMEDAY unused. I guess many widgets (like hBox) actually have this behavior. Perhaps we can also
--- replace 'strTruncateAvailable' by just hBox?
-truncateAvailable :: Widget n -> Widget n
-truncateAvailable w =
-  let (Widget _ _ r) = w
    in Widget Greedy Fixed r
 
 -- | Set widget to a fixed width
