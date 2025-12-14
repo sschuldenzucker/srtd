@@ -404,16 +404,7 @@ data DerivedAttr = DerivedAttr
   -- ^ Point-wise earliest dates coming from the *parent* and including this node. This is the
   -- correct thing if you want to know, e.g., the deadline of this node if it's under a project.
   , daNDescendantsByActionability :: StatusActionabilityCounts
-  -- ^ Number of ancestors (excluding the item itself) with given (status, child actionability). Not found
-  -- corresponds to 0.
-  --
-  -- Note: Not all of these combinations are valid! Specifically, only the (x, a) are valid that can
-  -- result from gGlobalActionability. SOMEDAY we may wanna make a type that captures that, for everywhere.
-  --
-  -- SOMEDAY This data structure optimizes for lookup, but not for creation, and doesn't optimize
-  -- for the fact that the key set is small. Very unclear if it matters at all.
-  --
-  -- TODO this data structure may also just be the wrong one for usage. Review! - Actually rewrite this into what rendering actually wants to display. This matters!
+  -- ^ Item counts among the ancestors of the given item.
   }
   deriving (Show)
 
