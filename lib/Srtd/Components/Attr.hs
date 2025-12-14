@@ -107,9 +107,8 @@ renderLastModified now _sel dt = withAttr attr $ setWidth 9 $ str label
   attr = attrName "date" <> attrName "last_modified"
   label = prettyPastStrictRelativeAdaptive False now dt
 
--- | `renderMStatus selected status actionability`
-renderStatus :: Bool -> Status -> Status -> Widget n
-renderStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
+actionabilityAttr :: Bool -> Status -> AttrName
+actionabilityAttr sel act = rootAttr <> subAttr
  where
   rootAttr = if sel then AppAttr.selected_item_row <> attrName "status" else attrName "status"
   subAttr = attrName . status2subAttrName $ act
@@ -125,15 +124,20 @@ renderStatus sel a act = withAttr (rootAttr <> subAttr) (str sym)
     Open -> "open"
     -- NB this typically isn't configured in the theme, which is fine.
     None -> "none"
-  sym = status2Symbol a
-  status2Symbol s = case s of
-    Next -> "*"
-    Waiting -> "<"
-    Project -> ">"
-    Later -> "/"
-    WIP -> "*"
-    Someday -> "~"
-    Done -> "+"
-    Canceled -> "x"
-    Open -> "o"
-    None -> "-"
+
+statusSymbol :: Status -> String
+statusSymbol s = case s of
+  Next -> "*"
+  Waiting -> "<"
+  Project -> ">"
+  Later -> "/"
+  WIP -> "*"
+  Someday -> "~"
+  Done -> "+"
+  Canceled -> "x"
+  Open -> "o"
+  None -> "-"
+
+-- | `renderMStatus selected status actionability`
+renderStatus :: Bool -> Status -> Status -> Widget n
+renderStatus sel a act = withAttr (actionabilityAttr sel act) (str $ statusSymbol a)
