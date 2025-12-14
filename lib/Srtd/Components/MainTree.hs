@@ -43,6 +43,7 @@ import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
 import Srtd.Component qualified as Component
 import Srtd.Components.Attr (
+  actionabilityAttr,
   mostUrgentDateAttr,
   renderLastModified,
   renderMostUrgentDate,
@@ -1054,31 +1055,38 @@ renderStatusActionabilityCounts sac =
   -- SOMEDAY show Done/Canceled statuses?
   hBox $
     [ hBox
-        . mapLast (\f -> f emptyWidget) (\f -> f (str " "))
+        . mapLast (\f -> f emptyWidget) (\f -> f sepIntraGroup)
         $ [ maybeRenderIndicatorSingle WIP
           , maybeRenderIndicatorSingle Next
           , maybeRenderIndicatorSingle Waiting
           -- , maybeRenderIndicatorSingle Later
           -- , maybeRenderIndicatorSingle Open
           ]
-    , str "  " -- separator between individual items and projects
-    , hBox . mapLast (\f -> f emptyWidget) (\f -> f (str " ")) $
+    , sepSingleProjects
+    , hBox . mapLast (\f -> f emptyWidget) (\f -> f sepIntraGroup) $
         map maybeRenderIndicatorProject displayedProjectActionabilities
           ++ [stuckProjectActionabilitiesW]
     ]
  where
   -- Not rendering Opens by actionability b/c I think that's too much information
   -- SOMEDAY alt, if n == 0, show the number and the indicator but in standard gray. Could make it less busy.
+  sepMarkerCount = emptyWidget
+  sepSingleProjects = str "  "
+  sepIntraGroup = str " "
   maybeRenderIndicatorSingle s sep =
     let n = MapLike.findWithDefault 0 s . sacSingleStatuses $ sac
      in if n == 0
           then emptyWidget
-          else hBox [renderStatus False s s, str . show $ n, sep]
+          else
+            withAttr (actionabilityAttr False s) $
+              hBox [renderStatus False s s, sepMarkerCount, str . show $ n, sep]
   maybeRenderIndicatorProject a sep =
     let n = MapLike.findWithDefault 0 a . sacProjects $ sac
      in if n == 0
           then emptyWidget
-          else hBox [renderStatus False Project a, str . show $ n, sep]
+          else
+            withAttr (actionabilityAttr False a) $
+              hBox [renderStatus False Project a, sepMarkerCount, str . show $ n, sep]
   -- Not displaying LATER b/c I think that's basically stuck and we need to prune down items.
   displayedProjectActionabilities = [WIP, Next, Waiting]
   stuckProjectActionabilitiesW sep =
@@ -1090,7 +1098,9 @@ renderStatusActionabilityCounts sac =
      in
       if n == 0
         then emptyWidget
-        else hBox [renderStatus False Project Someday, str . show $ n, sep]
+        else
+          withAttr (actionabilityAttr False Someday) $
+            hBox [renderStatus False Project Someday, sepMarkerCount, str . show $ n, sep]
 
 -- | We use `Confirmed ()` to indicate that the user *asked* to exit and `Canceled ()` to indicate
 -- that there was some kind of issue and the tab had to close (e.g., the parent was deleted.)
