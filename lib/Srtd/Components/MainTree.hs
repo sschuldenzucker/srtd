@@ -1122,8 +1122,15 @@ instance AppComponent MainTree () () where
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
       headrow =
         withDefAttr AppAttr.header_row $
-          (padRight Max $ renderRoot now rootLabel breadcrumbs)
-            <+> (str "  " <+> renderFilters mtFilters <+> str " " <+> doFollowBox)
+          hBox
+            [ padRight Max $ renderRoot now rootLabel breadcrumbs
+            , str "  "
+            , renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr $ rootLabel
+            , str "   "
+            , renderFilters mtFilters
+            , str " "
+            , doFollowBox
+            ]
       doFollowBox = withDefAttr AppAttr.follow_box $ str (if mtDoFollowItem then "(follow)" else "(keep)")
       listW = Widget Greedy Greedy $ do
         c <- getContext
@@ -1144,8 +1151,6 @@ instance AppComponent MainTree () () where
         hBox
           [ maybe emptyWidget (renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr) $
               mtCurWithAttr s
-          , str "   |   "
-          , renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr $ rootLabel
           , -- Spacer b/c I find it hard to read stuff at the right side of the screen
             str " "
           ]
