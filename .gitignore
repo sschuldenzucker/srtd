@@ -2,3 +2,4 @@ dist-newstyle/
 srtd.log
 srtd.json
 docs/build_haddock/
+cabal.project.local
