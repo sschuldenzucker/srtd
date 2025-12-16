@@ -477,7 +477,9 @@ localIdLabel2IdLabel = second fst
 -- This implies that we can't have the trivial instances, but I think that's fine (we're not using them anyways I think)
 
 class HasAttr a where
+  getAttrL :: Lens' a Attr
   getAttr :: a -> Attr
+  getAttr = (^. getAttrL)
 
 gName :: (HasAttr a) => a -> String
 gName = name . getAttr
@@ -491,18 +493,20 @@ gDates = dates . getAttr
 gAutoDates :: (HasAttr a) => a -> AttrAutoDates
 gAutoDates = autoDates . getAttr
 
-instance HasAttr Attr where getAttr = id
+instance HasAttr Attr where getAttrL = id
 
-instance HasAttr Label where getAttr = fst
+instance HasAttr Label where getAttrL = _1
 
-instance HasAttr IdLabel where getAttr = getAttr . snd
+instance HasAttr IdLabel where getAttrL = _2 . getAttrL
 
-instance HasAttr LocalLabel where getAttr = getAttr . fst
+instance HasAttr LocalLabel where getAttrL = _1 . getAttrL
 
-instance HasAttr LocalIdLabel where getAttr = getAttr . snd
+instance HasAttr LocalIdLabel where getAttrL = _2 . getAttrL
 
 class HasDerivedAttr a where
+  getDerivedAttrL :: Lens' a DerivedAttr
   getDerivedAttr :: a -> DerivedAttr
+  getDerivedAttr = (^. getDerivedAttrL)
 
 gChildActionability :: (HasDerivedAttr a) => a -> Status
 gChildActionability = daChildActionability . getDerivedAttr
@@ -522,18 +526,20 @@ gLatestDates = daLatestDates . getDerivedAttr
 gImpliedDates :: (HasDerivedAttr a) => a -> AttrDates
 gImpliedDates = daImpliedDates . getDerivedAttr
 
-instance HasDerivedAttr DerivedAttr where getDerivedAttr = id
+instance HasDerivedAttr DerivedAttr where getDerivedAttrL = id
 
-instance HasDerivedAttr Label where getDerivedAttr = snd
+instance HasDerivedAttr Label where getDerivedAttrL = _2
 
-instance HasDerivedAttr IdLabel where getDerivedAttr = getDerivedAttr . snd
+instance HasDerivedAttr IdLabel where getDerivedAttrL = _2 . getDerivedAttrL
 
-instance HasDerivedAttr LocalLabel where getDerivedAttr = getDerivedAttr . fst
+instance HasDerivedAttr LocalLabel where getDerivedAttrL = _1 . getDerivedAttrL
 
-instance HasDerivedAttr LocalIdLabel where getDerivedAttr = getDerivedAttr . snd
+instance HasDerivedAttr LocalIdLabel where getDerivedAttrL = _2 . getDerivedAttrL
 
 class HasLocalDerivedAttr a where
+  getLocalDerivedAttrL :: Lens' a LocalDerivedAttr
   getLocalDerivedAttr :: a -> LocalDerivedAttr
+  getLocalDerivedAttr = (^. getLocalDerivedAttrL)
 
 gParentActionability :: (HasLocalDerivedAttr a) => a -> Status
 gParentActionability = ldParentActionability . getLocalDerivedAttr
@@ -544,22 +550,24 @@ gBreadcrumbs = ldBreadcrumbs . getLocalDerivedAttr
 gLocalLevel :: (HasLocalDerivedAttr a) => a -> Int
 gLocalLevel = ldLevel . getLocalDerivedAttr
 
-instance HasLocalDerivedAttr LocalDerivedAttr where getLocalDerivedAttr = id
+instance HasLocalDerivedAttr LocalDerivedAttr where getLocalDerivedAttrL = id
 
-instance HasLocalDerivedAttr LocalLabel where getLocalDerivedAttr = snd
+instance HasLocalDerivedAttr LocalLabel where getLocalDerivedAttrL = _2
 
-instance HasLocalDerivedAttr LocalIdLabel where getLocalDerivedAttr = getLocalDerivedAttr . snd
+instance HasLocalDerivedAttr LocalIdLabel where getLocalDerivedAttrL = _2 . getLocalDerivedAttrL
 
 -- SOMEDAY this isn't used super much and maybe isn't useful.
 class HasEID a where
+  getEIDL :: Lens' a EID
   getEID :: a -> EID
+  getEID = (^. getEIDL)
 
 gEID :: (HasEID a) => a -> EID
 gEID = getEID
 
-instance HasEID EID where getEID = id
+instance HasEID EID where getEIDL = id
 
-instance HasEID (EID, a) where getEID = fst
+instance HasEID (EID, a) where getEIDL = _1
 
 -- * Derived attr calculation
 

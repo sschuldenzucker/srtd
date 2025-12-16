@@ -77,17 +77,19 @@ data ListIdLabel = ListIdLabel
   , lilLocalLabel :: LocalLabel
   }
 
+suffixLenses ''ListIdLabel
+
 listIdLabel2LocalIdLabel :: ListIdLabel -> LocalIdLabel
 listIdLabel2LocalIdLabel itm = (lilEID itm, lilLocalLabel itm)
 
-instance HasAttr ListIdLabel where getAttr = getAttr . lilLocalLabel
+instance HasAttr ListIdLabel where getAttrL = lilLocalLabelL . getAttrL
 
-instance HasDerivedAttr ListIdLabel where getDerivedAttr = getDerivedAttr . lilLocalLabel
+instance HasDerivedAttr ListIdLabel where getDerivedAttrL = lilLocalLabelL . getDerivedAttrL
 
 instance HasLocalDerivedAttr ListIdLabel where
-  getLocalDerivedAttr = getLocalDerivedAttr . lilLocalLabel
+  getLocalDerivedAttrL = lilLocalLabelL . getLocalDerivedAttrL
 
-instance HasEID ListIdLabel where getEID = lilEID
+instance HasEID ListIdLabel where getEIDL = lilEIDL
 
 type MyList = L.List AppResourceName ListIdLabel
 
