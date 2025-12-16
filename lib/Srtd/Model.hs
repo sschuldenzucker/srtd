@@ -5,6 +5,7 @@ module Srtd.Model where
 
 -- Really just a helper here. Should prob not import this for separation
 import Brick (suffixLenses)
+import Control.Category ((>>>))
 import Data.Aeson hiding ((.=))
 import Data.Function (on)
 import Data.List (find, foldl', sortBy)
@@ -506,12 +507,11 @@ hideHierarchyFilter hhf =
             -- Hide
             let lilabel' =
                   lilabel
-                    & (_2 . _2 . ldHiddenChildrenL)
-                    %~ (+ length cs)
-                    & (_2 . _2 . ldHiddenAncestorsL)
-                    %~ (+ forestSize cs)
-                    & (_2 . _2 . ldIsCollapsedL)
-                    .~ True
+                    & getLocalDerivedAttrL
+                    %~ ( ldHiddenChildrenL %~ (+ length cs)
+                           >>> ldHiddenAncestorsL %~ (+ forestSize cs)
+                           >>> ldIsCollapsedL .~ True
+                       )
              in Node lilabel' []
           else
             -- Show
