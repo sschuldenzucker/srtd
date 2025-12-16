@@ -479,7 +479,7 @@ localIdLabel2IdLabel = second fst
 class HasAttr a where
   getAttrL :: Lens' a Attr
   getAttr :: a -> Attr
-  getAttr = (^. getAttrL)
+  getAttr = view getAttrL
 
 gName :: (HasAttr a) => a -> String
 gName = name . getAttr
@@ -506,7 +506,7 @@ instance HasAttr LocalIdLabel where getAttrL = _2 . getAttrL
 class HasDerivedAttr a where
   getDerivedAttrL :: Lens' a DerivedAttr
   getDerivedAttr :: a -> DerivedAttr
-  getDerivedAttr = (^. getDerivedAttrL)
+  getDerivedAttr = view getDerivedAttrL
 
 gChildActionability :: (HasDerivedAttr a) => a -> Status
 gChildActionability = daChildActionability . getDerivedAttr
@@ -539,7 +539,7 @@ instance HasDerivedAttr LocalIdLabel where getDerivedAttrL = _2 . getDerivedAttr
 class HasLocalDerivedAttr a where
   getLocalDerivedAttrL :: Lens' a LocalDerivedAttr
   getLocalDerivedAttr :: a -> LocalDerivedAttr
-  getLocalDerivedAttr = (^. getLocalDerivedAttrL)
+  getLocalDerivedAttr = view getLocalDerivedAttrL
 
 gParentActionability :: (HasLocalDerivedAttr a) => a -> Status
 gParentActionability = ldParentActionability . getLocalDerivedAttr
@@ -560,7 +560,7 @@ instance HasLocalDerivedAttr LocalIdLabel where getLocalDerivedAttrL = _2 . getL
 class HasEID a where
   getEIDL :: Lens' a EID
   getEID :: a -> EID
-  getEID = (^. getEIDL)
+  getEID = view getEIDL
 
 gEID :: (HasEID a) => a -> EID
 gEID = getEID
