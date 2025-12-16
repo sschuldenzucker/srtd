@@ -341,7 +341,12 @@ f_flatByDates =
   -- (projects that are ready have Next actionability, which is good, but not the whole story)
   -- (sorting kinda unclear here; should project actually be less actionable than waiting?)
   -- Using postorder so that parents show up below their children, which is typically what you want for "urgency".
-  go = sortIdForestBy cmp False . filterIdForest p . withIdForest forestFlattenPostorder
+  go =
+    -- SOMEDAY this pattern is always the same for these flat filters. Can extract out.
+    sortIdForestBy cmp False
+      . fmap (getLocalDerivedAttrL . ldLevelL .~ 1)
+      . filterIdForest p
+      . withIdForest forestFlattenPostorder
    where
     -- We filter out non-actionable items here that are otherwise kinda in the way. We leave them
     -- in the (unlikely) case that they have a date themselves, to be sure we're not missing anything
@@ -371,7 +376,11 @@ f_nextFlatByDates =
   -- SOMEDAY there's quite some overlap between the different filters, maybe make top-level helpers.
   -- But not quite yet, we'll wanna restructure.
   go :: (?fctx :: FilterContext) => STForest -> STForest
-  go = sortIdForestBy cmp False . filterIdForest p . withIdForest forestFlattenPostorder
+  go =
+    sortIdForestBy cmp False
+      . fmap (getLocalDerivedAttrL . ldLevelL .~ 1)
+      . filterIdForest p
+      . withIdForest forestFlattenPostorder
    where
     -- SOMEDAY this combo tells me some concept is missing / there's an overlap of concepts.
     p llabel = gStatus llabel <= Next && gLocalActionability llabel <= Next
@@ -396,7 +405,11 @@ f_waitingFlatByDates =
   -- SOMEDAY there's quite some overlap between the different filters, maybe make top-level helpers.
   -- But not quite yet, we'll wanna restructure.
   go :: (?fctx :: FilterContext) => STForest -> STForest
-  go = sortIdForestBy cmp False . filterIdForest p . withIdForest forestFlattenPostorder
+  go =
+    sortIdForestBy cmp False
+      . fmap (getLocalDerivedAttrL . ldLevelL .~ 1)
+      . filterIdForest p
+      . withIdForest forestFlattenPostorder
    where
     p llabel = gStatus llabel == Waiting && gLocalActionability llabel <= Waiting
     cmp llabel1 llabel2 =
