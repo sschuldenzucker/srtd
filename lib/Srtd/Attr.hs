@@ -443,6 +443,8 @@ data LocalDerivedAttr = LocalDerivedAttr
   -- SOMEDAY rename to ancestors.
   , ldLevel :: Int
   -- ^ Level local to the subtree. The root of the subtree (!) is -1, so all nodes have level >= 0.
+  --
+  -- SOMEDAY does this need to be here? Filters can change this. Same for some of the others.
   , ldIsCollapsed :: Bool
   -- ^ Whether or not this node is collapsed for display and no children are shown.
   , ldHiddenChildren :: Int
