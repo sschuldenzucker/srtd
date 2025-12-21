@@ -434,9 +434,8 @@ type IdLabel = (EID, Label)
 -- | Derived properties at the local (per-subtree / per-view) level
 data LocalDerivedAttr = LocalDerivedAttr
   { ldParentActionability :: Status
-  -- ^ Actionability of the parent, derived downwards
-  --
-  -- SOMEDAY Replace this by what's llActionability right now.
+  -- ^ Actionability of the parent, derived *only* downwards, contraining children. The meaning of
+  -- this is to _constrain_ actionability of this node due to its place in the hierarchy.
   , ldBreadcrumbs :: [LocalIdLabel]
   -- ^ Ancestors starting at the parent up to and excluding the root.
   --
@@ -596,12 +595,17 @@ gGlobalActionability x = case (gStatus x, gChildActionability x) of
 -- | Actionability based on 'gGlobalActionability' and also its parents. This is (or can be) local
 -- to the view b/c it depends on which part of the tree is visible to the given view.
 gLocalActionability :: (HasAttr a, HasDerivedAttr a, HasLocalDerivedAttr a) => a -> Status
-gLocalActionability x = case (gGlobalActionability x, gParentActionability x) of
-  -- SOMEDAY I've seen this patterns a few times now, perhaps abstract it or restructure.
-  -- See also 'addLocalDerivedAttrs' in Model and 'glActionability' above. It's duplicated with there.
+gLocalActionability x = stepParentActionability (gGlobalActionability x) (gParentActionability x)
+
+-- | Given a status / actionability and top-down actionability constraint of the parent, apply the
+-- constraint to find the actionability (/constraint) of the child.
+stepParentActionability :: Status -> Status -> Status
+stepParentActionability s_ a_ = case (s_, a_) of
   (a, None) -> a
   (WIP, Next) -> WIP
   (a, Project) -> a
+  (a, Open) | a <= Open -> a
+  -- TODO WIP above are the same as gGlobalActionability, only the next differs!
   (a, ap) -> max a ap
 
 -- | Implied or earliest child dates, whichever come earlier. This considers both parents and

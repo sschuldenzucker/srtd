@@ -210,7 +210,7 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
       ( label
       , LocalDerivedAttr
           { ldParentActionability =
-              stepParentActionability (gGlobalActionability plabel) (ldParentActionability parLDAttr)
+              stepParentActionability (gStatus plabel) (ldParentActionability parLDAttr)
           , ldBreadcrumbs = plilabel : ldBreadcrumbs parLDAttr
           , ldLevel = ldLevel parLDAttr + 1
           , ldIsCollapsed = False
@@ -219,16 +219,6 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
           }
       )
     )
-
-  stepParentActionability :: Status -> Status -> Status
-  stepParentActionability a_ pa_ = case (a_, pa_) of
-    -- SOMEDAY this is a very ad-hoc solution. Think about the structure, also re the upwards derivation.
-    -- Not super sure if this is the right way.
-    -- NB it's also kinda inconsistent with glActionability and stuff. Maybe we wanna step against glActionability, not status?
-    (a, None) -> a
-    (None, pa) -> pa
-    (a, Project) -> a
-    (a, ap) -> max a ap
 
 -- | Reset 'ldLevel'. Needed when we change the structure of the tree.
 --
