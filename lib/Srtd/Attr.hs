@@ -620,3 +620,22 @@ gLocalActionability x = applyActionabilityTransparencyFallback (gGlobalActionabi
 -- Note that, in contrast to actionability, these dates are always global.
 gEarliestImpliedOrChildDates :: (HasDerivedAttr a) => TimeZone -> a -> AttrDates
 gEarliestImpliedOrChildDates tz llabel = pointwiseChooseAttrDates chooseMin tz (gImpliedDates llabel) (gEarliestDates llabel)
+
+-- * Business logic
+
+-- | Whether the item is a stalled project, considering only its children.
+--
+-- Note: If we also consider the parent/ancestors, this project may ultimately not be actually
+-- stalled b/c it's below another item that is not actionable (e.g. below a Someday). This is not
+-- considered here. See 'isLocalStalledProject' for that.
+isGlobalStalledProject :: (HasAttr a, HasDerivedAttr a) => a -> Bool
+isGlobalStalledProject label = gStatus label == Project && gGlobalActionability label > Waiting
+
+-- | Whether the item is a stalled project, considering the whole current subtree.
+isLocalStalledProject :: (HasAttr a, HasDerivedAttr a, HasLocalDerivedAttr a) => a -> Bool
+isLocalStalledProject llabel =
+  isGlobalStalledProject llabel
+    && (gParentActionability llabel <= Project || gParentActionability llabel == None)
+    -- TODO REVIEW This ensures that we only count stalled projects that actually block anything.
+    -- This may not actually be desired.
+    && (fromMaybe None (gLocalActionability <$> gLocalParent llabel) > Next)

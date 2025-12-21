@@ -157,7 +157,9 @@ type STForest = IdForest EID LocalLabel
 data Subtree = Subtree
   -- SOMEDAY we compute breadcrumbs twice: here for the root and in ldBreadcrumbs for children.
   -- That's not wrong but maybe we can unify code?
-  -- SOMEDAY should breadcrumbs just be part of DerivedAttr and then we only have an IdLabel and STForest here? (i.e., really basically a tree)
+  -- NB we did _not_ make breadcrumbs part of DerivedAttr. It could be but users generally should
+  -- not query the ancestors beyond the current root, and not having it is one way to guarantee
+  -- that.
   { breadcrumbs :: [IdLabel]
   , root :: EID
   , rootLabel :: Label
@@ -476,16 +478,7 @@ f_stalledProjects =
   -- `pAccept` is purely a performance optimization. Could be `const True`.
   pAccept llabel = gStatus llabel `elem` [Project, Open, None]
   -- SOMEDAY should we include here: all Open items? Remove below condition?
-  pSelect llabel =
-    gStatus llabel == Project
-      && gLocalActionability llabel > Waiting
-      && (gParentActionability llabel <= Project || gParentActionability llabel == None)
-      -- Last condition is to exclude stalled projects that don't block anything.
-      -- To be consistent with status bar display.
-      -- SOMEDAY is this desired?
-      -- TODO WIP it's not actually consistent with the status bar. This is the right impl though I think
-      -- SOMEDAY should we just have a derived flag for this? And then aggregate that. Feels complicated.
-      && (fromMaybe None (gLocalActionability <$> gLocalParent llabel) > Next)
+  pSelect = isLocalStalledProject
 
 -- | Intermediate structure to build the filter for hiding levels.
 --
