@@ -380,9 +380,19 @@ sacUnionForSiblings sacs =
     , sacProjects = EnumMap.unionsWith (+) . map sacProjects $ sacs
     }
 
+-- These type aliases have to be here for some reason, o/w GHC doesn't see them,,,
+
+-- | Label (i.e., content) of an element in the global tree of items in memory
+type Label = (Attr, DerivedAttr)
+
+-- | Label in the global tree of items including the item ID
+type IdLabel = (EID, Label)
+
 -- | Derived properties. These are *not* saved but recomputed live as needed.
 data DerivedAttr = DerivedAttr
-  { daChildActionability :: Status
+  { daBreadcrumbs :: [IdLabel]
+  -- ^ All ancestors, starting at the parent.
+  , daChildActionability :: Status
   -- ^ Actionability of the most actionable child. None means either None or 'no children'
   -- SOMEDAY is this a problem? If so, maybe make a custom data structure or reorganize somehow.
   -- SOMEDAY include this node so daChildActionability ~ glActionability, unless we need this for some reason. (e.g. to isolate blockers??)
@@ -414,7 +424,8 @@ suffixLenses ''DerivedAttr
 emptyDerivedAttr :: Attr -> DerivedAttr
 emptyDerivedAttr attr =
   DerivedAttr
-    { daChildActionability = None
+    { daBreadcrumbs = []
+    , daChildActionability = None
     , daEarliestAutodates = autoDates attr
     , daLatestAutodates = autoDates attr
     , daEarliestDates = dates attr
@@ -422,12 +433,6 @@ emptyDerivedAttr attr =
     , daImpliedDates = dates attr
     , daNDescendantsByActionability = sacEmpty
     }
-
--- | Label (i.e., content) of an element in the global tree of items in memory
-type Label = (Attr, DerivedAttr)
-
--- | Label in the global tree of items including the item ID
-type IdLabel = (EID, Label)
 
 -- * Local Derived Attr
 
@@ -526,6 +531,9 @@ gLatestDates = daLatestDates . getDerivedAttr
 
 gImpliedDates :: (HasDerivedAttr a) => a -> AttrDates
 gImpliedDates = daImpliedDates . getDerivedAttr
+
+gGlobalBreadcrumbs :: (HasDerivedAttr a) => a -> [IdLabel]
+gGlobalBreadcrumbs = daBreadcrumbs . getDerivedAttr
 
 instance HasDerivedAttr DerivedAttr where getDerivedAttrL = id
 

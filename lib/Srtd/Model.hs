@@ -35,6 +35,7 @@ import Srtd.Util (
   leaf,
   mapForest,
   onForestChildren,
+  transformForestDownUpRec,
   transformForestTopDown,
  )
 
@@ -110,30 +111,36 @@ data ModelUpdateEnv = ModelUpdateEnv {mueTimeZone :: TimeZone}
 
 -- For some reason, this has to be above `diskModelToModel`, otherwise it's not found.
 _forestMakeDerivedAttrs :: (?mue :: ModelUpdateEnv) => IdForest EID Attr -> IdForest EID Label
-_forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> (attr, makeNodeDerivedAttr mplabel clabels attr)
+_forestMakeDerivedAttrs = withIdForest $ transformForestDownUpRec $ \mpilabel clabels attr -> (attr, makeNodeDerivedAttr miplabel cilabels attr)
  where
-  makeNodeDerivedAttr mplabel clabels attr =
-    DerivedAttr
-      { daChildActionability = forEmptyList None minimum . map gGlobalActionability $ clabels
-      , daEarliestAutodates =
-          foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ clabels
-      , daLatestAutodates =
-          foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daLatestAutodates . snd) $ clabels
-      , daEarliestDates =
-          foldl'
-            (pointwiseChooseAttrDates chooseMin tz)
-            (dates attr)
-            [daEarliestDates d | (a, d) <- clabels, not (isDone $ status a)]
-      , daLatestDates =
-          foldl'
-            (pointwiseChooseAttrDates chooseMax tz)
-            (dates attr)
-            [daLatestDates d | (a, d) <- clabels, not (isDone $ status a)]
-      , -- Writing this as fold to match the above, but `mplabel` is just a Maybe, not a list.
-        daImpliedDates =
-          foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . fmap (daImpliedDates . snd) $ mplabel
-      , daNDescendantsByActionability = sacUnionForSiblings . map addNodeToActionabilityCount $ clabels
-      }
+  makeNodeDerivedAttr :: Maybe IdLabel -> [IdLabel] -> (EID, Attr) -> (EID, DerivedAttr)
+  makeNodeDerivedAttr mpilabel cilabels (i, attr) =
+    let dattr =
+          DerivedAttr
+            { daBreadcrumbs = case mpilabel of
+                Nothing -> []
+                Just pilabel -> pilabel : daBreadcrumbs (getDerivedAttr pilabel)
+            , daChildActionability = forEmptyList None minimum . map gGlobalActionability $ cilabels
+            , daEarliestAutodates =
+                foldl' (mapAttrAutoDates2 min) (autoDates attr) . map (daEarliestAutodates . snd) $ cilabels
+            , daLatestAutodates =
+                foldl' (mapAttrAutoDates2 max) (autoDates attr) . map (daLatestAutodates . snd) $ cilabels
+            , daEarliestDates =
+                foldl'
+                  (pointwiseChooseAttrDates chooseMin tz)
+                  (dates attr)
+                  [daEarliestDates d | (a, d) <- cilabels, not (isDone $ status a)]
+            , daLatestDates =
+                foldl'
+                  (pointwiseChooseAttrDates chooseMax tz)
+                  (dates attr)
+                  [daLatestDates d | (a, d) <- cilabels, not (isDone $ status a)]
+            , -- Writing this as fold to match the above, but `mplabel` is just a Maybe, not a list.
+              daImpliedDates =
+                foldl' (pointwiseChooseAttrDates chooseMin tz) (dates attr) . fmap (daImpliedDates . snd) $ cilabels
+            , daNDescendantsByActionability = sacUnionForSiblings . map addNodeToActionabilityCount $ cilabels
+            }
+     in (i, dattr)
   tz = mueTimeZone ?mue
   addNodeToActionabilityCount label@(attr, dattr) = sacForParent (status attr) (gGlobalActionability label) (daNDescendantsByActionability dattr)
 
@@ -158,9 +165,7 @@ data Subtree = Subtree
   -- SOMEDAY we compute breadcrumbs twice: here for the root and in ldBreadcrumbs for children.
   -- That's not wrong but maybe we can unify code?
   -- SOMEDAY should breadcrumbs just be part of DerivedAttr and then we only have an IdLabel and STForest here? (i.e., really basically a tree)
-  { breadcrumbs :: [IdLabel]
-  , root :: EID
-  , rootLabel :: Label
+  { root :: IdLabel
   , stForest :: STForest
   }
   deriving (Show)
@@ -237,8 +242,8 @@ resetLdLevel = withIdForest $ transformForestTopDown go
 -- stepParentActionability st pst = max st pst
 
 forestGetSubtreeBelow :: EID -> MForest -> Either IdNotFoundError Subtree
-forestGetSubtreeBelow tgt forest = case forestFindTreeWithBreadcrumbs tgt forest of
-  Just (crumbs, (Node (i, attr) cs)) -> Right (Subtree crumbs i attr (addLocalDerivedAttrs $ IdForest cs))
+forestGetSubtreeBelow tgt forest = case forestFindTree tgt forest of
+  Just (Node (i, attr) cs) -> Right (Subtree (i, attr) (addLocalDerivedAttrs $ IdForest cs))
   Nothing -> Left IdNotFoundError
 
 modelGetSubtreeBelow :: EID -> Model -> Either IdNotFoundError Subtree
@@ -248,7 +253,7 @@ modelGetSubtreeBelow i (Model forest) = forestGetSubtreeBelow i forest
 stParentEID :: (HasLocalDerivedAttr a) => Subtree -> a -> EID
 stParentEID st llabel = case gLocalBreadcrumbs llabel of
   ((i, _) : _) -> i
-  [] -> root st
+  [] -> gEID . root $ st
 
 -- * Filters
 

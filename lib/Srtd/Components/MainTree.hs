@@ -1119,7 +1119,7 @@ instance AppComponent MainTree () () where
   renderComponentWithOverlays
     s@MainTree
       { mtList
-      , mtSubtree = Subtree {rootLabel, breadcrumbs}
+      , mtSubtree = Subtree {root}
       , mtFilters
       , mtShowDetails
       , mtOverlay
@@ -1132,7 +1132,7 @@ instance AppComponent MainTree () () where
       headrow =
         withDefAttr AppAttr.header_row $
           hBox
-            [ padRight Max $ renderRoot now rootLabel breadcrumbs
+            [ padRight Max $ renderRoot now (snd root) (daBreadcrumbs . getDerivedAttr $ root)
             , str "  "
             , renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr $ rootLabel
             , str "   "
