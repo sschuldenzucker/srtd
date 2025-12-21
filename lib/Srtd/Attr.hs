@@ -22,7 +22,7 @@ import Data.UUID qualified as UUID
 import GHC.Generics
 import Lens.Micro.Platform
 import Srtd.Dates (DateOrTime, DateRule (..), compareDateOrTime, dateOrTimeToUTCTime)
-import Srtd.Util (chooseMin, compareByNothingLast, ignore, unionMaybeWith)
+import Srtd.Util (chooseMin, compareByNothingLast, ignore, safeHead, unionMaybeWith)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- * Node ID (EID)
@@ -547,6 +547,9 @@ gParentActionability = ldParentActionability . getLocalDerivedAttr
 
 gLocalBreadcrumbs :: (HasLocalDerivedAttr a) => a -> [LocalIdLabel]
 gLocalBreadcrumbs = ldBreadcrumbs . getLocalDerivedAttr
+
+gLocalParent :: (HasLocalDerivedAttr a) => a -> Maybe LocalIdLabel
+gLocalParent = safeHead . gLocalBreadcrumbs
 
 gLocalLevel :: (HasLocalDerivedAttr a) => a -> Int
 gLocalLevel = ldLevel . getLocalDerivedAttr
