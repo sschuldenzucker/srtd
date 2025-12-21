@@ -472,18 +472,20 @@ f_stalledProjects =
   go :: (?fctx :: FilterContext) => STForest -> STForest
   go =
     resetLdLevel
-      -- SOMEDAY this recurs into EVERYTHING, then kicks most of the projects out.
-      -- Better solution would be to have two filters here: a pass one and a select one
       . filterIdForestFlat pAccept pSelect
-  -- TODO the ugliness of this shows some kind of missing structure.
+  -- `pAccept` is purely a performance optimization. Could be `const True`.
   pAccept llabel = gStatus llabel `elem` [Project, Open, None]
+  -- SOMEDAY should we include here: all Open items? Remove below condition?
   pSelect llabel =
     gStatus llabel == Project
       && gLocalActionability llabel > Waiting
-      -- The last condition is to remove stuck projects that are subprojects of a next project,
-      -- i.e., don't block anything. This is the same way how renderStatusActionabilityCounts displays.
-      -- TODO This is a *local* measure. And I think it's the wrong one. This at the very least shouldn't accept None for the parent.
-      && gParentActionability llabel > Next
+      && (gParentActionability llabel <= Project || gParentActionability llabel == None)
+      -- Last condition is to exclude stalled projects that don't block anything.
+      -- To be consistent with status bar display.
+      -- SOMEDAY is this desired?
+      -- TODO WIP it's not actually consistent with the status bar. This is the right impl though I think
+      -- SOMEDAY should we just have a derived flag for this? And then aggregate that. Feels complicated.
+      && (fromMaybe None (gLocalActionability <$> gLocalParent llabel) > Next)
 
 -- | Intermediate structure to build the filter for hiding levels.
 --
