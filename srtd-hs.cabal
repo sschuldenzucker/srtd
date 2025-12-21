@@ -116,6 +116,7 @@ library
         Srtd.AppAttr,
         Srtd.AppTheme,
         Srtd.Attr,
+        Srtd.Attr.Types,
         Srtd.Attr.TH,
         Srtd.BrickHelpers,
         Srtd.BrickListHelpers,
