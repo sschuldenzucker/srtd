@@ -344,7 +344,7 @@ f_flatByDates =
   go =
     -- SOMEDAY this pattern is always the same for these flat filters. Can extract out.
     sortIdForestBy cmp False
-      . fmap (getLocalDerivedAttrL . ldLevelL .~ 1)
+      . fmap (getLocalDerivedAttrL . ldLevelL .~ 0)
       . filterIdForest p
       . withIdForest forestFlattenPostorder
    where
@@ -378,7 +378,7 @@ f_nextFlatByDates =
   go :: (?fctx :: FilterContext) => STForest -> STForest
   go =
     sortIdForestBy cmp False
-      . fmap (getLocalDerivedAttrL . ldLevelL .~ 1)
+      . fmap (getLocalDerivedAttrL . ldLevelL .~ 0)
       . filterIdForest p
       . withIdForest forestFlattenPostorder
    where
@@ -407,7 +407,7 @@ f_waitingFlatByDates =
   go :: (?fctx :: FilterContext) => STForest -> STForest
   go =
     sortIdForestBy cmp False
-      . fmap (getLocalDerivedAttrL . ldLevelL .~ 1)
+      . fmap (getLocalDerivedAttrL . ldLevelL .~ 0)
       . filterIdForest p
       . withIdForest forestFlattenPostorder
    where
