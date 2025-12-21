@@ -229,6 +229,16 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
     (a, Project) -> a
     (a, ap) -> max a ap
 
+-- | Reset 'ldLevel'. Needed when we change the structure of the tree.
+--
+-- SOMEDAY this is kinda dirty tbh. We don't reset breadcrumbs etc. so this is a bit inconsistent.
+resetLdLevel :: STForest -> STForest
+resetLdLevel = withIdForest $ transformForestTopDown go
+ where
+  go mpar (i, llabel) =
+    let newlvl = fromMaybe 0 $ ((+ 1) . gLocalLevel) <$> mpar
+     in (i, llabel & getLocalDerivedAttrL . ldLevelL .~ newlvl)
+
 -- stepParentActionability st pst = case (st, pst) of
 --   (st, None) -> st
 -- stepParentActionability st None = st
@@ -335,8 +345,6 @@ f_flatByDates =
  where
   -- Need to mention the implicit param explicitly here for some reason, o/w it's not seeing it.
   go :: (?fctx :: FilterContext) => STForest -> STForest
-  -- TODO also, we should show implied dates, especially in this view. (maybe only this one)
-  -- TODO also, refactor the rendering code for dates.
   -- TODO the secondary sort should be by (actionability, status) so that Next is sorted before Project I think. (and Waiting??)
   -- (projects that are ready have Next actionability, which is good, but not the whole story)
   -- (sorting kinda unclear here; should project actually be less actionable than waiting?)
@@ -461,6 +469,30 @@ f_NotDelayedByLastModified =
     let cutoffTime = addUTCTime (-5 * 60) ((zonedTimeToUTC . fcZonedTime) ?fctx)
      in gLocalActionability llabel <= Open || (created . gLatestAutodates $ llabel) >= cutoffTime
   cmp = comparing (lastStatusModified . gLatestAutodates)
+
+f_stalledProjects :: Filter
+f_stalledProjects =
+  Filter
+    { fiName = "stalled projects"
+    , fiIncludeDone = False
+    , fiPostprocess = go
+    }
+ where
+  go :: (?fctx :: FilterContext) => STForest -> STForest
+  go =
+    resetLdLevel
+      -- SOMEDAY this recurs into EVERYTHING, then kicks most of the projects out.
+      -- Better solution would be to have two filters here: a pass one and a select one
+      . filterIdForestFlat pAccept pSelect
+  -- TODO the ugliness of this shows some kind of missing structure.
+  pAccept llabel = gStatus llabel `elem` [Project, Open, None]
+  pSelect llabel =
+    gStatus llabel == Project
+      && gLocalActionability llabel > Waiting
+      -- The last condition is to remove stuck projects that are subprojects of a next project,
+      -- i.e., don't block anything. This is the same way how renderStatusActionabilityCounts displays.
+      -- TODO This is a *local* measure. And I think it's the wrong one. This at the very least shouldn't accept None for the parent.
+      && gParentActionability llabel > Next
 
 -- | Intermediate structure to build the filter for hiding levels.
 --

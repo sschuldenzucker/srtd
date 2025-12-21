@@ -74,6 +74,20 @@ filterIdForestWithIds p = withIdForest filter'
  where
   filter' forest = [Node l (filter' children) | Node l children <- forest, uncurry p l]
 
+-- | Filter by condition and collect all matching nodes at the toplevel. Don't filter deep.
+--
+-- You pass two filter conditions: `accept` determines whether to recur and `select` whether to output.
+filterIdForestFlat :: (a -> Bool) -> (a -> Bool) -> IdForest id a -> IdForest id a
+filterIdForestFlat pAccept pSelect = withIdForest $ go
+ where
+  go forest = do
+    n@(Node (_i, x) cs) <- forest
+    case () of
+      ()
+        | pSelect x -> [n]
+        | pAccept x -> go cs
+        | otherwise -> []
+
 -- | Like 'filterIdForestWithIds' but don't remove non-matching subtrees but splice their children
 -- into the parent.
 --
