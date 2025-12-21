@@ -76,7 +76,8 @@ filterIdForestWithIds p = withIdForest filter'
 
 -- | Filter by condition and collect all matching nodes at the toplevel. Don't filter deep.
 --
--- You pass two filter conditions: `accept` determines whether to recur and `select` whether to output.
+-- You pass two filter conditions: `accept` determines whether to recur (use `const True` to ignore)
+-- and `select` whether to output.
 filterIdForestFlat :: (a -> Bool) -> (a -> Bool) -> IdForest id a -> IdForest id a
 filterIdForestFlat pAccept pSelect = withIdForest $ go
  where
