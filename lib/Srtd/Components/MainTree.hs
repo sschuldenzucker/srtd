@@ -53,7 +53,6 @@ import Srtd.Components.Attr (
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.RegexSearchEntryOverlay
-import Srtd.Components.TestOverlay (newTestOverlay)
 import Srtd.Config qualified as Config
 import Srtd.Data.IdTree
 import Srtd.Data.MapLike qualified as MapLike
@@ -204,9 +203,7 @@ rootKeymap =
                 pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb
               Nothing -> return ()
         )
-      , ( kmLeafA_ (ctrl 't') "Open test overlay" $
-            pushOverlay (const newTestOverlay) overlayNoop overlayNoop
-        )
+      , kmSub (ctrl 't') debugKeymap
       , ( kmLeafA_ (bind 'T') "New tab" $ do
             state <- get
             liftIO $
@@ -617,6 +614,14 @@ viewportKeymap =
     seli <- hoistMaybe (L.listSelected l)
     vp <- MaybeT $ lookupViewport n
     lift $ go seli vp n
+
+debugKeymap :: Keymap (AppEventAction MainTree () ())
+debugKeymap =
+  kmMake
+    "Debug"
+    [ kmLeafA_ (bind 'n') "Log StatusActionabilityCounts for sel" $ withCurWithAttr $ \cura ->
+        liftIO $ glogL INFO (show $ daNDescendantsByActionability . getDerivedAttr $ cura)
+    ]
 
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String
