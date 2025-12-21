@@ -12,6 +12,8 @@ import Lens.Micro.Platform (Lens')
 import Text.Regex.TDFA
 import Text.Regex.TDFA.Text ()
 
+-- SOMEDAY most of these helpers shouldn't exist and instead we should be using MissingH or some similar library.
+
 -- | if-then-else as a function.
 --
 -- It's really not clear to me why _this_ is the one we don't have by default.
@@ -27,6 +29,10 @@ select xElse ((False, _) : cs) = select xElse cs
 -- | Opposite of 'const'
 ignore :: a -> b -> b
 ignore = flip const
+
+safeHead :: [a] -> Maybe a
+safeHead (x : _) = Just x
+safeHead [] = Nothing
 
 -- Enables regex support for Text
 
