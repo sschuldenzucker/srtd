@@ -384,7 +384,7 @@ sacUnionForSiblings sacs =
 data DerivedAttr = DerivedAttr
   { daChildActionability :: Status
   -- ^ Actionability of the most actionable child. None means either None or 'no children'
-  -- TODO is this a problem? If so, maybe make a custom data structure or reorganize somehow.
+  -- SOMEDAY is this a problem? If so, maybe make a custom data structure or reorganize somehow.
   -- SOMEDAY include this node so daChildActionability ~ glActionability, unless we need this for some reason. (e.g. to isolate blockers??)
   , daEarliestAutodates :: AttrAutoDates
   -- ^ Point-wise earliest autodates of the children and including this node.
@@ -576,23 +576,21 @@ instance HasEID (EID, a) where getEIDL = _1
 -- | Actionability based on the node and its children, but ignoring its parents. This is globally
 -- the same for all views.
 --
--- Treat Nothing and Project statuses as transparent (they consider children) and everything else
--- not (they consider the item only)
---
--- SOMEDAY naming is bad, should explicitly mention children
+-- This contains the logic to enable (partial) transparency for some statuses.
 gGlobalActionability :: (HasAttr a, HasDerivedAttr a) => a -> Status
 gGlobalActionability x = case (gStatus x, gChildActionability x) of
+  -- None is fully transparent
   (None, a) -> a
+  -- A Next parent with a WIP child is itself WIP.
   -- This a little bit inconsistent but we typically *mean* this.
-  -- Con: there's no way to pause a WIP task to next now.
-  -- SOMEDAY handle this using the new "force" status.
+  -- Con: there's no way to pause a WIP task using a Next parent now. (until we implement a "force status" flag)
   (Next, WIP) -> WIP
+  -- Projects are fully transparent
   (Project, a) -> a
-  -- This makes Open items semi-transparent: they're transparent to Next etc. tasks but also stand
-  -- for their own (likely project blockers). This is *different* from Project nodes, which are
-  -- fully transparent!
-  -- SOMEDAY we could also make it transparent to Later but I'm not right now.
+  -- Opens are semi-transparent: they're transparent to Next etc. tasks but also stand on their own
+  -- (likely project blockers). This is *different* from Project nodes, which are fully transparent!
   (Open, a) | a <= Open -> a
+  -- Everything else is intransparent
   (s, _) -> s
 
 -- | Actionability based on 'gGlobalActionability' and also its parents. This is (or can be) local
