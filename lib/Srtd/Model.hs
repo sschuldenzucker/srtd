@@ -210,7 +210,7 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
       ( label
       , LocalDerivedAttr
           { ldParentActionability =
-              stepParentActionability (gStatus plabel) (ldParentActionability parLDAttr)
+              applyActionabilityTransparencyFallback (gStatus plabel) (ldParentActionability parLDAttr) max
           , ldBreadcrumbs = plilabel : ldBreadcrumbs parLDAttr
           , ldLevel = ldLevel parLDAttr + 1
           , ldIsCollapsed = False

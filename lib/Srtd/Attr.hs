@@ -22,7 +22,7 @@ import Data.UUID qualified as UUID
 import GHC.Generics
 import Lens.Micro.Platform
 import Srtd.Dates (DateOrTime, DateRule (..), compareDateOrTime, dateOrTimeToUTCTime)
-import Srtd.Util (chooseMin, compareByNothingLast, unionMaybeWith)
+import Srtd.Util (chooseMin, compareByNothingLast, ignore, unionMaybeWith)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- * Node ID (EID)
@@ -572,41 +572,43 @@ instance HasEID (EID, a) where getEIDL = _1
 
 -- * Derived attr calculation
 
+-- | Given actionability/status of a child/children and actionability (or actionability constraint)
+-- of the parent, check if any transparency rules apply and if so, return the status of the whole
+-- parent-child object.
+--
+-- NB This isn't terribly well-defined theoretically, but we collect rules here that we have in
+-- many places.
+applyActionabilityTransparency :: Status -> Status -> Maybe Status
+applyActionabilityTransparency c_ p_ = case (c_, p_) of
+  -- A None parent is fully transparent
+  (c, None) -> Just c
+  -- A Next parent with a WIP child is itself WIP.
+  -- This a little bit inconsistent but we typically *mean* this.
+  -- Con: there's no way to pause a WIP task using a Next parent now. (until we implement a "force
+  -- status" flag)
+  (WIP, Next) -> Just WIP
+  -- Projects are fully transparent
+  (c, Project) -> Just c
+  -- Opens are semi-transparent: they're transparent to Next etc. tasks but also stand on their own
+  -- (likely project blockers). This is *different* from Project nodes, which are fully transparent!
+  (c, Open) | c <= Open -> Just c
+  _ -> Nothing
+
+-- | 'applyActionabilityTransparency' with a fallback function to create a status. This is a common pattern.
+applyActionabilityTransparencyFallback :: Status -> Status -> (Status -> Status -> Status) -> Status
+applyActionabilityTransparencyFallback c p fallback = fromMaybe (fallback c p) $ applyActionabilityTransparency c p
+
 -- | Actionability based on the node and its children, but ignoring its parents. This is globally
 -- the same for all views.
 --
 -- This contains the logic to enable (partial) transparency for some statuses.
 gGlobalActionability :: (HasAttr a, HasDerivedAttr a) => a -> Status
-gGlobalActionability x = case (gStatus x, gChildActionability x) of
-  -- None is fully transparent
-  (None, a) -> a
-  -- A Next parent with a WIP child is itself WIP.
-  -- This a little bit inconsistent but we typically *mean* this.
-  -- Con: there's no way to pause a WIP task using a Next parent now. (until we implement a "force status" flag)
-  (Next, WIP) -> WIP
-  -- Projects are fully transparent
-  (Project, a) -> a
-  -- Opens are semi-transparent: they're transparent to Next etc. tasks but also stand on their own
-  -- (likely project blockers). This is *different* from Project nodes, which are fully transparent!
-  (Open, a) | a <= Open -> a
-  -- Everything else is intransparent
-  (s, _) -> s
+gGlobalActionability x = applyActionabilityTransparencyFallback (gChildActionability x) (gStatus x) ignore
 
--- | Actionability based on 'gGlobalActionability' and also its parents. This is (or can be) local
--- to the view b/c it depends on which part of the tree is visible to the given view.
+-- | Actionability based on 'gGlobalActionability' and also its local parents. This is (or can be)
+-- local to the view b/c it depends on which part of the tree is visible to the given view.
 gLocalActionability :: (HasAttr a, HasDerivedAttr a, HasLocalDerivedAttr a) => a -> Status
-gLocalActionability x = stepParentActionability (gGlobalActionability x) (gParentActionability x)
-
--- | Given a status / actionability and top-down actionability constraint of the parent, apply the
--- constraint to find the actionability (/constraint) of the child.
-stepParentActionability :: Status -> Status -> Status
-stepParentActionability s_ a_ = case (s_, a_) of
-  (a, None) -> a
-  (WIP, Next) -> WIP
-  (a, Project) -> a
-  (a, Open) | a <= Open -> a
-  -- TODO WIP above are the same as gGlobalActionability, only the next differs!
-  (a, ap) -> max a ap
+gLocalActionability x = applyActionabilityTransparencyFallback (gGlobalActionability x) (gParentActionability x) max
 
 -- | Implied or earliest child dates, whichever come earlier. This considers both parents and
 -- children and is essentially "when this item has to be paid attention to", either directly or
