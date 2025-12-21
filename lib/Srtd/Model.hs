@@ -157,6 +157,7 @@ type STForest = IdForest EID LocalLabel
 data Subtree = Subtree
   -- SOMEDAY we compute breadcrumbs twice: here for the root and in ldBreadcrumbs for children.
   -- That's not wrong but maybe we can unify code?
+  -- SOMEDAY should breadcrumbs just be part of DerivedAttr and then we only have an IdLabel and STForest here? (i.e., really basically a tree)
   { breadcrumbs :: [IdLabel]
   , root :: EID
   , rootLabel :: Label
