@@ -24,6 +24,10 @@ select xElse [] = xElse
 select _ ((True, x) : _) = x
 select xElse ((False, _) : cs) = select xElse cs
 
+-- | Opposite of 'const'
+ignore :: a -> b -> b
+ignore = flip const
+
 -- Enables regex support for Text
 
 maybeToEither :: a -> Maybe b -> Either a b
