@@ -67,9 +67,7 @@ mapIdForestWithIds f = withIdForest $ mapForest go
 
 -- | Only leaves the initial segments of the forest where the predicate all applies.
 filterIdForest :: (a -> Bool) -> IdForest id a -> IdForest id a
-filterIdForest p = withIdForest filter'
- where
-  filter' forest = [Node l (filter' children) | Node l@(_, x) children <- forest, p x]
+filterIdForest p = filterIdForestWithIds (const p)
 
 filterIdForestWithIds :: (id -> a -> Bool) -> IdForest id a -> IdForest id a
 filterIdForestWithIds p = withIdForest filter'
