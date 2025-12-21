@@ -255,7 +255,7 @@ modelGetSubtreeBelow i (Model forest) = forestGetSubtreeBelow i forest
 
 -- | Given a subtree and a LocalLabel that is part of that forest, get the parent. Otherwise, returns a wrong result.
 stParentEID :: (HasLocalDerivedAttr a) => Subtree -> a -> EID
-stParentEID st llabel = case gBreadcrumbs llabel of
+stParentEID st llabel = case gLocalBreadcrumbs llabel of
   ((i, _) : _) -> i
   [] -> root st
 

@@ -499,7 +499,7 @@ goKeymap =
               modify (mtListL %~ scrollListToEID tgt)
       )
     , ( kmLeafA (binding KEnter []) "Hoist 1 step, keep pos" $ withCurWithAttrOrElse aerContinue $ \(cur, llabel) ->
-          case reverse (gBreadcrumbs llabel) of
+          case reverse (gLocalBreadcrumbs llabel) of
             [] ->
               -- toplevel element, behave like Hoist (this is prob intended)
               notFoundToAER_ $ moveToEID cur
@@ -984,7 +984,7 @@ renderItemDetails ztime (eid, llabel) =
         -- structures for the different *Label things?
         renderBreadcrumbs
           ztime
-          (map localIdLabel2IdLabel . gBreadcrumbs $ llabel)
+          (map localIdLabel2IdLabel . gLocalBreadcrumbs $ llabel)
       ]
   botBox =
     vBox
@@ -1155,7 +1155,7 @@ instance AppComponent MainTree () () where
         Nothing -> emptyWidget
         Just illabel ->
           overrideAttr AppAttr.breadcrumbs AppAttr.header_row $
-            renderBreadcrumbs (acZonedTime ?actx) (map localIdLabel2IdLabel . gBreadcrumbs $ illabel)
+            renderBreadcrumbs (acZonedTime ?actx) (map localIdLabel2IdLabel . gLocalBreadcrumbs $ illabel)
       statusBarRightW =
         hBox
           [ maybe emptyWidget (renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr) $
@@ -1462,7 +1462,7 @@ resetListPositionFollow old =
             (Just selEID)
               : (fmap zGetId . goNextSibling =<< selz)
               : (fmap zGetId . goPrevSibling =<< selz)
-              : map (Just . gEID) (gBreadcrumbs tgtItm)
+              : map (Just . gEID) (gLocalBreadcrumbs tgtItm)
        in
         -- Try to find the previously selected element or a parent.
         asum (map (\eid -> tryGoToEID eid new) tgtEIDs)

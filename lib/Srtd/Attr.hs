@@ -546,8 +546,8 @@ class HasLocalDerivedAttr a where
 gParentActionability :: (HasLocalDerivedAttr a) => a -> Status
 gParentActionability = ldParentActionability . getLocalDerivedAttr
 
-gBreadcrumbs :: (HasLocalDerivedAttr a) => a -> [LocalIdLabel]
-gBreadcrumbs = ldBreadcrumbs . getLocalDerivedAttr
+gLocalBreadcrumbs :: (HasLocalDerivedAttr a) => a -> [LocalIdLabel]
+gLocalBreadcrumbs = ldBreadcrumbs . getLocalDerivedAttr
 
 gLocalLevel :: (HasLocalDerivedAttr a) => a -> Int
 gLocalLevel = ldLevel . getLocalDerivedAttr
