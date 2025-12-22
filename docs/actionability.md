@@ -27,7 +27,7 @@ Transparency rules affect both global and local actionability. For example:
 - Global actionability: A Project's actionability depends on the actionability of its children.
 - Local actionability: A Next child below a Project remains Next.
 
-> [!SOMEDAY] These are actually pretty different things. The fact that I can use the same code to implement them suggests that there is some simpler structure to describe "transparency" and that may be useful to unify code.
+> [!SOMEDAY] These are actually pretty different things. The fact that I can use the same code to implement them suggests that there is some simpler structure to describe "transparency" and that may be useful to unify code. Maybe dominant (parent state imposed on others downwards) vs submissive (parent state determined by children) is the right abstraction??
 
 The main site of implementation for these rules is `applyActionabilityTransparency` in `Srtd.Attr`, and some rules unfortunately also need to be replicated into `sacForParent`.
 
