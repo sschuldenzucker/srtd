@@ -48,10 +48,12 @@ data Status
     Project
   | -- | Not ready, but will likely become Next later.
     -- SOMEDAY move this before Project. (but doesn't matter in practice I think)
+    -- TODO I think this is actually a bug (it should be Waiting < Project), but it happens not to
+    -- matter b/c nothing ever has Project actionability b/c of transparency. Except ldParentActionability
+    -- and there it somehow doesn't matter.
     Waiting
   | -- | Open point. Something we can't / don't want to do anything about rn but likely needs to be
     -- resolved to complete the project, and also no clear *other* person is responsible for doing this.
-    -- Otherwise treated similar to Waiting.
     Open
   | -- | Optional and, if it happens, later. Not committed to.
     Later
