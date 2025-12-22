@@ -135,7 +135,7 @@ _forestMakeDerivedAttrs = transformIdForestDownUpRec $ \mplabel clabels attr -> 
       , daNDescendantsByActionability = sacUnionForSiblings . map addNodeToActionabilityCount $ clabels
       }
   tz = mueTimeZone ?mue
-  addNodeToActionabilityCount label@(attr, dattr) = sacForParent (status attr) (gGlobalActionability label) (daNDescendantsByActionability dattr)
+  addNodeToActionabilityCount label@(attr, dattr) = sacForParent label (daNDescendantsByActionability dattr)
 
 diskModelToModel :: (?mue :: ModelUpdateEnv) => DiskModel -> Model
 diskModelToModel (DiskModel forest) = Model (_forestMakeDerivedAttrs forest)

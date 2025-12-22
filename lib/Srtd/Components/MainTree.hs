@@ -1101,10 +1101,11 @@ renderStatusActionabilityCounts sac =
   stuckProjectActionabilitiesW sep =
     let
       totalProjects = MapLike.findWithDefault 0 Project $ sacSingleStatuses sac
-      n =
-        totalProjects
-          - sum [MapLike.findWithDefault 0 a (sacProjects sac) | a <- displayedProjectActionabilities]
+      n = sacNStalledProjects sac
      in
+      -- totalProjects
+      --   - sum [MapLike.findWithDefault 0 a (sacProjects sac) | a <- displayedProjectActionabilities]
+
       if n == 0
         then emptyWidget
         else

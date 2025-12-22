@@ -206,6 +206,8 @@ data StatusActionabilityCounts
   -- ^ OPEN items by actionability. For the total number of OPEN items see `sacSingleStatuses`.
   , sacProjects :: EnumMap Status Int
   -- ^ PROJECT items by actionability. For the total number of PROJECT items see `sacSingleStatuses`.
+  , sacNStalledProjects :: Int
+  -- ^ Number of stalled projects below this node.
   }
   deriving (Show)
 
