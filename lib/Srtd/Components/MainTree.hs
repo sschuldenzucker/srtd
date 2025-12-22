@@ -173,6 +173,7 @@ defaultFilters =
   , f_nextFlatByDates
   , f_waitingFlatByDates
   , f_stalledProjects
+  , f_projectOverview
   , f_all
   ]
 
@@ -314,6 +315,7 @@ viewKeymap =
         , ('W', "flat waiting, by urgency + age")
         , ('m', "non-delayed by last modified")
         , ('s', "stalled projects")
+        , ('p', "projects by urgency")
         ]
         ++ [ kmLeafA_ (ctrl 'f') "Toggle follow item" (mtDoFollowItemL %= not)
            ]

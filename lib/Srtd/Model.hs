@@ -494,6 +494,35 @@ f_stalledProjects =
   -- SOMEDAY should we include here: all Open items? Remove below condition?
   pSelect = isLocalStalledProject
 
+f_projectOverview :: Filter
+f_projectOverview =
+  Filter
+    { fiName = "projects by urgency"
+    , -- SOMEDAY this inherits the issues from all by-urgency views that it puts items first that have dates scheduled really far out. We'll probablyy wanna limit, either by weighting or just ignoring dates that are further than (say) 1 week out. This depends on the use case.
+      fiDesc =
+        "Project-level work view. All active (Next or Waiting) projects, open points, and bare items. Flat view without duplication. Ordered by urgency and actionability"
+    , fiIncludeDone = False
+    , fiPostprocess = go
+    }
+ where
+  go :: (?fctx :: FilterContext) => STForest -> STForest
+  go =
+    sortIdForestBy cmp False
+      . resetLdLevel
+      . filterIdForestFlat pAccept pSelect
+   where
+    tz = fcTimeZone ?fctx
+    -- `pAccept` is purely a performance optimization. Could be `const True`.
+    pAccept llabel = gStatus llabel `elem` [Project, Open, None]
+    pSelect llabel = gStatus llabel <= Open && gLocalActionability llabel <= Waiting
+    cmp llabel1 llabel2 =
+      mconcat
+        -- put WIP first. This is usually desired.
+        [ comparing (min Next . gLocalActionability) llabel1 llabel2
+        , (compareAttrDates tz `on` gEarliestImpliedOrChildDates tz) llabel1 llabel2
+        , comparing gLocalActionability llabel1 llabel2
+        ]
+
 -- | Intermediate structure to build the filter for hiding levels.
 --
 -- Note that 'hiding' is the same as just filtering out at the data level but is different from a
