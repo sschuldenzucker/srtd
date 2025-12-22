@@ -271,6 +271,10 @@ fcTimeZone = zonedTimeZone . fcZonedTime
 data Filter = Filter
   { fiName :: String
   -- ^ Name to be displayed in the UI
+  , fiDesc :: String
+  -- ^ Longer description
+  --
+  -- SOMEDAY this is currently not exposed to the user, should be when we make a selection screen
   , fiIncludeDone :: Bool
   -- ^ Whether to include Done items. If False, we remove Done subtrees before deriving local attrs
   -- and before applying 'fiPostprocess'.
@@ -287,6 +291,7 @@ chainFilters :: Filter -> Filter -> Filter
 chainFilters f1 f2 =
   Filter
     { fiName = fiName f2
+    , fiDesc = fiDesc f1 ++ " >>> " ++ fiDesc f2
     , fiIncludeDone = fiIncludeDone f2
     , fiPostprocess = fiPostprocess f1 . fiPostprocess f2
     }
@@ -312,6 +317,7 @@ f_all :: Filter
 f_all =
   Filter
     { fiName = "all"
+    , fiDesc = "All items in physical order"
     , fiIncludeDone = True
     , fiPostprocess = id
     }
@@ -323,6 +329,7 @@ f_notDone :: Filter
 f_notDone =
   Filter
     { fiName = "not done"
+    , fiDesc = "Not done/canceled items, deep, in physical order"
     , fiIncludeDone = False
     , fiPostprocess = id
     }
@@ -332,6 +339,7 @@ f_flatByDates :: Filter
 f_flatByDates =
   Filter
     { fiName = "flat, by simple urgency"
+    , fiDesc = "All items flattened across the hierarchy, ordered by urgency and actionability"
     , fiIncludeDone = False
     , fiPostprocess = go
     }
@@ -370,6 +378,7 @@ f_nextFlatByDates :: Filter
 f_nextFlatByDates =
   Filter
     { fiName = "flat next, by simple urgency"
+    , fiDesc = "Next items, flattened down the hierarchy, by urgency"
     , fiIncludeDone = False
     , fiPostprocess = go
     }
@@ -399,6 +408,7 @@ f_waitingFlatByDates :: Filter
 f_waitingFlatByDates =
   Filter
     { fiName = "flat waiting, by urgency + age"
+    , fiDesc = "Waiting items, flattened down the hierarchy, by urgency"
     , fiIncludeDone = False
     , fiPostprocess = go
     }
@@ -426,6 +436,7 @@ f_deepByDates :: Filter
 f_deepByDates =
   Filter
     { fiName = "by simple urgency"
+    , fiDesc = "Tree reordered, but otherwise not reshaped, by urgency and actionability"
     , fiIncludeDone = False
     , fiPostprocess = go
     }
@@ -450,6 +461,8 @@ f_NotDelayedByLastModified :: Filter
 f_NotDelayedByLastModified =
   Filter
     { fiName = "non-delayed by last modified"
+    , fiDesc =
+        "Tree filtered by items not explicitly Later or Someday without further reshaping, ordered by recursive last-status-modified"
     , fiIncludeDone = False
     , fiPostprocess = go
     }
@@ -467,6 +480,7 @@ f_stalledProjects :: Filter
 f_stalledProjects =
   Filter
     { fiName = "stalled projects"
+    , fiDesc = "Stalled projects, flat without duplication. In otherwise physical order."
     , fiIncludeDone = False
     , fiPostprocess = go
     }
@@ -517,6 +531,7 @@ hideHierarchyFilter :: HideHierarchyFilter -> Filter
 hideHierarchyFilter hhf =
   Filter
     { fiName = name_
+    , fiDesc = "Hides some nodes and marks them collapsed. Internal."
     , fiIncludeDone = True
     , fiPostprocess = withIdForest (foldForest go)
     }
