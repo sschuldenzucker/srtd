@@ -20,10 +20,12 @@ module Srtd.Component where
 import Brick
 import Brick.BChan (BChan)
 import Brick.Keybindings (Binding)
+import Control.Monad.Except
 import Data.Text (Text)
 import Data.Time (ZonedTime)
 import Lens.Micro.Platform
 import Srtd.Keymap (KeyDesc, KeymapItem, kmLeaf)
+import Srtd.Model (FilterContext (..), IdNotFoundError)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
 
 -- | Global messages sent through Srtd at the app (top) level together with any brick events.
@@ -75,6 +77,11 @@ data AppContext = AppContext
   -- ^ Current time and time zone at the time of processing this event. ONLY for user-facing
   -- interactions, NOT for internal process coordination!
   }
+
+translateAppFilterContext :: (?actx :: AppContext) => ((?fctx :: FilterContext) => a) -> a
+translateAppFilterContext x =
+  let ?fctx = FilterContext {fcZonedTime = acZonedTime $ ?actx}
+   in x
 
 -- | Return data returned by 'handleEvent' (see below) to tell the parent component if the child
 -- component should be kept around.
@@ -205,3 +212,26 @@ aerContinue = return $ Continue ()
 -- | Variant of 'void' for the (common) case where there's no intermediate result.
 aerVoid :: (Monad m) => m a -> m (AppEventReturn () b)
 aerVoid act = act >> aerContinue
+
+-- * Error Handling
+
+-- | Type of computations that update the subtree synchronously (and may fail because of that).
+--
+-- SOMEDAY we may wanna change the result type in AppComponent to be a transformer instead of a
+-- fixed return type. Could make it more ergonomic to write handlers. OTOH, the additional flexibility
+-- in the computation isn't really needed right now. (only in `wrappingActions` below, maybe)
+type EventMOrNotFound n s a = ExceptT IdNotFoundError (EventM n s) a
+
+-- | Convert exception handling.
+notFoundToAER_ :: EventMOrNotFound n s () -> EventM n s (AppEventReturn () ())
+notFoundToAER_ = notFoundToAER . aerVoid
+
+-- | Merge exception handling.
+--
+-- An exception is treated equivalent to returning 'Canceled'.
+notFoundToAER :: EventMOrNotFound n s (AppEventReturn a b) -> EventM n s (AppEventReturn a b)
+notFoundToAER act = do
+  eres <- runExceptT act
+  case eres of
+    Left _err -> return Canceled
+    Right res -> return res

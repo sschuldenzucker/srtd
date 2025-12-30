@@ -127,6 +127,7 @@ library
         Srtd.Components.MainTree,
         Srtd.Components.NewNodeOverlay,
         Srtd.Components.TestOverlay,
+        Srtd.Components.TreeView,
         Srtd.Components.RegexSearchEntryOverlay,
         Srtd.Config,
         Srtd.Data.IdTree,

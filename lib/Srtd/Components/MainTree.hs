@@ -53,6 +53,17 @@ import Srtd.Components.Attr (
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.RegexSearchEntryOverlay
+import Srtd.Components.TreeView hiding (
+  forestToBrickList,
+  listScrollMoveBy,
+  maybePrefixSelAttr,
+  pullNewModel,
+  renderRow,
+  replaceSubtree,
+  resetListPosition,
+  resetListPositionFollow,
+  resetListPositionIndex,
+ )
 import Srtd.Config qualified as Config
 import Srtd.Data.IdTree
 import Srtd.Data.MapLike qualified as MapLike
@@ -69,49 +80,6 @@ import System.Process (callProcess)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), RegexLike (..), (=~))
 import Text.Regex.TDFA.Common (Regex)
 import Text.Wrap (WrapSettings (..), defaultWrapSettings)
-
-data ListIdLabel = ListIdLabel
-  { lilLvl :: Int
-  , lilEID :: EID
-  , lilLocalLabel :: LocalLabel
-  }
-
-suffixLenses ''ListIdLabel
-
-listIdLabel2LocalIdLabel :: ListIdLabel -> LocalIdLabel
-listIdLabel2LocalIdLabel itm = (lilEID itm, lilLocalLabel itm)
-
-instance HasAttr ListIdLabel where getAttrL = lilLocalLabelL . getAttrL
-
-instance HasDerivedAttr ListIdLabel where getDerivedAttrL = lilLocalLabelL . getDerivedAttrL
-
-instance HasLocalDerivedAttr ListIdLabel where
-  getLocalDerivedAttrL = lilLocalLabelL . getLocalDerivedAttrL
-
-instance HasEID ListIdLabel where getEIDL = lilEIDL
-
-type MyList = L.List AppResourceName ListIdLabel
-
--- | Type of computations that update the subtree synchronously (and may fail because of that).
---
--- SOMEDAY we may wanna change the result type in AppComponent to be a transformer instead of a
--- fixed return type. Could make it more ergonomic to write handlers. OTOH, the additional flexibility
--- in the computation isn't really needed right now. (only in `wrappingActions` below, maybe)
-type EventMOrNotFound n s a = ExceptT IdNotFoundError (EventM n s) a
-
--- | Convert exception handling.
-notFoundToAER_ :: EventMOrNotFound n s () -> EventM n s (AppEventReturn () ())
-notFoundToAER_ = notFoundToAER . aerVoid
-
--- | Merge exception handling.
---
--- An exception is treated equivalent to returning 'Canceled'.
-notFoundToAER :: EventMOrNotFound n s (AppEventReturn a b) -> EventM n s (AppEventReturn a b)
-notFoundToAER act = do
-  eres <- runExceptT act
-  case eres of
-    Left _err -> return Canceled
-    Right res -> return res
 
 -- | A class for overlays. Two callbacks define interruptible computations. Note that this doesn't
 -- store state of the computation *itself*.
@@ -136,7 +104,7 @@ data MainTree = MainTree
   { mtRoot :: EID
   , mtFilters :: CList.CList Filter
   , mtSubtree :: Subtree
-  , mtList :: MyList
+  , mtList :: TreeViewList
   , mtResourceName :: AppResourceName
   -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
   , mtKeymap :: KeymapZipper (AppEventAction MainTree () ())
@@ -775,12 +743,7 @@ makeWithFilters root filters hhf doFollowItem model rname = do
       , mtDoFollowItem = doFollowItem
       }
 
-translateAppFilterContext :: (?actx :: AppContext) => ((?fctx :: FilterContext) => a) -> a
-translateAppFilterContext x =
-  let ?fctx = FilterContext {fcZonedTime = acZonedTime $ ?actx}
-   in x
-
-forestToBrickList :: AppResourceName -> STForest -> MyList
+forestToBrickList :: AppResourceName -> STForest -> TreeViewList
 forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
  where
   contents =
@@ -810,7 +773,7 @@ searchForRxSiblingAction dir = do
   p rx curpar st itm = stParentEID st itm == curpar && nameMatchesRx rx itm
 
 -- | Usage: `searchForRx direction doNothingIfCurrentMatches`
-searchForRx :: SearchDirection -> Bool -> Regex -> MyList -> MyList
+searchForRx :: SearchDirection -> Bool -> Regex -> TreeViewList -> TreeViewList
 searchForRx _ True rx l | matchesRxCurrent rx l = l
 searchForRx Forward _ rx l = L.listFindBy (nameMatchesRx rx) l
 searchForRx Backward _ rx l = L.listFindBackwardsBy (nameMatchesRx rx) l
@@ -818,17 +781,10 @@ searchForRx Backward _ rx l = L.listFindBackwardsBy (nameMatchesRx rx) l
 nameMatchesRx :: (RegexLike regex String, HasAttr a) => regex -> a -> Bool
 nameMatchesRx rx itm = matchTest rx (gName itm)
 
-matchesRxCurrent :: Regex -> MyList -> Bool
+matchesRxCurrent :: Regex -> TreeViewList -> Bool
 matchesRxCurrent rx l = case L.listSelectedElement l of
   Just (_ix, itm) | matchTest rx (gName itm) -> True
   _ -> False
-
-withSelAttr :: Bool -> Widget n -> Widget n
-withSelAttr = withDefAttrIf AppAttr.selected_item_row
-
-withDefAttrIf :: AttrName -> Bool -> Widget n -> Widget n
-withDefAttrIf a True = withDefAttr a
-withDefAttrIf _ False = id
 
 -- TODO this function shouldn't exist. Instead proper inheritance.
 maybePrefixSelAttr :: Bool -> AttrName -> AttrName
@@ -1395,7 +1351,7 @@ replaceSubtree subtree = do
   put old {mtSubtree = subtree, mtList = list'}
   resetListPosition (mtDoFollowItem old) old
 
-scrollListToEID :: EID -> MyList -> MyList
+scrollListToEID :: EID -> TreeViewList -> TreeViewList
 scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
 scrollListBy :: Int -> EventM AppResourceName MainTree ()
