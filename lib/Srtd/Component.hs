@@ -7,6 +7,13 @@ A Component is a piece of data that can be rendered to brick and supports a vagu
 interface where a parent can hold and call it and the component can tell it when it's done and
 return a value (and/or pass a stream of intermediate values if desired). It also provides context
 info (e.g., a list of supported keybindings) to the parent for rendering.
+
+This is very similar to [brick-panes](https://github.com/kquick/brick-panes), though more
+specialized to what I really need:
+
+- Types are not generic but refer to the actual resource name type etc. that I use.
+- I integrate the 'AppEventReturn' type, which gives feedback to the parent component in a paricular way.
+- I integrate overlays and key binding help in the way I use it.
 -}
 module Srtd.Component where
 
