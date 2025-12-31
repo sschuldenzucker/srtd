@@ -5,10 +5,12 @@ import Control.Applicative (liftA2, (<|>))
 import Control.Monad ((<=<))
 import Control.Monad.Except
 import Data.List (isPrefixOf)
+import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Tree (Forest, Tree (..), foldTree)
 import Lens.Micro.Platform (Lens')
+import System.Process (callProcess)
 import Text.Regex.TDFA
 import Text.Regex.TDFA.Text ()
 
@@ -266,3 +268,23 @@ unsafeSingleDigitUIntToChar :: Int -> Char
 unsafeSingleDigitUIntToChar i = case (show i) of
   [c] | '0' <= c && c <= '9' -> c
   _ -> error $ "unsafeSingleDigitUIntToChar: Expected 0-9, got " ++ (show i)
+
+-- ** Regex helpers
+
+-- SOMEDAY these should be moved to another module.
+findFirstURL :: String -> Maybe String
+findFirstURL s = listToMaybe $ getAllTextMatches (s =~ urlPattern :: AllTextMatches [] String)
+ where
+  urlPattern :: String
+  urlPattern = "(\\b[a-z]+://[a-zA-Z0-9./?=&-_%]+)"
+
+findFirstHexCode :: String -> Maybe String
+findFirstHexCode s = listToMaybe $ getAllTextMatches (s =~ pat :: AllTextMatches [] String)
+ where
+  pat :: String
+  pat = "0x[0-9a-fA-F]+"
+
+-- * IO helpers
+
+openURL :: String -> IO ()
+openURL url = callProcess "open" [url]

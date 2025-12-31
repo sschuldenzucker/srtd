@@ -18,10 +18,11 @@ import Data.Text qualified as T
 import Data.Time (ZonedTime (..))
 import Data.Vector qualified as Vec
 import Graphics.Vty (Button (..), Event (..), Key (..))
-import Lens.Micro.Platform ((%=), (%~), (&), (.=), (.~), (<&>), (^.))
+import Lens.Micro.Platform (use, (%=), (%~), (&), (.=), (.~), (<&>), (^.))
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
 import Srtd.BrickHelpers (strTruncateAvailable)
+import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
 import Srtd.Components.Attr (renderLastModified, renderMostUrgentDate, renderStatus)
 import Srtd.Data.IdTree (IdForest (..), zForestFindId, zGetId)
@@ -35,9 +36,11 @@ import Srtd.Model (
   STForest,
   Subtree (..),
   runFilter,
+  stParentEID,
  )
 import Srtd.ModelServer (getModel)
 import Srtd.Util (for, forestFlattenToList, pureET, regexSplitWithMatches)
+import Text.Regex.TDFA (RegexLike (..))
 import Text.Regex.TDFA.Common (Regex)
 
 -- * Type of list items
@@ -426,3 +429,45 @@ forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
  where
   contents =
     map (\(i, attr) -> ListIdLabel (gLocalLevel attr) i attr) . forestFlattenToList . idForest $ forest
+
+-- ** Search
+
+data SearchDirection = Forward | Backward
+
+searchForRxAction :: SearchDirection -> Bool -> EventM n TreeView ()
+searchForRxAction dir curOk = do
+  mrx <- use tvSearchRxL
+  case mrx of
+    Nothing -> return ()
+    Just rx -> tvListL %= searchForRx dir curOk rx
+
+-- SOMEDAY if this is slow, we might instead go via the tree. Note that this has wrap-around, though.
+searchForRxSiblingAction :: SearchDirection -> EventM n TreeView ()
+searchForRxSiblingAction dir = do
+  mrx <- use tvSearchRxL
+  mCurAttr <- gets tvCurWithAttr
+  st <- gets tvSubtree
+  case (mrx, mCurAttr) of
+    (Just rx, Just (_i, curllabel)) ->
+      let curpar = stParentEID st curllabel
+       in tvListL %= searchForRxNextSibling dir rx curpar st
+    _ -> return ()
+ where
+  searchForRxNextSibling Forward rx curpar st = L.listFindBy (p rx curpar st)
+  searchForRxNextSibling Backward rx curpar st = L.listFindBackwardsBy (p rx curpar st)
+  p rx curpar st itm = stParentEID st itm == curpar && nameMatchesRx rx itm
+
+-- | Usage: `searchForRx direction doNothingIfCurrentMatches`
+-- TODO should be part of TreeView's API
+searchForRx :: SearchDirection -> Bool -> Regex -> TreeViewList -> TreeViewList
+searchForRx _ True rx l | matchesRxCurrent rx l = l
+searchForRx Forward _ rx l = L.listFindBy (nameMatchesRx rx) l
+searchForRx Backward _ rx l = L.listFindBackwardsBy (nameMatchesRx rx) l
+
+nameMatchesRx :: (RegexLike regex String, HasAttr a) => regex -> a -> Bool
+nameMatchesRx rx itm = matchTest rx (gName itm)
+
+matchesRxCurrent :: Regex -> TreeViewList -> Bool
+matchesRxCurrent rx l = case L.listSelectedElement l of
+  Just (_ix, itm) | matchTest rx (gName itm) -> True
+  _ -> False

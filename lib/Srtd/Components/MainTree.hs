@@ -21,7 +21,7 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 import Data.CircularList as CList
 import Data.Functor (void)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -34,7 +34,6 @@ import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
 import Srtd.Attr qualified (Status (Canceled))
 import Srtd.BrickHelpers
-import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
 import Srtd.Component qualified as Component
 import Srtd.Components.Attr (
@@ -58,12 +57,10 @@ import Srtd.Model
 import Srtd.ModelServer
 import Srtd.Util
 import System.Hclip (setClipboard)
-import System.Process (callProcess)
-import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), RegexLike (..), (=~))
 import Text.Regex.TDFA.Common (Regex)
 import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 
--- * Overlay infra
+-- * Overlay infra (must come early b/c Template Haskell)
 
 -- SOMEDAY can we make this a more general thing? Then also review how specific types have to be.
 -- (probably not very specific.)
@@ -86,8 +83,6 @@ overlayNoop :: (Monad m) => p -> m (AppEventReturn () b)
 overlayNoop _ = aerContinue
 
 -- * Main Data Structure
-
-data SearchDirection = Forward | Backward
 
 data MainTree = MainTree
   -- TODO update tree view filter with current mt filter. OR re-implement the CList stuff to make tree view.filter = cur (the hole) but no.
@@ -124,7 +119,7 @@ defaultFilters =
 
 -- ** Convenience Accessors
 
--- TODO this shouldn't exist
+-- TODO this shouldn't exist?
 mtFilter :: MainTree -> Filter
 mtFilter mt = chainFilters collapseFilter normalFilter
  where
@@ -138,23 +133,79 @@ mtSubtree = TV.tvSubtree . mtTreeView
 mtRoot :: MainTree -> EID
 mtRoot = root . mtSubtree
 
+mtSearchRxL :: Lens' MainTree (Maybe Regex)
+mtSearchRxL = mtTreeViewL . TV.tvSearchRxL
+
+mtDoFollowItemL :: Lens' MainTree Bool
+mtDoFollowItemL = mtTreeViewL . TV.tvDoFollowItemL
+
+mtCur :: MainTree -> Maybe EID
+mtCur = TV.tvCur . mtTreeView
+
+mtCurWithAttr :: MainTree -> Maybe LocalIdLabel
+mtCurWithAttr = TV.tvCurWithAttr . mtTreeView
+
+withCurOrElse ::
+  EventM n MainTree a -> (EID -> EventM n MainTree a) -> EventM n MainTree a
+withCurOrElse dflt go = maybe dflt go =<< gets mtCur
+
+withCur ::
+  (EID -> EventM n MainTree ()) -> EventM n MainTree ()
+withCur = withCurOrElse (return ())
+
+withCurWithAttr ::
+  (LocalIdLabel -> EventM n MainTree ()) -> EventM n MainTree ()
+withCurWithAttr = withCurWithAttrOrElse (return ())
+
+withCurWithAttrOrElse ::
+  EventM n MainTree a -> (LocalIdLabel -> EventM n MainTree a) -> EventM n MainTree a
+withCurWithAttrOrElse dflt go = maybe dflt go =<< gets mtCurWithAttr
+
+withRoot ::
+  (EID -> EventM n MainTree ()) -> EventM n MainTree ()
+withRoot go = go =<< gets mtRoot
+
 -- * API
+
+-- | Create new 'MainTree'
+make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
+make root = makeWithFilters root (CList.fromList defaultFilters) emptyHideHierarchyFilter True
+
+-- | filters must not be empty.
+makeWithFilters ::
+  (?actx :: AppContext) =>
+  EID ->
+  CList.CList Filter ->
+  HideHierarchyFilter ->
+  Bool ->
+  Model ->
+  AppResourceName ->
+  Either IdNotFoundError MainTree
+makeWithFilters root filters hhf doFollowItem model rname = do
+  tv <-
+    TV.makeFromModel
+      root
+      (fromJust $ CList.focus filters)
+      doFollowItem
+      Config.scrolloff
+      model
+      (TreeFor rname)
+  return $
+    MainTree
+      { mtFilters = filters
+      , mtHideHierarchyFilter = hhf
+      , mtTreeView = tv
+      , mtResourceName = rname
+      , mtKeymap = keymapToZipper rootKeymap
+      , mtShowDetails = False
+      , mtOverlay = Nothing
+      }
 
 -- | Toplevel app resource name, including all contained resources. This is a "cloning" routine.
 --
 -- TODO also handle overlays. To do this, AppComponent needs a function, which is prob a good idea.
 setResourceName :: AppResourceName -> MainTree -> MainTree
 setResourceName rname = (mtResourceNameL .~ rname) . (mtTreeViewL %~ TV.setResourceName rname)
-
--- TODO this probably shouldn't exist. And is prob a source of bugs
-mtListL :: Lens' MainTree TV.TreeViewList
-mtListL = mtTreeViewL . TV.tvListL
-
-mtSearchRxL :: Lens' MainTree (Maybe Regex)
-mtSearchRxL = mtTreeViewL . TV.tvSearchRxL
-
-mtDoFollowItemL :: Lens' MainTree Bool
-mtDoFollowItemL = mtTreeViewL . TV.tvDoFollowItemL
 
 -- * Keymaps
 
@@ -509,18 +560,21 @@ searchKeymap =
               onContinue = aerVoid . assign mtSearchRxL
               onConfirm (rx, ctype) = do
                 assign mtSearchRxL (Just rx)
-                case ctype of
-                  RegularConfirm -> searchForRxAction Forward True
-                  AltConfirm -> searchForRxSiblingAction Forward
+                zoom mtTreeViewL $ case ctype of
+                  RegularConfirm -> TV.searchForRxAction TV.Forward True
+                  AltConfirm -> TV.searchForRxSiblingAction TV.Forward
                 aerContinue
              in
               pushOverlay regexSearchEntryOverlay onContinue onConfirm
         )
-      , (kmLeafA_ (bind 'n') "Next match" $ searchForRxAction Forward False)
-      , (kmLeafA_ (bind 'N') "Prev match" $ searchForRxAction Backward False)
-      , (kmLeafA_ (meta 'n') "Next sibling match" $ searchForRxSiblingAction Forward)
+      , (kmLeafA_ (bind 'n') "Next match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Forward False)
+      , (kmLeafA_ (bind 'N') "Prev match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Backward False)
+      , (kmLeafA_ (meta 'n') "Next sibling match" $ zoom mtTreeViewL $ TV.searchForRxSiblingAction TV.Forward)
       , -- SOMEDAY it's pretty fucking annoying that we can't bind alt-shift (b/c it's occupied by aerospace)
-        (kmLeafA_ (ctrl 'n') "Next sibling match" $ searchForRxSiblingAction Backward)
+        ( kmLeafA_ (ctrl 'n') "Next sibling match" $
+            zoom mtTreeViewL $
+              TV.searchForRxSiblingAction TV.Backward
+        )
       , (kmLeafA_ (bind 'l') "Clear" $ mtSearchRxL .= Nothing)
       , (kmLeafA_ (ctrl 'l') "Clear" $ mtSearchRxL .= Nothing)
       ]
@@ -574,7 +628,7 @@ viewportKeymap =
     -- These all respect our scrolloff without doing this manually b/c they're dominated by our
     -- visibility requests in the rendering routine.
     -- SOMEDAY maybe these should be in MainTree
-    [ kmLeafA_ (bind 't') "Align to top" $ withSelIxViewportName $ \seli vp n -> do
+    [ kmLeafA_ (bind 't') "Align to top" $ withSelIxViewportName $ \seli _vp n -> do
         setTop (viewportScroll n) seli
     , kmLeafA_ (bind 'b') "Align to bottom" $ withSelIxViewportName $ \seli vp n -> do
         let vpHeight = snd (vp ^. vpSize)
@@ -603,23 +657,9 @@ debugKeymap =
         liftIO $ glogL INFO (show $ daNDescendantsByActionability . getDerivedAttr $ cura)
     ]
 
--- SOMEDAY these should be moved to another module.
-findFirstURL :: String -> Maybe String
-findFirstURL s = listToMaybe $ getAllTextMatches (s =~ urlPattern :: AllTextMatches [] String)
- where
-  urlPattern :: String
-  urlPattern = "(\\b[a-z]+://[a-zA-Z0-9./?=&-_%]+)"
-
-findFirstHexCode :: String -> Maybe String
-findFirstHexCode s = listToMaybe $ getAllTextMatches (s =~ pat :: AllTextMatches [] String)
- where
-  pat :: String
-  pat = "0x[0-9a-fA-F]+"
-
-openURL :: String -> IO ()
-openURL url = callProcess "open" [url]
-
 -- * Operations
+
+-- ** Overlays
 
 pushOverlay ::
   (AppComponent s a b) =>
@@ -638,6 +678,8 @@ pushOverlay mk onContinue onConfirm = do
   let rname = Component.OverlayFor 0 rootRname
   let ol = Overlay (mk rname) onContinue onConfirm
   mtOverlayL .= Just ol
+
+-- ** Item manipulation
 
 pushInsertNewItemRelToCur ::
   (?actx :: AppContext) => InsertWalker IdLabel -> EventM AppResourceName MainTree ()
@@ -680,15 +722,16 @@ touchLastStatusModified = withCur $ \cur ->
 -- TODO WIP
 --
 -- - Review everything actually.
--- - Check mtListL and its uses. I think there are two left and they can be moved into TreeView. They can also have a stateful interface.
--- - Delete unused functions
 -- - Check functions that shouldn't exist (should use TreeView instead)
 -- - Review everything against functions that should really be part of TreeView's interface. Also those go functions etc.
 -- - Harden the API of that a bit. Maybe hide a bunch of stuff in an export list.
 -- - Check for all TODOs just introduced in this commit.
--- - Change order of functions and move into categories / headings.
+-- - Change order of functions and move into categories / headings. See TreeView for a good example.
 
--- | SOMEDAY this shouldn't exist.
+-- ** Filters
+
+-- | Reset filter of the tree view to match our currently selected one here.
+-- SOMEDAY this shouldn't exist.
 resetTreeViewFilter :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
 resetTreeViewFilter = do
   fi <- gets mtFilter
@@ -717,81 +760,12 @@ selectFilterByName s = do
       mtFiltersL .= newFilters
       resetTreeViewFilter
 
-make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
-make root = makeWithFilters root (CList.fromList defaultFilters) emptyHideHierarchyFilter True
+-- ** Navigation
 
 moveRootToEID :: (?actx :: AppContext) => EID -> EventMOrNotFound AppResourceName MainTree ()
 moveRootToEID eid = zoom mtTreeViewL $ TV.moveRootToEID eid
 
--- | filters must not be empty.
-makeWithFilters ::
-  (?actx :: AppContext) =>
-  EID ->
-  CList.CList Filter ->
-  HideHierarchyFilter ->
-  Bool ->
-  Model ->
-  AppResourceName ->
-  Either IdNotFoundError MainTree
-makeWithFilters root filters hhf doFollowItem model rname = do
-  tv <-
-    TV.makeFromModel
-      root
-      (fromJust $ CList.focus filters)
-      doFollowItem
-      Config.scrolloff
-      model
-      (TreeFor rname)
-  return $
-    MainTree
-      { mtFilters = filters
-      , mtHideHierarchyFilter = hhf
-      , mtTreeView = tv
-      , mtResourceName = rname
-      , mtKeymap = keymapToZipper rootKeymap
-      , mtShowDetails = False
-      , mtOverlay = Nothing
-      }
-
--- TODO delete functions now duplicate with treeview
-
-searchForRxAction :: SearchDirection -> Bool -> EventM n MainTree ()
-searchForRxAction dir curOk = do
-  mrx <- use mtSearchRxL
-  case mrx of
-    Nothing -> return ()
-    Just rx -> mtListL %= searchForRx dir curOk rx
-
--- SOMEDAY if this is slow, we might instead go via the tree. Note that this has wrap-around, though.
-searchForRxSiblingAction :: SearchDirection -> EventM n MainTree ()
-searchForRxSiblingAction dir = do
-  mrx <- use mtSearchRxL
-  mCurAttr <- gets mtCurWithAttr
-  st <- gets mtSubtree
-  case (mrx, mCurAttr) of
-    (Just rx, Just (_i, curllabel)) ->
-      let curpar = stParentEID st curllabel
-       in mtListL %= searchForRxNextSibling dir rx curpar st
-    _ -> return ()
- where
-  searchForRxNextSibling Forward rx curpar st = L.listFindBy (p rx curpar st)
-  searchForRxNextSibling Backward rx curpar st = L.listFindBackwardsBy (p rx curpar st)
-  p rx curpar st itm = stParentEID st itm == curpar && nameMatchesRx rx itm
-
--- | Usage: `searchForRx direction doNothingIfCurrentMatches`
--- TODO should be part of TreeView's API
-searchForRx :: SearchDirection -> Bool -> Regex -> TV.TreeViewList -> TV.TreeViewList
-searchForRx _ True rx l | matchesRxCurrent rx l = l
-searchForRx Forward _ rx l = L.listFindBy (nameMatchesRx rx) l
-searchForRx Backward _ rx l = L.listFindBackwardsBy (nameMatchesRx rx) l
-
-nameMatchesRx :: (RegexLike regex String, HasAttr a) => regex -> a -> Bool
-nameMatchesRx rx itm = matchTest rx (gName itm)
-
-matchesRxCurrent :: Regex -> TV.TreeViewList -> Bool
-matchesRxCurrent rx l = case L.listSelectedElement l of
-  Just (_ix, itm) | matchTest rx (gName itm) -> True
-  _ -> False
+-- * Rendering
 
 -- SOMEDAY also deadline for the root (if any)?
 renderRoot :: ZonedTime -> Label -> [IdLabel] -> Widget n
@@ -991,6 +965,8 @@ renderStatusActionabilityCounts sac =
           withAttr (actionabilityAttr False Someday) $
             hBox [renderStatus False Project Someday, sepMarkerCount, str . show $ n, sep]
 
+-- * Component instance
+
 -- | We use `Confirmed ()` to indicate that the user *asked* to exit and `Canceled ()` to indicate
 -- that there was some kind of issue and the tab had to close (e.g., the parent was deleted.)
 --
@@ -1114,41 +1090,6 @@ instance AppComponent MainTree () () where
       _ : c : _ -> Just c
       _ -> Nothing
     rootName = name (fst . rootLabel . mtSubtree $ s)
-
-mtCur :: MainTree -> Maybe EID
-mtCur = TV.tvCur . mtTreeView
-
--- SOMEDAY I think we can just return the ListIdLabel instead.
-mtCurWithAttr :: MainTree -> Maybe LocalIdLabel
-mtCurWithAttr = TV.tvCurWithAttr . mtTreeView
-
-withCurOrElse ::
-  EventM n MainTree a -> (EID -> EventM n MainTree a) -> EventM n MainTree a
-withCurOrElse dflt go = do
-  s <- get
-  case mtCur s of
-    Just cur -> go cur
-    Nothing -> dflt
-
-withCur ::
-  (EID -> EventM n MainTree ()) -> EventM n MainTree ()
-withCur = withCurOrElse (return ())
-
-withCurWithAttr ::
-  (LocalIdLabel -> EventM n MainTree ()) -> EventM n MainTree ()
-withCurWithAttr = withCurWithAttrOrElse (return ())
-
-withCurWithAttrOrElse ::
-  EventM n MainTree a -> (LocalIdLabel -> EventM n MainTree a) -> EventM n MainTree a
-withCurWithAttrOrElse dflt go = do
-  s <- get
-  case mtCurWithAttr s of
-    Just cura -> go cura
-    Nothing -> dflt
-
-withRoot ::
-  (EID -> EventM n MainTree ()) -> EventM n MainTree ()
-withRoot go = go =<< gets mtRoot
 
 -- TODO some of these should be part of TreeView
 
