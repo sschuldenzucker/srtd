@@ -67,6 +67,7 @@ data AppResourceName
   | Tab Int
   | TabTitleFor AppResourceName
   | EditorFor AppResourceName
+  | TreeFor AppResourceName
   deriving (Eq, Ord, Show)
 
 -- | App conext passed down from the app (top) level to components that need it.

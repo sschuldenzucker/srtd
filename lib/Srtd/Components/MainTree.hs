@@ -13,27 +13,22 @@ import Brick.Keybindings (Binding, bind, ctrl, meta)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
-import Control.Applicative (asum)
 import Control.Monad (when)
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
-import Data.CircularList qualified as CList
+import Data.CircularList as CList
 import Data.Functor (void)
-import Data.List (intersperse, maximumBy, minimumBy)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe)
-import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (UTCTime, ZonedTime, zonedTimeToUTC, zonedTimeZone)
 import Data.Tree (Tree (Node))
 import Data.UUID.V4 (nextRandom)
-import Data.Vector qualified as Vec
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
-import Graphics.Vty.Input (Button (..))
 import Lens.Micro.Platform
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
@@ -45,41 +40,33 @@ import Srtd.Component qualified as Component
 import Srtd.Components.Attr (
   actionabilityAttr,
   mostUrgentDateAttr,
-  renderLastModified,
-  renderMostUrgentDate,
   renderMostUrgentDateMaybe,
   renderStatus,
  )
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.RegexSearchEntryOverlay
-import Srtd.Components.TreeView hiding (
-  forestToBrickList,
-  listScrollMoveBy,
-  maybePrefixSelAttr,
-  pullNewModel,
-  renderRow,
-  replaceSubtree,
-  resetListPosition,
-  resetListPositionFollow,
-  resetListPositionIndex,
- )
+import Srtd.Components.TreeView qualified as TV
 import Srtd.Config qualified as Config
 import Srtd.Data.IdTree
 import Srtd.Data.MapLike qualified as MapLike
 import Srtd.Data.TreeZipper
-import Srtd.Dates (DateOrTime (..), cropDate, prettyAbsolute)
+import Srtd.Dates (DateOrTime (..), prettyAbsolute)
 import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
 import Srtd.ModelServer
-import Srtd.Todo
 import Srtd.Util
 import System.Hclip (setClipboard)
 import System.Process (callProcess)
 import Text.Regex.TDFA (AllTextMatches (getAllTextMatches), RegexLike (..), (=~))
 import Text.Regex.TDFA.Common (Regex)
 import Text.Wrap (WrapSettings (..), defaultWrapSettings)
+
+-- * Overlay infra
+
+-- SOMEDAY can we make this a more general thing? Then also review how specific types have to be.
+-- (probably not very specific.)
 
 -- | A class for overlays. Two callbacks define interruptible computations. Note that this doesn't
 -- store state of the computation *itself*.
@@ -98,13 +85,14 @@ data Overlay = forall s a b. (AppComponent s a b) => Overlay
 overlayNoop :: (Monad m) => p -> m (AppEventReturn () b)
 overlayNoop _ = aerContinue
 
+-- * Main Data Structure
+
 data SearchDirection = Forward | Backward
 
 data MainTree = MainTree
-  { mtRoot :: EID
-  , mtFilters :: CList.CList Filter
-  , mtSubtree :: Subtree
-  , mtList :: TreeViewList
+  -- TODO update tree view filter with current mt filter. OR re-implement the CList stuff to make tree view.filter = cur (the hole) but no.
+  { mtFilters :: CList.CList Filter
+  , mtTreeView :: TV.TreeView
   , mtResourceName :: AppResourceName
   -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
   , mtKeymap :: KeymapZipper (AppEventAction MainTree () ())
@@ -115,21 +103,10 @@ data MainTree = MainTree
   -- ^ Active overlay, if any. If this is 'Just', events are forwarded to the overlay.
   --
   -- SOMEDAY do I want to make a wrapper for "things that have overlays" that *consistenly* handles everything?
-  , mtSearchRx :: Maybe Regex
-  -- ^ Regex to use for highlighting and search
   , mtHideHierarchyFilter :: HideHierarchyFilter
-  , mtDoFollowItem :: Bool
-  -- ^ Whether to follow an item when it's moving due to status update or deletion
   }
 
 suffixLenses ''MainTree
-
-mtFilter :: MainTree -> Filter
-mtFilter mt = chainFilters collapseFilter normalFilter
- where
-  collapseFilter = hideHierarchyFilter . mtHideHierarchyFilter $ mt
-  normalFilter = fromJust . CList.focus . mtFilters $ mt
--- ^ NB we know that filters will be non-empty.
 
 -- The first one is default selected.
 defaultFilters :: [Filter]
@@ -145,10 +122,39 @@ defaultFilters =
   , f_all
   ]
 
--- * Overlay infra
+-- ** Convenience Accessors
 
--- SOMEDAY can we make this a more general thing? Then also review how specific types have to be.
--- (probably not very specific.)
+-- TODO this shouldn't exist
+mtFilter :: MainTree -> Filter
+mtFilter mt = chainFilters collapseFilter normalFilter
+ where
+  collapseFilter = hideHierarchyFilter . mtHideHierarchyFilter $ mt
+  normalFilter = fromJust . CList.focus . mtFilters $ mt
+-- ^ NB we know that filters will be non-empty.
+
+mtSubtree :: MainTree -> Subtree
+mtSubtree = TV.tvSubtree . mtTreeView
+
+mtRoot :: MainTree -> EID
+mtRoot = root . mtSubtree
+
+-- * API
+
+-- | Toplevel app resource name, including all contained resources. This is a "cloning" routine.
+--
+-- TODO also handle overlays. To do this, AppComponent needs a function, which is prob a good idea.
+setResourceName :: AppResourceName -> MainTree -> MainTree
+setResourceName rname = (mtResourceNameL .~ rname) . (mtTreeViewL %~ TV.setResourceName rname)
+
+-- TODO this probably shouldn't exist. And is prob a source of bugs
+mtListL :: Lens' MainTree TV.TreeViewList
+mtListL = mtTreeViewL . TV.tvListL
+
+mtSearchRxL :: Lens' MainTree (Maybe Regex)
+mtSearchRxL = mtTreeViewL . TV.tvSearchRxL
+
+mtDoFollowItemL :: Lens' MainTree Bool
+mtDoFollowItemL = mtTreeViewL . TV.tvDoFollowItemL
 
 -- * Keymaps
 
@@ -168,8 +174,7 @@ rootKeymap =
                 let cb name' = aerVoid $ do
                       let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
                       modifyModelAsync $ modifyAttrByEID cur f
-                      -- NB we wouldn't need to return anything here; it's just to make the interface happy (and also the most correct approximation for behavior)
-                      mtListL %= scrollListToEID cur
+                      zoom mtTreeViewL $ TV.scrollToEID cur
                 pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb
               Nothing -> return ()
         )
@@ -215,15 +220,15 @@ rootKeymap =
         (kmSub (bind 'M') moveSubtreeModeKeymap)
       , (kmSub (bind 'D') deleteKeymap)
       , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse aerContinue $ \cur -> do
-            notFoundToAER_ $ moveToEID cur
+            notFoundToAER_ $ moveRootToEID cur
         )
       , ( kmLeafA (binding KBS []) "De-hoist" $ do
             mt <- get
-            case mt ^. mtSubtreeL . breadcrumbsL of
+            case breadcrumbs . mtSubtree $ mt of
               [] -> aerContinue
               (par, _) : _ -> notFoundToAER_ $ do
-                moveToEID par
-                modify (mtListL %~ scrollListToEID (mtRoot mt))
+                moveRootToEID par
+                zoom mtTreeViewL $ lift $ TV.scrollToEID (mtRoot mt)
         )
       , (kmSub (bind ';') sortKeymap)
       , (kmLeafA_ (bind 'h') "Go to parent" (modify (mtGoSubtreeFromCur goParent)))
@@ -246,7 +251,7 @@ rootKeymap =
             "Un/collapse"
             ( withCurOrElse aerContinue $ \cur -> do
                 modify (mtHideHierarchyFilterL %~ hhfToggle cur)
-                notFoundToAER_ pullNewModel
+                notFoundToAER_ reloadModel
             )
         )
       , ( kmLeafA
@@ -254,12 +259,13 @@ rootKeymap =
             "Uncollapse all"
             ( do
                 modify (mtHideHierarchyFilterL .~ emptyHideHierarchyFilter)
-                notFoundToAER_ pullNewModel
+                notFoundToAER_ reloadModel
             )
         )
       , kmSub (bind ' ') spaceKeymap
-      , kmLeafA_ (bind 'j') "Move down" (moveListBy 1)
-      , kmLeafA_ (bind 'k') "Move up" (moveListBy (-1))
+      , -- TODO seems obsolete, we can just pass on to TreeView
+        kmLeafA_ (bind 'j') "Move down" (zoom mtTreeViewL $ TV.moveBy 1)
+      , kmLeafA_ (bind 'k') "Move up" (zoom mtTreeViewL $ TV.moveBy (-1))
       , kmSub (bind 'z') viewportKeymap
       ]
     )
@@ -311,7 +317,7 @@ collapseLevelKeymap =
           notFoundToAER_ $ do
             subtree <- pureET $ translateAppFilterContext $ runFilter normalFilter root model'
             lift $ mtHideHierarchyFilterL .= subtreeLevelHHF i subtree
-            pullNewModel
+            reloadModel
       )
   subtreeLevelHHF i subtree = HideHierarchyFilter (Set.fromList $ forestIdsAtLevel i (stForest subtree))
 
@@ -366,7 +372,7 @@ editDateKeymap =
     let cb date' = aerVoid $ do
           let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runALens' l0 .~ date')
           modifyModelAsync $ modifyAttrByEID cur f
-          mtListL %= scrollListToEID cur
+          zoom mtTreeViewL $ TV.scrollToEID cur
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
      in pushOverlay mkDateEdit overlayNoop cb
 
@@ -452,44 +458,45 @@ goKeymap =
   kmMake
     "Go to"
     -- We need to redefine 'g' b/c we just overwrote the default binding from list.
-    [ kmLeafA_ (bind 'g') "Top" $ moveListToBeginning
+    [ kmLeafA_ (bind 'g') "Top" $ zoom mtTreeViewL $ TV.moveToBeginning
     , -- For completeness
-      kmLeafA_ (bind 'e') "End" $ moveListToEnd
+      kmLeafA_ (bind 'e') "End" $ zoom mtTreeViewL $ TV.moveToEnd
     , ( kmLeafA (binding KBS []) "De-hoist, keep pos" $ do
           -- SOMEDAY some code duplication vs the other de-hoist.
           mt <- get
-          case mt ^. mtSubtreeL . breadcrumbsL of
+          case breadcrumbs . mtSubtree $ mt of
             [] -> aerContinue
             (par, _) : _ -> notFoundToAER_ $ do
-              moveToEID par
+              moveRootToEID par
               -- This is to stay at the current position, but if the subtree is empty, it
               -- should still do something for ergonomics, so we instead behave like the regular
               -- "de-hoist".
               let tgt = fromMaybe (mtRoot mt) (mtCur mt)
-              modify (mtListL %~ scrollListToEID tgt)
+              zoom mtTreeViewL $ lift $ TV.scrollToEID tgt
       )
     , ( kmLeafA (binding KEnter []) "Hoist 1 step, keep pos" $ withCurWithAttrOrElse aerContinue $ \(cur, llabel) ->
           case reverse (gLocalBreadcrumbs llabel) of
             [] ->
               -- toplevel element, behave like Hoist (this is prob intended)
-              notFoundToAER_ $ moveToEID cur
+              notFoundToAER_ $ moveRootToEID cur
             (par : _) -> notFoundToAER_ $ do
-              moveToEID (gEID par)
-              mtListL %= scrollListToEID cur
+              moveRootToEID (gEID par)
+              zoom mtTreeViewL $ lift $ TV.scrollToEID cur
       )
-    , kmLeafA_ (bind 't') "Window top" $ withViewport $ \vp -> do
+    , -- SOMEDAY I think some of this functionality should be in TreeView
+      kmLeafA_ (bind 't') "Window top" $ withViewport $ \vp -> do
         let tgtIx = (vp ^. vpTop) + Config.scrolloff
-        moveListToIndex tgtIx
+        zoom mtTreeViewL $ TV.moveToIndex tgtIx
     , kmLeafA_ (bind 'b') "Window bottom" $ withViewport $ \vp -> do
         let tgtIx = vp ^. vpTop + snd (vp ^. vpSize) - Config.scrolloff - 1
-        moveListToIndex tgtIx
+        zoom mtTreeViewL $ TV.moveToIndex tgtIx
     , kmLeafA_ (bind 'c') "Window center" $ withViewport $ \vp -> do
         let tgtIx = vp ^. vpTop + snd (vp ^. vpSize) `div` 2
-        moveListToIndex tgtIx
+        zoom mtTreeViewL $ TV.moveToIndex tgtIx
     ]
  where
   withViewport go = do
-    mvp <- lookupViewport =<< gets (getName . mtList)
+    mvp <- lookupViewport =<< gets (getName . TV.tvList . mtTreeView)
     maybe (return ()) go mvp
 
 searchKeymap :: Keymap (AppEventAction MainTree () b)
@@ -542,7 +549,7 @@ spaceKeymap =
                      in hhfSetCollapseds c_eids val hhf
               mtHideHierarchyFilterL
                 %= (hhfSetCollapseds [cur] False . f)
-              pullNewModel
+              reloadModel
         )
     , kmLeafA_ (bind 'n') "New as parent" $ withCur $ \cur -> do
         -- Copied from 'pushInsertNewItemRelToCur' but that function can't handle "insert as parent".
@@ -554,7 +561,7 @@ spaceKeymap =
                 Left _err -> return Canceled
                 Right () -> do
                   let eid = EIDNormal uuid
-                  mtListL %= scrollListToEID eid
+                  zoom mtTreeViewL $ TV.scrollToEID eid
                   aerContinue
         pushOverlay (newNodeOverlay "" "New Item as Parent") overlayNoop cb
     ]
@@ -566,6 +573,7 @@ viewportKeymap =
     -- These all don't respect item height != 1
     -- These all respect our scrolloff without doing this manually b/c they're dominated by our
     -- visibility requests in the rendering routine.
+    -- SOMEDAY maybe these should be in MainTree
     [ kmLeafA_ (bind 't') "Align to top" $ withSelIxViewportName $ \seli vp n -> do
         setTop (viewportScroll n) seli
     , kmLeafA_ (bind 'b') "Align to bottom" $ withSelIxViewportName $ \seli vp n -> do
@@ -576,12 +584,12 @@ viewportKeymap =
         let vpHeight = snd (vp ^. vpSize)
             topOff = max 0 (seli - vpHeight `div` 2)
         setTop (viewportScroll n) topOff
-    , kmLeafA_ (bind 'j') "Scroll down" $ scrollListBy 3
-    , kmLeafA_ (bind 'k') "Scroll up" $ scrollListBy (-3)
+    , kmLeafA_ (bind 'j') "Scroll down" $ zoom mtTreeViewL $ TV.scrollBy 3
+    , kmLeafA_ (bind 'k') "Scroll up" $ zoom mtTreeViewL $ TV.scrollBy (-3)
     ]
  where
   withSelIxViewportName go = void $ runMaybeT $ do
-    l <- gets mtList
+    l <- gets (TV.tvList . mtTreeView)
     let n = getName l
     seli <- hoistMaybe (L.listSelected l)
     vp <- MaybeT $ lookupViewport n
@@ -653,7 +661,7 @@ pushInsertNewItemRelToCur go = do
           Left _err -> return Canceled
           Right () -> do
             let eid = EIDNormal uuid
-            mtListL %= scrollListToEID eid
+            zoom mtTreeViewL $ TV.scrollToEID eid
             aerContinue
   pushOverlay (newNodeOverlay "" "New Item") overlayNoop cb
 
@@ -669,17 +677,35 @@ touchLastStatusModified = withCur $ \cur ->
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx)
      in modifyAttrByEID cur f
 
-cycleNextFilter :: (?actx :: AppContext) => EventMOrNotFound n MainTree ()
+-- TODO WIP
+--
+-- - Review everything actually.
+-- - Check mtListL and its uses. I think there are two left and they can be moved into TreeView. They can also have a stateful interface.
+-- - Delete unused functions
+-- - Check functions that shouldn't exist (should use TreeView instead)
+-- - Review everything against functions that should really be part of TreeView's interface. Also those go functions etc.
+-- - Harden the API of that a bit. Maybe hide a bunch of stuff in an export list.
+-- - Check for all TODOs just introduced in this commit.
+-- - Change order of functions and move into categories / headings.
+
+-- | SOMEDAY this shouldn't exist.
+resetTreeViewFilter :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
+resetTreeViewFilter = do
+  fi <- gets mtFilter
+  zoom mtTreeViewL $ TV.replaceFilter fi
+
+cycleNextFilter :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
 cycleNextFilter = do
   mtFiltersL %= CList.rotR
-  pullNewModel
+  resetTreeViewFilter
 
-cyclePrevFilter :: (?actx :: AppContext) => EventMOrNotFound n MainTree ()
+cyclePrevFilter :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
 cyclePrevFilter = do
   mtFiltersL %= CList.rotL
-  pullNewModel
+  resetTreeViewFilter
 
-selectFilterByName :: (?actx :: AppContext) => String -> EventMOrNotFound n MainTree ()
+selectFilterByName ::
+  (?actx :: AppContext) => String -> EventMOrNotFound AppResourceName MainTree ()
 selectFilterByName s = do
   -- We don't use the following short form for updating to propagate the error right.
   -- mtFiltersL %= (fromMaybe <*> CList.findRotateTo ((== s) . fiName))
@@ -689,29 +715,13 @@ selectFilterByName s = do
     Nothing -> throwError IdNotFoundError
     Just newFilters -> do
       mtFiltersL .= newFilters
-      pullNewModel
+      resetTreeViewFilter
 
 make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
 make root = makeWithFilters root (CList.fromList defaultFilters) emptyHideHierarchyFilter True
 
--- | Move the tree to any EID, preserving settings. Returns an error if that EID doesn't exist
--- (presumably b/c it was deleted). Then nothing is updated.
-moveToEID ::
-  (?actx :: AppContext) => EID -> EventMOrNotFound n MainTree ()
-moveToEID eid = do
-  mt <- get
-  model <- liftIO $ getModel (acModelServer ?actx)
-  -- NB we can re-use the resource name b/c we're updating ourselves
-  mt' <-
-    pureET $
-      makeWithFilters
-        eid
-        (mtFilters mt)
-        (mtHideHierarchyFilter mt)
-        (mtDoFollowItem mt)
-        model
-        (mtResourceName mt)
-  put mt'
+moveRootToEID :: (?actx :: AppContext) => EID -> EventMOrNotFound AppResourceName MainTree ()
+moveRootToEID eid = zoom mtTreeViewL $ TV.moveRootToEID eid
 
 -- | filters must not be empty.
 makeWithFilters ::
@@ -724,30 +734,26 @@ makeWithFilters ::
   AppResourceName ->
   Either IdNotFoundError MainTree
 makeWithFilters root filters hhf doFollowItem model rname = do
-  subtree <-
-    translateAppFilterContext $
-      runFilter (chainFilters (hideHierarchyFilter hhf) (fromJust $ CList.focus filters)) root model
-  let list = forestToBrickList (MainListFor rname) $ stForest subtree
-  return
+  tv <-
+    TV.makeFromModel
+      root
+      (fromJust $ CList.focus filters)
+      doFollowItem
+      Config.scrolloff
+      model
+      (TreeFor rname)
+  return $
     MainTree
-      { mtRoot = root
-      , mtFilters = filters
-      , mtSubtree = subtree
-      , mtList = list
+      { mtFilters = filters
+      , mtHideHierarchyFilter = hhf
+      , mtTreeView = tv
       , mtResourceName = rname
       , mtKeymap = keymapToZipper rootKeymap
       , mtShowDetails = False
       , mtOverlay = Nothing
-      , mtSearchRx = Nothing
-      , mtHideHierarchyFilter = hhf
-      , mtDoFollowItem = doFollowItem
       }
 
-forestToBrickList :: AppResourceName -> STForest -> TreeViewList
-forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
- where
-  contents =
-    map (\(i, attr) -> ListIdLabel (gLocalLevel attr) i attr) . forestFlattenToList . idForest $ forest
+-- TODO delete functions now duplicate with treeview
 
 searchForRxAction :: SearchDirection -> Bool -> EventM n MainTree ()
 searchForRxAction dir curOk = do
@@ -759,7 +765,7 @@ searchForRxAction dir curOk = do
 -- SOMEDAY if this is slow, we might instead go via the tree. Note that this has wrap-around, though.
 searchForRxSiblingAction :: SearchDirection -> EventM n MainTree ()
 searchForRxSiblingAction dir = do
-  mrx <- gets mtSearchRx
+  mrx <- use mtSearchRxL
   mCurAttr <- gets mtCurWithAttr
   st <- gets mtSubtree
   case (mrx, mCurAttr) of
@@ -773,7 +779,8 @@ searchForRxSiblingAction dir = do
   p rx curpar st itm = stParentEID st itm == curpar && nameMatchesRx rx itm
 
 -- | Usage: `searchForRx direction doNothingIfCurrentMatches`
-searchForRx :: SearchDirection -> Bool -> Regex -> TreeViewList -> TreeViewList
+-- TODO should be part of TreeView's API
+searchForRx :: SearchDirection -> Bool -> Regex -> TV.TreeViewList -> TV.TreeViewList
 searchForRx _ True rx l | matchesRxCurrent rx l = l
 searchForRx Forward _ rx l = L.listFindBy (nameMatchesRx rx) l
 searchForRx Backward _ rx l = L.listFindBackwardsBy (nameMatchesRx rx) l
@@ -781,96 +788,10 @@ searchForRx Backward _ rx l = L.listFindBackwardsBy (nameMatchesRx rx) l
 nameMatchesRx :: (RegexLike regex String, HasAttr a) => regex -> a -> Bool
 nameMatchesRx rx itm = matchTest rx (gName itm)
 
-matchesRxCurrent :: Regex -> TreeViewList -> Bool
+matchesRxCurrent :: Regex -> TV.TreeViewList -> Bool
 matchesRxCurrent rx l = case L.listSelectedElement l of
   Just (_ix, itm) | matchTest rx (gName itm) -> True
   _ -> False
-
--- TODO this function shouldn't exist. Instead proper inheritance.
-maybePrefixSelAttr :: Bool -> AttrName -> AttrName
-maybePrefixSelAttr True a = AppAttr.selected_item_row <> a
-maybePrefixSelAttr False a = a
-
-renderRow :: ZonedTime -> Maybe Regex -> Maybe Int -> Int -> Bool -> ListIdLabel -> Widget n
-renderRow
-  ztime
-  mrx
-  mseli
-  i
-  sel
-  -- SOMEDAY these can be made way simpler using universal accessors (`g*`)
-  ( ListIdLabel
-      lvl
-      _
-      llabel@( ( Attr {name, status, dates, autoDates = AttrAutoDates {}}
-                 , DerivedAttr {daImpliedDates, daLatestAutodates}
-                 )
-               , _
-               )
-    ) =
-    visi $
-      withSelAttr sel $
-        hBox $
-          -- previous version. We prob don't wanna bring this back b/c it's not flexible enough (e.g., we can't fill), and it's not very complicated anyways.
-          -- alignColumns [AlignLeft, AlignLeft] [2, 80] [renderMaybeStatus sel status, renderName lvl name]
-          -- Ideally we'd have a table-list hybrid but oh well. NB this is a bit hard b/c of widths and partial drawing.
-          -- NB the `nameW` is a bit flakey. We need to apply padding in this order, o/w some things are not wide enough.
-          -- I think it's so we don't have two greedy widgets or something.
-          -- TODO attr management really broken here, and I'm not sure how I'd fix.
-          [ withDefAttr (maybePrefixSelAttr sel $ attrName "dates_column") . hBox $
-              [ lastStatusModifiedW
-              , str " "
-              , dateW
-              ]
-          , indentW
-          , collapsedW
-          , statusW
-          , str " "
-          , padRight Max nameW
-          ]
-   where
-    -- Scrolloff
-    visi = case mseli of
-      Nothing -> id -- either nothing selected OR window too small
-      Just seli ->
-        if seli - Config.scrolloff <= i && i <= seli + Config.scrolloff then visible else id
-
-    -- The first level doesn't take indent b/c deadlines are enough rn.
-    indentW = str (concat (replicate lvl "    "))
-    collapsedW =
-      -- NB the symbol means that something is hidden; this is subtly different form ldIsCollapsed.
-      if (ldHiddenChildren . getLocalDerivedAttr $ llabel) > 0
-        -- if (ldIsCollapsed . getLocalDerivedAttr $ llabel)
-        -- SOMEDAY not sure if this is the prettiest character, here are some alternatives:
-        then withDefAttr AppAttr.collapsed_marker (str "▸")
-        -- then withDefAttr collapsed_marker (str "›")
-        -- then withDefAttr collapsed_marker (str "►")
-        -- then withDefAttr collapsed_marker (str "▷")
-        else str " "
-    -- EXPERIMENTAL: Show also implied dates "upwards" from children.
-    -- SOMEDAY It might be confusing if the implied date comes from children or parent, maybe use different style or marker
-    -- was: theDates = daImpliedDates
-    theDates = gEarliestImpliedOrChildDates (zonedTimeZone ztime) llabel
-    dateW = renderMostUrgentDate ztime sel dates theDates
-    -- EXPERIMENTAL: Show *latest* lastStatusModified including children, not just of the item itself.
-    lastStatusModifiedW =
-      renderLastModified ztime sel $
-        cropDate (zonedTimeZone ztime) (DateAndTime (lastStatusModified daLatestAutodates))
-    statusW = renderStatus sel status (gLocalActionability llabel)
-    nameW = case mrx of
-      Nothing -> strTruncateAvailable name
-      -- SOMEDAY kinda bad performance that we re-match on every draw. If this becomes an issue, we
-      -- could cache 'chunks' as part of the list. (the list entries would have a different data
-      -- type then, needs some work but is fine)
-      Just rx ->
-        -- SOMEDAY this shouldn't be necessary; we should always use Text.
-        let tname = T.pack name
-            chunksMatches = regexSplitWithMatches rx tname
-            chunks = for chunksMatches $ \(isMatch, s) -> withDefAttrIf matchedTextAttr isMatch (txt s)
-         in -- NB we don't need 'truncateAvailable' here. I think when it's in an hBox, it automatically does this.
-            hBox chunks
-    -- Just another instance of why the attr system kinda sucks.
-    matchedTextAttr = if sel then attrName "selected" <> attrName "text_match" else attrName "text_match"
 
 -- SOMEDAY also deadline for the root (if any)?
 renderRoot :: ZonedTime -> Label -> [IdLabel] -> Widget n
@@ -1077,13 +998,11 @@ renderStatusActionabilityCounts sac =
 instance AppComponent MainTree () () where
   renderComponentWithOverlays
     s@MainTree
-      { mtList
-      , mtSubtree = Subtree {rootLabel, breadcrumbs}
+      { mtTreeView =
+        mtTreeView@(TV.TreeView {tvSubtree = Subtree {rootLabel, breadcrumbs}, tvDoFollowItem})
       , mtFilters
       , mtShowDetails
       , mtOverlay
-      , mtSearchRx
-      , mtDoFollowItem
       } =
       (box, catMaybes [ovl, detailsOvl])
      where
@@ -1099,14 +1018,8 @@ instance AppComponent MainTree () () where
             , str " "
             , doFollowBox
             ]
-      doFollowBox = withDefAttr AppAttr.follow_box $ str (if mtDoFollowItem then "(follow)" else "(keep)")
-      listW = Widget Greedy Greedy $ do
-        c <- getContext
-        -- NB this doesn't quite work as expected, but it avoids a situation where the selected row
-        -- wouldn't be visible anymore, which is all we need for now.
-        let canFitScrolloff = availHeight c >= Config.scrolloff
-            mseli = if canFitScrolloff then (L.listSelected mtList) else Nothing
-        render $ L.renderListWithIndex (renderRow now mtSearchRx mseli) True mtList
+      doFollowBox = withDefAttr AppAttr.follow_box $ str (if tvDoFollowItem then "(follow)" else "(keep)")
+      listW = renderComponent mtTreeView
       statusBarW =
         withDefAttr AppAttr.header_row $
           padRight Max (txt " CUR" <+> selectedBreadcrumbsW) <+> statusBarRightW
@@ -1135,26 +1048,10 @@ instance AppComponent MainTree () () where
 
   handleEvent ev =
     -- TODO process the Tick event and update its filter b/c last-modified now depends on time (in a hacky way). - Or maybe explicitly don't and add a manual refresh??
-    wrappingActions $ do
-      listRName <- use (mtListL . L.listNameL)
+    wrappingActions $
       case ev of
-        -- Map Down to vi j and Up to vi k. This also handles basic mouse wheel scroll if mouse
-        -- support is not activated (see Main.hs / brick mouse example)
-        -- NB we don't receive these for mouse scroll if mouse support is activated. See below.
-        -- NB the following are basically modifications to list. If we need more of these, we should
-        -- make a function / wrapper.
-        (VtyEvent (EvKey KDown [])) -> handleEvent (VtyEvent (EvKey (KChar 'j') []))
-        (VtyEvent (EvKey KUp [])) -> handleEvent (VtyEvent (EvKey (KChar 'k') []))
-        -- Mouse support
-        (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
-          | rname' == listRName -> aerVoid $ moveListToIndex rown
-        (MouseDown rname' BScrollDown [] _)
-          | rname' == listRName -> aerVoid $ scrollListBy 3
-        (MouseDown rname' BScrollUp [] _)
-          | rname' == listRName -> aerVoid $ scrollListBy (-3)
-        -- zoom mtListL $ L.listMoveByPages (0.3 :: Double)
         -- Keymap
-        (VtyEvent e@(EvKey key mods)) -> do
+        (VtyEvent (EvKey key mods)) -> do
           keymap <- use mtKeymapL
           liftIO $ glogL DEBUG $ "handle a key from keymap"
           case kmzLookup keymap key mods of
@@ -1168,7 +1065,7 @@ instance AppComponent MainTree () () where
               (VtyEvent (EvKey KBS [])) -> aerVoid $ mtKeymapL %= kmzUp
               _ -> do
                 liftIO $ glogL DEBUG "handle fallback"
-                handleFallback e
+                handleFallback ev
             LeafResult act nxt -> do
               liftIO $ glogL DEBUG "handle leaf"
               res <- runAppEventAction act
@@ -1178,13 +1075,12 @@ instance AppComponent MainTree () () where
               liftIO $ glogL DEBUG "handle submap"
               mtKeymapL .= sm
               aerContinue
-        (VtyEvent e) -> handleFallback e
-        _miscEvents -> aerContinue
+        _miscEvents -> handleFallback ev
    where
     wrappingActions actMain = notFoundToAER $ do
       -- <<Global updates that should happen even if there's an active overlay would go here.>>
       case ev of
-        (AppEvent (ModelUpdated _)) -> pullNewModel
+        (AppEvent (ModelUpdated _)) -> reloadModel
         _ -> return ()
 
       -- Now pass the event to either the overlay or to our main function.
@@ -1201,32 +1097,30 @@ instance AppComponent MainTree () () where
               Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
               Canceled -> mtOverlayL .= Nothing >> aerContinue
           Nothing -> actMain
-    handleFallback e = do
-      zoom mtListL $ L.handleListEventVi (const $ return ()) e
-      aerContinue
+    handleFallback e = zoom mtTreeViewL $ handleEvent e
 
   componentKeyDesc s = case mtOverlay s of
     Nothing -> kmzDesc . mtKeymap $ s
     Just (Overlay ol _ _) -> (componentKeyDesc ol) {kdIsToplevel = False} -- always show key help for overlays
 
   -- "Root name - Realm" unless the Realm is the root itself, or higher.
-  componentTitle MainTree {mtSubtree} = T.pack $ pathStr
+  componentTitle s = T.pack $ pathStr
    where
     -- pathStr = intercalate " < " $ name (rootAttr mtSubtree) : [name attr | (_, attr) <- (breadcrumbs mtSubtree)]
     pathStr = case mRealmBreadcrumb of
       Nothing -> rootName
       Just (_, (c, _)) -> rootName ++ " - " ++ name c
-    mRealmBreadcrumb = case reverse (breadcrumbs mtSubtree) of
+    mRealmBreadcrumb = case reverse (breadcrumbs . mtSubtree $ s) of
       _ : c : _ -> Just c
       _ -> Nothing
-    rootName = name (fst . rootLabel $ mtSubtree)
+    rootName = name (fst . rootLabel . mtSubtree $ s)
 
 mtCur :: MainTree -> Maybe EID
-mtCur (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, itm) -> lilEID itm)
+mtCur = TV.tvCur . mtTreeView
 
 -- SOMEDAY I think we can just return the ListIdLabel instead.
 mtCurWithAttr :: MainTree -> Maybe LocalIdLabel
-mtCurWithAttr (MainTree {mtList}) = L.listSelectedElement mtList & fmap (\(_, itm) -> listIdLabel2LocalIdLabel itm)
+mtCurWithAttr = TV.tvCurWithAttr . mtTreeView
 
 withCurOrElse ::
   EventM n MainTree a -> (EID -> EventM n MainTree a) -> EventM n MainTree a
@@ -1254,10 +1148,9 @@ withCurWithAttrOrElse dflt go = do
 
 withRoot ::
   (EID -> EventM n MainTree ()) -> EventM n MainTree ()
-withRoot go = do
-  s <- get
-  let root = mtRoot s
-  go root
+withRoot go = go =<< gets mtRoot
+
+-- TODO some of these should be part of TreeView
 
 -- | Helper for relative move operations.
 --
@@ -1273,7 +1166,7 @@ withRoot go = do
 moveCurRelative ::
   (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> EventM n MainTree ()
 moveCurRelative go ins = withCur $ \cur -> do
-  forest <- use $ mtSubtreeL . stForestL
+  forest <- gets (stForest . mtSubtree)
   -- The temporary follow setting makes sure we follow our item around. This is sync so that the temporary setting works. (:())
   withLensValue mtDoFollowItemL True $
     modifyModelSync_ (moveSubtreeRelFromForest cur go ins forest)
@@ -1284,34 +1177,36 @@ moveCurRelativeDynamic ::
   DynamicMoveWalker LocalIdLabel IdLabel ->
   EventM n MainTree ()
 moveCurRelativeDynamic dgo = withCur $ \cur -> do
-  forest <- use $ mtSubtreeL . stForestL
+  forest <- gets (stForest . mtSubtree)
   withLensValue mtDoFollowItemL True $
     modifyModelSync_ (moveSubtreeRelFromForestDynamic cur dgo forest)
 
 -- | Modify the model and *synchronously* pull the new model. Currently required when adding nodes.
 --
--- SOMEDAY Synchronicity is a design issue really.
+-- SOMEDAY Synchronicity is a design issue really. Also, we're gonna get another ModelUpdated event
+-- and then refresh a second time, which is bad.
 modifyModelSync ::
   (?actx :: AppContext) =>
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
   -- This is `ExceptT IdNotFoundError (EventM n MainTree) ()` but I'm not using it that much.
   EventMOrNotFound n MainTree ()
 modifyModelSync f = do
-  s@(MainTree {mtRoot}) <- get
-  let filter_ = mtFilter s
-  model' <- liftIO $ do
+  liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
     modifyModelOnServer (acModelServer ?actx) f
-    getModel (acModelServer ?actx)
-  subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
-  lift $ replaceSubtree subtree
+  zoom mtTreeViewL TV.reloadModel
 
 modifyModelSync_ ::
   (?actx :: AppContext) =>
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
   EventM n MainTree ()
 modifyModelSync_ f = void . notFoundToAER_ $ modifyModelSync f
+
+reloadModel :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
+reloadModel = zoom mtTreeViewL $ TV.reloadModel
+
+-- TODO move
 
 withLensValue :: (MonadState s m) => Lens' s t -> t -> m a -> m a
 withLensValue l v act = do
@@ -1335,136 +1230,13 @@ modifyModelAsync ::
   EventM n MainTree ()
 modifyModelAsync f = liftIO $ modifyModelOnServer (acModelServer ?actx) f
 
-pullNewModel :: (?actx :: AppContext) => EventMOrNotFound n MainTree ()
-pullNewModel = do
-  s@(MainTree {mtRoot}) <- get
-  let filter_ = mtFilter s
-  model' <- liftIO $ getModel (acModelServer ?actx)
-  subtree <- pureET $ translateAppFilterContext $ runFilter filter_ mtRoot model'
-  lift $ replaceSubtree subtree
-
--- | Replace the current subtree by a new one, updating selected item and viewport position accordingly.
-replaceSubtree :: Subtree -> EventM n MainTree ()
-replaceSubtree subtree = do
-  old <- get
-  let list' = forestToBrickList (getName . mtList $ old) (stForest subtree)
-  put old {mtSubtree = subtree, mtList = list'}
-  resetListPosition (mtDoFollowItem old) old
-
-scrollListToEID :: EID -> TreeViewList -> TreeViewList
-scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
-
-scrollListBy :: Int -> EventM AppResourceName MainTree ()
-scrollListBy n = zoom mtListL $ listScrollMoveBy n
-
--- | Scroll a list by the specified amount, moving the selection when we reach the top/bottom.
-listScrollMoveBy :: (Ord n) => Int -> EventM n (L.List n e) ()
-listScrollMoveBy n = void . runMaybeT $ do
-  li <- get
-  let name = getName li
-  vp <- MaybeT $ lookupViewport name
-  seli <- hoistMaybe (L.listSelected li)
-  lift $ do
-    let
-      viewTop = vp ^. vpTop
-      viewHeight = vp ^. vpSize & snd
-      viewBottom = viewTop + viewHeight - 1
-      listHeight = Vec.length . L.listElements $ li
-      listBottom = listHeight - 1
-      -- Decision taken in render routine, see there
-      -- SOMEDAY just like in the render routine, I feel this doesn't work quite precisely.
-      scrolloff = if (viewHeight >= Config.scrolloff) then Config.scrolloff else 0
-      -- Actual scroll amount, taking into account that we stop at the top/bottom of the list.
-      n' =
-        minimumBy
-          (comparing abs)
-          [ max 0 (viewTop + n) - viewTop
-          , min listBottom (viewBottom + n) - viewBottom
-          ]
-      -- Amount we need to move the selection in case we'd cross it with the top/bottom of the
-      -- view by scrolling.
-      -- If we don't move the selection ourselves, scrolling doesn't either, and visibility
-      -- constraints make it so nothing scrolls actually.
-      moveAmount =
-        maximumBy
-          (comparing abs)
-          [ max 0 (viewTop + n' + scrolloff - seli)
-          , min 0 (viewBottom + n' - scrolloff - seli)
-          ]
-    put $ L.listMoveBy moveAmount li
-    vScrollBy (viewportScroll name) n'
-
--- | Choose between follow or no-follow using a flag
-resetListPosition :: Bool -> MainTree -> EventM n MainTree ()
-resetListPosition True = resetListPositionFollow
-resetListPosition False = resetListPositionIndex
-
--- | Tries preserve the list position by index  only.
--- TODO needed?? This is the default behavior I think
-resetListPositionIndex :: MainTree -> EventM n MainTree ()
-resetListPositionIndex old = case L.listSelectedElement (mtList old) of
-  Nothing -> return ()
-  Just (ix_, _) -> moveListToIndex ix_
-
--- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the siblings or, then parents or, then the current position.
--- EXPERIMENTAL. This may not always be desired actually.
-resetListPositionFollow :: MainTree -> EventM n MainTree ()
-resetListPositionFollow old =
-  gets mtList >>= \new -> case L.listSelectedElement (mtList old) of
-    Nothing -> return () -- `old` is empty
-    Just (ix_, tgtItm) ->
-      let
-        selEID = gEID tgtItm
-        selz = zForestFindId selEID (stForest . mtSubtree $ old)
-        tgtEIDs =
-          catMaybes $
-            (Just selEID)
-              : (fmap zGetId . goNextSibling =<< selz)
-              : (fmap zGetId . goPrevSibling =<< selz)
-              : map (Just . gEID) (gLocalBreadcrumbs tgtItm)
-       in
-        -- Try to find the previously selected element or a parent.
-        asum (map (\eid -> tryGoToEID eid new) tgtEIDs)
-          -- If we can't find
-          & fromMaybe (moveListToIndex ix_)
- where
-  tryGoToEID eid new =
-    Vec.findIndex (\itm -> lilEID itm == eid) (L.listElements new) <&> \ix' ->
-      moveListToIndex ix'
-
--- SOMEDAY may be worth making a ListWithScrolloff wrapper widget instead of these specialized functions.
--- Unclear if beneficial.
-
--- SOMEDAY I added these b/c I felt moving now needed some special treatment for scrolloff, but turned out it doesn't.
--- If it really doesn't in the end, we can remove these indirections.
-
-moveListToIndex :: Int -> EventM n MainTree ()
-moveListToIndex i = mtListL %= L.listMoveTo i
-
-moveListToBeginning :: EventM n MainTree ()
-moveListToBeginning = mtListL %= L.listMoveToBeginning
-
-moveListToEnd :: EventM n MainTree ()
-moveListToEnd = mtListL %= L.listMoveToEnd
-
-moveListBy :: Int -> EventM n MainTree ()
-moveListBy n = mtListL %= L.listMoveBy n
-
+-- TODO should be in TreeView
+-- TODO shouldn't be pure for uniformity
 mtGoSubtreeFromCur :: GoWalker LocalIdLabel -> MainTree -> MainTree
 mtGoSubtreeFromCur go mt = fromMaybe mt mres
  where
   mres = do
     -- Maybe monad
     cur <- mtCur mt
-    par <- mt ^. mtSubtreeL . stForestL . to (forestGoFromToId cur go)
-    return $ mt & mtListL %~ scrollListToEID par
-
--- | Toplevel app resource name, including all contained resources. This is a "cloning" routine.
---
--- TODO also handle overlays. To do this, AppComponent needs a function, which is prob a good idea.
-setResourceName :: AppResourceName -> MainTree -> MainTree
-setResourceName rname state =
-  state
-    { mtList = mtList state & L.listNameL .~ MainListFor rname
-    , mtResourceName = rname
-    }
+    par <- forestGoFromToId cur go . stForest . mtSubtree $ mt
+    return $ mt & mtTreeViewL %~ TV.scrollToEIDPure par

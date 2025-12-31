@@ -18,7 +18,7 @@ import Data.Text qualified as T
 import Data.Time (ZonedTime (..))
 import Data.Vector qualified as Vec
 import Graphics.Vty (Button (..), Event (..), Key (..))
-import Lens.Micro.Platform ((%=), (&), (<&>), (^.))
+import Lens.Micro.Platform ((%=), (%~), (&), (.=), (.~), (<&>), (^.))
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
 import Srtd.BrickHelpers (strTruncateAvailable)
@@ -28,7 +28,14 @@ import Srtd.Data.IdTree (IdForest (..), zForestFindId, zGetId)
 import Srtd.Data.TreeZipper
 import Srtd.Dates (DateOrTime (..), cropDate)
 import Srtd.Keymap (KeyDesc (..))
-import Srtd.Model (Filter, HideHierarchyFilter, STForest, Subtree (..), runFilter)
+import Srtd.Model (
+  Filter,
+  IdNotFoundError,
+  Model,
+  STForest,
+  Subtree (..),
+  runFilter,
+ )
 import Srtd.ModelServer (getModel)
 import Srtd.Util (for, forestFlattenToList, pureET, regexSplitWithMatches)
 import Text.Regex.TDFA.Common (Regex)
@@ -69,17 +76,89 @@ type TreeViewList = L.List AppResourceName ListIdLabel
 -- SOMEDAY and maybe the constructor should be private b/c of this.
 data TreeView = TreeView
   { tvSubtree :: Subtree
+  -- ^ NOT safe to edit directly
   , tvFilter :: Filter
-  , tvHideHierarchyFilter :: HideHierarchyFilter
+  -- ^ NOT safe to edit directly
   , tvList :: TreeViewList
+  -- ^ Safe to edit directly to the same degree that 'L.List' is.
   , tvResourceName :: AppResourceName
+  -- ^ NOT safe to edit directly
   , tvSearchRx :: Maybe Regex
+  -- ^ safe to edit directly
   , tvDoFollowItem :: Bool
+  -- ^ safe to edit directly
   , tvScrolloff :: Int
+  -- ^ safe to edit directly
   -- TODO config options whether to show the two leading columns.
   }
 
 suffixLenses ''TreeView
+
+-- * API
+
+makeFromModel ::
+  (?actx :: AppContext) =>
+  EID ->
+  Filter ->
+  Bool ->
+  Int ->
+  Model ->
+  AppResourceName ->
+  Either IdNotFoundError TreeView
+makeFromModel root fi doFollowItem scrolloff model rname = do
+  subtree <-
+    translateAppFilterContext $
+      runFilter fi root model
+  let list = forestToBrickList (MainListFor rname) $ stForest subtree
+  return
+    TreeView
+      { tvSubtree = subtree
+      , tvFilter = fi
+      , tvList = list
+      , tvResourceName = rname
+      , tvSearchRx = Nothing
+      , tvDoFollowItem = doFollowItem
+      , tvScrolloff = scrolloff
+      }
+
+replaceFilter :: (?actx :: AppContext) => Filter -> EventMOrNotFound AppResourceName TreeView ()
+replaceFilter fi = do
+  tvFilterL .= fi
+  reloadModel
+
+setResourceName :: AppResourceName -> TreeView -> TreeView
+setResourceName rname =
+  (tvResourceNameL .~ MainListFor rname)
+    . (tvListL . L.listNameL .~ MainListFor rname)
+
+-- | Move the tree to any EID, preserving settings. Returns an error if that EID doesn't exist
+-- (presumably b/c it was deleted). Then nothing is updated.
+moveRootToEID ::
+  (?actx :: AppContext) => EID -> EventMOrNotFound n TreeView ()
+moveRootToEID eid = do
+  tv <- get
+  model <- liftIO $ getModel (acModelServer ?actx)
+  -- NB we can re-use the resource name b/c we're updating ourselves
+  tv' <-
+    pureET $
+      makeFromModel
+        eid
+        (tvFilter tv)
+        (tvDoFollowItem tv)
+        (tvScrolloff tv)
+        model
+        (tvResourceName tv)
+  put tv'
+
+-- | Currently selected item
+tvCur :: TreeView -> Maybe EID
+tvCur = fmap fst . tvCurWithAttr
+
+-- | Currently selected item with label
+tvCurWithAttr :: TreeView -> Maybe LocalIdLabel
+tvCurWithAttr TreeView {tvList} = L.listSelectedElement tvList & fmap (\(_, itm) -> listIdLabel2LocalIdLabel itm)
+
+-- * Component Instance
 
 instance AppComponent TreeView () () where
   renderComponent s = Widget Greedy Greedy $ do
@@ -96,7 +175,7 @@ instance AppComponent TreeView () () where
   handleEvent ev = do
     listRName <- gets (L.listName . tvList)
     case ev of
-      AppEvent (ModelUpdated _) -> notFoundToAER_ pullNewModel
+      AppEvent (ModelUpdated _) -> notFoundToAER_ reloadModel
       (VtyEvent (EvKey KDown [])) -> aerVoid $ moveBy 1
       (VtyEvent (EvKey KUp [])) -> aerVoid $ moveBy (-1)
       (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
@@ -224,8 +303,18 @@ moveToEnd = tvListL %= L.listMoveToEnd
 moveBy :: Int -> EventM n TreeView ()
 moveBy n = tvListL %= L.listMoveBy n
 
-scrollToEID :: EID -> TreeViewList -> TreeViewList
-scrollToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
+-- | Scroll to a specified EID. Does nothing if the EID is not found.
+--
+-- TODO rename: this is not about scrolling, but moving.
+scrollToEID :: EID -> EventM AppResourceName TreeView ()
+scrollToEID eid = tvListL %= scrollListToEID eid
+
+-- TODO shouldn't exist for uniformity
+scrollToEIDPure :: EID -> TreeView -> TreeView
+scrollToEIDPure eid = tvListL %~ scrollListToEID eid
+
+scrollListToEID :: EID -> TreeViewList -> TreeViewList
+scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
 scrollBy :: Int -> EventM AppResourceName TreeView ()
 scrollBy n = do
@@ -277,8 +366,8 @@ listScrollMoveBy scrolloffIn n = void . runMaybeT $ do
     put $ L.listMoveBy moveAmount li
     vScrollBy (viewportScroll name) n'
 
-pullNewModel :: (?actx :: AppContext) => EventMOrNotFound n TreeView ()
-pullNewModel = do
+reloadModel :: (?actx :: AppContext) => EventMOrNotFound n TreeView ()
+reloadModel = do
   s <- get
   let filter_ = tvFilter s
   let root_ = root . tvSubtree $ s
