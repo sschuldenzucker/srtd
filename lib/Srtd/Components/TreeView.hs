@@ -25,7 +25,7 @@ import Srtd.BrickHelpers (strTruncateAvailable)
 import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
 import Srtd.Components.Attr (renderLastModified, renderMostUrgentDate, renderStatus)
-import Srtd.Data.IdTree (IdForest (..), zForestFindId, zGetId)
+import Srtd.Data.IdTree (IdForest (..), forestGoFromToId, zForestFindId, zGetId)
 import Srtd.Data.TreeZipper
 import Srtd.Dates (DateOrTime (..), cropDate)
 import Srtd.Keymap (KeyDesc (..))
@@ -306,18 +306,20 @@ moveToEnd = tvListL %= L.listMoveToEnd
 moveBy :: Int -> EventM n TreeView ()
 moveBy n = tvListL %= L.listMoveBy n
 
--- | Scroll to a specified EID. Does nothing if the EID is not found.
---
--- TODO rename: this is not about scrolling, but moving.
-scrollToEID :: EID -> EventM AppResourceName TreeView ()
-scrollToEID eid = tvListL %= scrollListToEID eid
+-- TODO should be in TreeView
+-- TODO shouldn't be pure for uniformity
+moveGoWalkerFromCur :: GoWalker LocalIdLabel -> EventM AppResourceName TreeView ()
+moveGoWalkerFromCur go = void . runMaybeT $ do
+  cur <- MaybeT $ gets tvCur
+  par <- MaybeT $ forestGoFromToId cur go . stForest <$> gets tvSubtree
+  lift $ moveToEID par
 
--- TODO shouldn't exist for uniformity
-scrollToEIDPure :: EID -> TreeView -> TreeView
-scrollToEIDPure eid = tvListL %~ scrollListToEID eid
+-- | Move to a specified EID. Does nothing if the EID is not found.
+moveToEID :: EID -> EventM AppResourceName TreeView ()
+moveToEID eid = tvListL %= moveListToEID eid
 
-scrollListToEID :: EID -> TreeViewList -> TreeViewList
-scrollListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
+moveListToEID :: EID -> TreeViewList -> TreeViewList
+moveListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
 scrollBy :: Int -> EventM AppResourceName TreeView ()
 scrollBy n = do

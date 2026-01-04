@@ -16,7 +16,6 @@ import Brick.Widgets.Table
 import Control.Monad (when)
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 import Data.CircularList as CList
@@ -85,7 +84,6 @@ overlayNoop _ = aerContinue
 -- * Main Data Structure
 
 data MainTree = MainTree
-  -- TODO update tree view filter with current mt filter. OR re-implement the CList stuff to make tree view.filter = cur (the hole) but no.
   { mtFilters :: CList.CList Filter
   , mtTreeView :: TV.TreeView
   , mtResourceName :: AppResourceName
@@ -118,14 +116,6 @@ defaultFilters =
   ]
 
 -- ** Convenience Accessors
-
--- TODO this shouldn't exist?
-mtFilter :: MainTree -> Filter
-mtFilter mt = chainFilters collapseFilter normalFilter
- where
-  collapseFilter = hideHierarchyFilter . mtHideHierarchyFilter $ mt
-  normalFilter = fromJust . CList.focus . mtFilters $ mt
--- ^ NB we know that filters will be non-empty.
 
 mtSubtree :: MainTree -> Subtree
 mtSubtree = TV.tvSubtree . mtTreeView
@@ -225,7 +215,7 @@ rootKeymap =
                 let cb name' = aerVoid $ do
                       let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
                       modifyModelAsync $ modifyAttrByEID cur f
-                      zoom mtTreeViewL $ TV.scrollToEID cur
+                      zoom mtTreeViewL $ TV.moveToEID cur
                 pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb
               Nothing -> return ()
         )
@@ -279,13 +269,13 @@ rootKeymap =
               [] -> aerContinue
               (par, _) : _ -> notFoundToAER_ $ do
                 moveRootToEID par
-                zoom mtTreeViewL $ lift $ TV.scrollToEID (mtRoot mt)
+                zoom mtTreeViewL $ lift $ TV.moveToEID (mtRoot mt)
         )
       , (kmSub (bind ';') sortKeymap)
-      , (kmLeafA_ (bind 'h') "Go to parent" (modify (mtGoSubtreeFromCur goParent)))
-      , (kmLeafA_ (bind 'J') "Go to next sibling" (modify (mtGoSubtreeFromCur goNextSibling)))
-      , (kmLeafA_ (bind 'K') "Go to prev sibling" (modify (mtGoSubtreeFromCur goPrevSibling)))
-      , (kmLeafA_ (bind 'H') "Go to next uncle" (modify (mtGoSubtreeFromCur goNextAncestor)))
+      , (kmLeafA_ (bind 'h') "Go to parent" (zoom mtTreeViewL $ TV.moveGoWalkerFromCur goParent))
+      , (kmLeafA_ (bind 'J') "Go to next sibling" (zoom mtTreeViewL $ TV.moveGoWalkerFromCur goNextSibling))
+      , (kmLeafA_ (bind 'K') "Go to prev sibling" (zoom mtTreeViewL $ TV.moveGoWalkerFromCur goPrevSibling))
+      , (kmLeafA_ (bind 'H') "Go to next uncle" (zoom mtTreeViewL $ TV.moveGoWalkerFromCur goNextAncestor))
       , (kmSub (bind 't') setStatusKeymap)
       , (kmSub (bind 'o') openExternallyKeymap)
       , (kmLeafA (bind ',') "Prev filter" $ notFoundToAER_ cyclePrevFilter)
@@ -314,8 +304,7 @@ rootKeymap =
             )
         )
       , kmSub (bind ' ') spaceKeymap
-      , -- TODO seems obsolete, we can just pass on to TreeView
-        kmLeafA_ (bind 'j') "Move down" (zoom mtTreeViewL $ TV.moveBy 1)
+      , kmLeafA_ (bind 'j') "Move down" (zoom mtTreeViewL $ TV.moveBy 1)
       , kmLeafA_ (bind 'k') "Move up" (zoom mtTreeViewL $ TV.moveBy (-1))
       , kmSub (bind 'z') viewportKeymap
       ]
@@ -423,7 +412,7 @@ editDateKeymap =
     let cb date' = aerVoid $ do
           let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runALens' l0 .~ date')
           modifyModelAsync $ modifyAttrByEID cur f
-          zoom mtTreeViewL $ TV.scrollToEID cur
+          zoom mtTreeViewL $ TV.moveToEID cur
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
      in pushOverlay mkDateEdit overlayNoop cb
 
@@ -523,7 +512,7 @@ goKeymap =
               -- should still do something for ergonomics, so we instead behave like the regular
               -- "de-hoist".
               let tgt = fromMaybe (mtRoot mt) (mtCur mt)
-              zoom mtTreeViewL $ lift $ TV.scrollToEID tgt
+              zoom mtTreeViewL $ lift $ TV.moveToEID tgt
       )
     , ( kmLeafA (binding KEnter []) "Hoist 1 step, keep pos" $ withCurWithAttrOrElse aerContinue $ \(cur, llabel) ->
           case reverse (gLocalBreadcrumbs llabel) of
@@ -532,7 +521,7 @@ goKeymap =
               notFoundToAER_ $ moveRootToEID cur
             (par : _) -> notFoundToAER_ $ do
               moveRootToEID (gEID par)
-              zoom mtTreeViewL $ lift $ TV.scrollToEID cur
+              zoom mtTreeViewL $ lift $ TV.moveToEID cur
       )
     , -- SOMEDAY I think some of this functionality should be in TreeView
       kmLeafA_ (bind 't') "Window top" $ withViewport $ \vp -> do
@@ -615,7 +604,7 @@ spaceKeymap =
                 Left _err -> return Canceled
                 Right () -> do
                   let eid = EIDNormal uuid
-                  zoom mtTreeViewL $ TV.scrollToEID eid
+                  zoom mtTreeViewL $ TV.moveToEID eid
                   aerContinue
         pushOverlay (newNodeOverlay "" "New Item as Parent") overlayNoop cb
     ]
@@ -703,7 +692,7 @@ pushInsertNewItemRelToCur go = do
           Left _err -> return Canceled
           Right () -> do
             let eid = EIDNormal uuid
-            zoom mtTreeViewL $ TV.scrollToEID eid
+            zoom mtTreeViewL $ TV.moveToEID eid
             aerContinue
   pushOverlay (newNodeOverlay "" "New Item") overlayNoop cb
 
@@ -719,23 +708,104 @@ touchLastStatusModified = withCur $ \cur ->
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx)
      in modifyAttrByEID cur f
 
+-- ** Moving Nodes
+
+-- | Helper for relative move operations.
+--
+-- NB we do *not* need special precautions to prevent us from moving things out of the root b/c in
+-- that case, the respective anchor is just not found in the haystack. (this is a bit of a function
+-- of our insert walkers being not too crazy. When they do become more complex, we may need to bring
+-- this back.)
+--
+-- SOMEDAY ^^
+--
+-- SOMEDAY this can be generalized by replacing the first Label by whatever label type we ultimately use
+-- here. The forest just has to be labeled (EID, a) for some a. See `moveSubtreeRelFromForest`.
+moveCurRelative ::
+  (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> EventM n MainTree ()
+moveCurRelative go ins = withCur $ \cur -> do
+  forest <- gets (stForest . mtSubtree)
+  -- The temporary follow setting makes sure we follow our item around. This is sync so that the temporary setting works. (:())
+  withLensValue mtDoFollowItemL True $
+    modifyModelSync_ (moveSubtreeRelFromForest cur go ins forest)
+
+-- SOMEDAY ^^ Same applies. Also, these could all be unified.
+moveCurRelativeDynamic ::
+  (?actx :: AppContext) =>
+  DynamicMoveWalker LocalIdLabel IdLabel ->
+  EventM n MainTree ()
+moveCurRelativeDynamic dgo = withCur $ \cur -> do
+  forest <- gets (stForest . mtSubtree)
+  withLensValue mtDoFollowItemL True $
+    modifyModelSync_ (moveSubtreeRelFromForestDynamic cur dgo forest)
+
+-- ** Model Modification
+
+-- | Modify the model and *synchronously* pull the new model. Currently required when adding nodes.
+--
+-- SOMEDAY Synchronicity is a design issue really. Also, we're gonna get another ModelUpdated event
+-- and then refresh a second time, which is bad.
+modifyModelSync ::
+  (?actx :: AppContext) =>
+  ((?mue :: ModelUpdateEnv) => Model -> Model) ->
+  -- This is `ExceptT IdNotFoundError (EventM n MainTree) ()` but I'm not using it that much.
+  EventMOrNotFound n MainTree ()
+modifyModelSync f = do
+  liftIO $ do
+    -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
+    -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
+    modifyModelOnServer (acModelServer ?actx) f
+  zoom mtTreeViewL TV.reloadModel
+
+modifyModelSync_ ::
+  (?actx :: AppContext) =>
+  ((?mue :: ModelUpdateEnv) => Model -> Model) ->
+  EventM n MainTree ()
+modifyModelSync_ f = void . notFoundToAER_ $ modifyModelSync f
+
+reloadModel :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
+reloadModel = zoom mtTreeViewL $ TV.reloadModel
+
+-- | Modify the model asynchronously, i.e., *without* pulling a new model immediately. We get a
+-- 'ModelUpdated' event and will pull a new model then. This is fine for most applications.
+--
+-- NB: It's not actually async right now b/c ModelServer doesn't operate async, but it could be in
+-- the future.
+--
+-- NB: We currently *don't* change our focus based on the modified node. This is probably ok and
+-- what the user expects, but should then be reviewed, if we ever get async here.
+modifyModelAsync ::
+  (?actx :: AppContext) =>
+  ((?mue :: ModelUpdateEnv) => Model -> Model) ->
+  EventM n MainTree ()
+modifyModelAsync f = liftIO $ modifyModelOnServer (acModelServer ?actx) f
+
+-- ** Navigation
+
+moveRootToEID :: (?actx :: AppContext) => EID -> EventMOrNotFound AppResourceName MainTree ()
+moveRootToEID eid = zoom mtTreeViewL $ TV.moveRootToEID eid
+
 -- TODO WIP
 --
--- - Review everything actually.
--- - Check functions that shouldn't exist (should use TreeView instead)
--- - Review everything against functions that should really be part of TreeView's interface. Also those go functions etc.
--- - Harden the API of that a bit. Maybe hide a bunch of stuff in an export list.
--- - Check for all TODOs just introduced in this commit.
--- - Change order of functions and move into categories / headings. See TreeView for a good example.
+-- - Harden the API of TreeView a bit. Maybe hide a bunch of stuff in an export list.
+-- - Check for all TODOs just introduced in this branch.
+-- - Functionality test.
 
 -- ** Filters
 
 -- | Reset filter of the tree view to match our currently selected one here.
--- SOMEDAY this shouldn't exist.
+-- SOMEDAY this shouldn't exist. But I don't wanna wrap the clist infra around everything.
 resetTreeViewFilter :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
 resetTreeViewFilter = do
   fi <- gets mtFilter
   zoom mtTreeViewL $ TV.replaceFilter fi
+ where
+  mtFilter :: MainTree -> Filter
+  mtFilter mt = chainFilters collapseFilter normalFilter
+   where
+    collapseFilter = hideHierarchyFilter . mtHideHierarchyFilter $ mt
+    -- NB we know that filters will be non-empty.
+    normalFilter = fromJust . CList.focus . mtFilters $ mt
 
 cycleNextFilter :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
 cycleNextFilter = do
@@ -759,11 +829,6 @@ selectFilterByName s = do
     Just newFilters -> do
       mtFiltersL .= newFilters
       resetTreeViewFilter
-
--- ** Navigation
-
-moveRootToEID :: (?actx :: AppContext) => EID -> EventMOrNotFound AppResourceName MainTree ()
-moveRootToEID eid = zoom mtTreeViewL $ TV.moveRootToEID eid
 
 -- * Rendering
 
@@ -1090,94 +1155,3 @@ instance AppComponent MainTree () () where
       _ : c : _ -> Just c
       _ -> Nothing
     rootName = name (fst . rootLabel . mtSubtree $ s)
-
--- TODO some of these should be part of TreeView
-
--- | Helper for relative move operations.
---
--- NB we do *not* need special precautions to prevent us from moving things out of the root b/c in
--- that case, the respective anchor is just not found in the haystack. (this is a bit of a function
--- of our insert walkers being not too crazy. When they do become more complex, we may need to bring
--- this back.)
---
--- SOMEDAY ^^
---
--- SOMEDAY this can be generalized by replacing the first Label by whatever label type we ultimately use
--- here. The forest just has to be labeled (EID, a) for some a. See `moveSubtreeRelFromForest`.
-moveCurRelative ::
-  (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> EventM n MainTree ()
-moveCurRelative go ins = withCur $ \cur -> do
-  forest <- gets (stForest . mtSubtree)
-  -- The temporary follow setting makes sure we follow our item around. This is sync so that the temporary setting works. (:())
-  withLensValue mtDoFollowItemL True $
-    modifyModelSync_ (moveSubtreeRelFromForest cur go ins forest)
-
--- SOMEDAY ^^ Same applies. Also, these could all be unified.
-moveCurRelativeDynamic ::
-  (?actx :: AppContext) =>
-  DynamicMoveWalker LocalIdLabel IdLabel ->
-  EventM n MainTree ()
-moveCurRelativeDynamic dgo = withCur $ \cur -> do
-  forest <- gets (stForest . mtSubtree)
-  withLensValue mtDoFollowItemL True $
-    modifyModelSync_ (moveSubtreeRelFromForestDynamic cur dgo forest)
-
--- | Modify the model and *synchronously* pull the new model. Currently required when adding nodes.
---
--- SOMEDAY Synchronicity is a design issue really. Also, we're gonna get another ModelUpdated event
--- and then refresh a second time, which is bad.
-modifyModelSync ::
-  (?actx :: AppContext) =>
-  ((?mue :: ModelUpdateEnv) => Model -> Model) ->
-  -- This is `ExceptT IdNotFoundError (EventM n MainTree) ()` but I'm not using it that much.
-  EventMOrNotFound n MainTree ()
-modifyModelSync f = do
-  liftIO $ do
-    -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
-    -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
-    modifyModelOnServer (acModelServer ?actx) f
-  zoom mtTreeViewL TV.reloadModel
-
-modifyModelSync_ ::
-  (?actx :: AppContext) =>
-  ((?mue :: ModelUpdateEnv) => Model -> Model) ->
-  EventM n MainTree ()
-modifyModelSync_ f = void . notFoundToAER_ $ modifyModelSync f
-
-reloadModel :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
-reloadModel = zoom mtTreeViewL $ TV.reloadModel
-
--- TODO move
-
-withLensValue :: (MonadState s m) => Lens' s t -> t -> m a -> m a
-withLensValue l v act = do
-  oldValue <- use l
-  l .= v
-  res <- act
-  l .= oldValue
-  return res
-
--- | Modify the model asynchronously, i.e., *without* pulling a new model immediately. We get a
--- 'ModelUpdated' event and will pull a new model then. This is fine for most applications.
---
--- NB: It's not actually async right now b/c ModelServer doesn't operate async, but it could be in
--- the future.
---
--- NB: We currently *don't* change our focus based on the modified node. This is probably ok and
--- what the user expects, but should then be reviewed, if we ever get async here.
-modifyModelAsync ::
-  (?actx :: AppContext) =>
-  ((?mue :: ModelUpdateEnv) => Model -> Model) ->
-  EventM n MainTree ()
-modifyModelAsync f = liftIO $ modifyModelOnServer (acModelServer ?actx) f
-
--- TODO should be in TreeView
--- TODO shouldn't be pure for uniformity
-mtGoSubtreeFromCur :: GoWalker LocalIdLabel -> MainTree -> MainTree
-mtGoSubtreeFromCur go mt = fromMaybe mt mres
- where
-  mres = do
-    -- Maybe monad
-    cur <- mtCur mt
-    par <- forestGoFromToId cur go . stForest . mtSubtree $ mt
-    return $ mt & mtTreeViewL %~ TV.scrollToEIDPure par

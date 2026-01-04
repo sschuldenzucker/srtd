@@ -4,12 +4,13 @@ module Srtd.Util where
 import Control.Applicative (liftA2, (<|>))
 import Control.Monad ((<=<))
 import Control.Monad.Except
+import Control.Monad.State
 import Data.List (isPrefixOf)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Tree (Forest, Tree (..), foldTree)
-import Lens.Micro.Platform (Lens')
+import Lens.Micro.Platform (Lens', use, (.=))
 import System.Process (callProcess)
 import Text.Regex.TDFA
 import Text.Regex.TDFA.Text ()
@@ -238,6 +239,17 @@ forestFlattenPostorder = concatMap goTree
 newtype ALens' a b = ALens' {runALens' :: Lens' a b}
 
 -- We could define instances for Category and a combo function with Lens', but we don't use it rn.
+
+-- | Execute a stateful action with a modified value for some lens in our state, then mutate back.
+--
+-- SOMEDAY there should be a native wrapper for this.
+withLensValue :: (MonadState s m) => Lens' s t -> t -> m a -> m a
+withLensValue l v act = do
+  oldValue <- use l
+  l .= v
+  res <- act
+  l .= oldValue
+  return res
 
 -- * Monad helpers
 
