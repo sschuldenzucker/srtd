@@ -113,3 +113,5 @@ fg = "tx"
 "date.last_modified" = {fg = "tx-2"}
 "search_entry.error" = {fg = "red"}
 
+"url" = {style = "underline"}
+"selected.url" = {style = "underline"}

@@ -39,7 +39,14 @@ import Srtd.Model (
   stParentEID,
  )
 import Srtd.ModelServer (getModel)
-import Srtd.Util (for, forestFlattenToList, pureET, regexSplitWithMatches)
+import Srtd.Util (
+  for,
+  forestFlattenToList,
+  pureET,
+  regexSplitWithMatches,
+  regexSplitsWithMatches,
+  urlRegex,
+ )
 import Text.Regex.TDFA (RegexLike (..))
 import Text.Regex.TDFA.Common (Regex)
 
@@ -265,20 +272,17 @@ renderRow
       renderLastModified ztime sel $
         cropDate (zonedTimeZone ztime) (DateAndTime (lastStatusModified daLatestAutodates))
     statusW = renderStatus sel status (gLocalActionability llabel)
-    nameW = case mrx of
-      Nothing -> strTruncateAvailable name
-      -- SOMEDAY kinda bad performance that we re-match on every draw. If this becomes an issue, we
-      -- could cache 'chunks' as part of the list. (the list entries would have a different data
-      -- type then, needs some work but is fine)
-      Just rx ->
-        -- SOMEDAY this shouldn't be necessary; we should always use Text.
-        let tname = T.pack name
-            chunksMatches = regexSplitWithMatches rx tname
-            chunks = for chunksMatches $ \(isMatch, s) -> withDefAttrIf matchedTextAttr isMatch (txt s)
-         in -- NB we don't need 'truncateAvailable' here. I think when it's in an hBox, it automatically does this.
-            hBox chunks
-    -- Just another instance of why the attr system kinda sucks.
-    matchedTextAttr = if sel then attrName "selected" <> attrName "text_match" else attrName "text_match"
+    -- TODO This matches either one OR the other but not both. That's not actually correct.
+    regexHighlights =
+      catMaybes
+        [ mrx <&> (,attrName "text_match")
+        , Just (urlRegex, attrName "url")
+        ]
+    nameW =
+      let chunksMatches = regexSplitsWithMatches regexHighlights (T.pack name)
+          chunks = for chunksMatches $ \(mattr, s) -> withDefAttrWithSel (fromMaybe mempty mattr) (txt s)
+       in hBox chunks
+    withDefAttrWithSel a = withDefAttr $ (if sel then attrName "selected" else mempty) <> a
 
 withSelAttr :: Bool -> Widget n -> Widget n
 withSelAttr = withDefAttrIf AppAttr.selected_item_row

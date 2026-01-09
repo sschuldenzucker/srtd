@@ -5,6 +5,8 @@ import Control.Applicative (liftA2, (<|>))
 import Control.Monad ((<=<))
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Array qualified as Array
+import Data.Either (fromRight)
 import Data.List (isPrefixOf)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
@@ -13,7 +15,7 @@ import Data.Tree (Forest, Tree (..), foldTree)
 import Lens.Micro.Platform (Lens', use, (.=))
 import System.Process (callProcess)
 import Text.Regex.TDFA
-import Text.Regex.TDFA.Text ()
+import Text.Regex.TDFA.Text (compile)
 
 -- SOMEDAY most of these helpers shouldn't exist and instead we should be using MissingH or some similar library.
 
@@ -274,6 +276,14 @@ regexSplitWithMatches regex input = go 0 matches
           ++ [(True, matched)]
           ++ go (start + len) rest
 
+regexSplitsWithMatches :: [(Regex, a)] -> Text -> [(Maybe a, Text)]
+regexSplitsWithMatches [] input = [(Nothing, input)]
+regexSplitsWithMatches ((regex, label) : items) input =
+  flip concatMap (regexSplitWithMatches regex input) $ \(isMatch, txt) ->
+    if isMatch
+      then [(Just label, txt)]
+      else regexSplitsWithMatches items txt
+
 -- * Text helpers
 
 unsafeSingleDigitUIntToChar :: Int -> Char
@@ -285,10 +295,16 @@ unsafeSingleDigitUIntToChar i = case (show i) of
 
 -- SOMEDAY these should be moved to another module.
 findFirstURL :: String -> Maybe String
-findFirstURL s = listToMaybe $ getAllTextMatches (s =~ urlPattern :: AllTextMatches [] String)
- where
-  urlPattern :: String
-  urlPattern = "(\\b[a-z]+://[a-zA-Z0-9./?=&-_%]+)"
+findFirstURL s =
+  case matchAllText urlRegex s of
+    [] -> Nothing
+    -- Elements are arrays consisting of subgroup matches. Index 0 exists and is the full pattern.
+    ma : _ -> Just $ fst $ ma Array.! 0
+
+urlRegex :: Regex
+urlRegex =
+  fromRight (error $ "Constant regex failed to compile") $
+    compile defaultCompOpt defaultExecOpt "\\b[a-z]+://[a-zA-Z0-9./?=&-_%]+"
 
 findFirstHexCode :: String -> Maybe String
 findFirstHexCode s = listToMaybe $ getAllTextMatches (s =~ pat :: AllTextMatches [] String)

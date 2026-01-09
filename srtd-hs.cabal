@@ -110,6 +110,7 @@ library
         clock ^>= 0.8.4,
         transformers ^>= 0.6,
         enummapset ^>= 0.7,
+        array ^>= 0.5.8
 
     exposed-modules:
         Srtd.Alignment,

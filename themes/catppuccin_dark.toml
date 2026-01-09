@@ -159,3 +159,6 @@ fg = "text"
 # "date.remind.overdue" = {fg = "yellow"}
 
 "search_entry.error" = {fg = "red"}
+
+"url" = {style = "underline"}
+"selected.url" = {style = "underline"}
