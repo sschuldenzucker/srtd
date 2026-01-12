@@ -120,6 +120,7 @@ library
         Srtd.Attr,
         Srtd.Attr.Types,
         Srtd.Attr.TH,
+        Srtd.BrickAttrHelpers,
         Srtd.BrickHelpers,
         Srtd.BrickListHelpers,
         Srtd.CmdlineArgs,
