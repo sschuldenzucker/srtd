@@ -114,6 +114,4 @@ fg = "tx"
 "search_entry.error" = {fg = "red"}
 
 "url" = {style = "underline"}
-"text_match_url" = {bg = "ui-3", style = "underline"}
 "selected.url" = {style = "underline"}
-"selected.text_match_url" = {bg = "ui-3", style = "underline"}

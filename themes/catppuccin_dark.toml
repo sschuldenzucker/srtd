@@ -160,8 +160,5 @@ fg = "text"
 
 "search_entry.error" = {fg = "red"}
 
-# TODO this is very detailed but also very much too detailed
 "url" = {style = "underline"}
-"text_match_url" = {bg = "overlay0", style = "underline"}
 "selected.url" = {style = "underline"}
-"selected.text_match_url" = {bg = "overlay0", style = "underline"}

@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
 
 {-| A view component for a 'Subtree'.
 
@@ -25,6 +25,7 @@ import Graphics.Vty (Button (..), Event (..), Key (..))
 import Lens.Micro.Platform (use, (%=), (%~), (&), (.=), (.~), (<&>), (^.))
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
+import Srtd.BrickAttrHelpers (combineAttrs)
 import Srtd.BrickHelpers (strTruncateAvailable)
 import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
@@ -81,25 +82,22 @@ type TreeViewList = L.List AppResourceName ListIdLabel
 
 -- * Other types (have to come early b/c TemplateHaskell)
 
--- SOMEDAY this is kinda dumb & I should find a way to do this programmatically.
--- We will probably only ever define style but not color for these so it should be fine.
--- TODO this works but is incredibly clunky.
-data ItemChunkStyleFlags = ItemChunkStyleFlags
-  { icsfTextMatch :: Bool
-  , icsfUrl :: Bool
-  }
+-- | Cascading list of attrs that are applied on top of each other
+--
+-- SOMEDAY explore what else we can do with this
+newtype CSAttr = CSAttr [AttrName] deriving (Semigroup, Monoid)
 
-suffixLenses ''ItemChunkStyleFlags
+csAttrName :: AttrName -> CSAttr
+csAttrName aname = CSAttr [aname]
 
-emptyItemChunkStyleFlags :: ItemChunkStyleFlags
-emptyItemChunkStyleFlags = ItemChunkStyleFlags False False
-
-icsfAttrName :: ItemChunkStyleFlags -> AttrName
-icsfAttrName (ItemChunkStyleFlags {..})
-  | icsfTextMatch && icsfUrl = attrName "text_match_url"
-  | icsfTextMatch = attrName "text_match"
-  | icsfUrl = attrName "url"
-  | otherwise = mempty
+-- | Use a combined `CSAttr` as the default attr.
+--
+-- Components are combined in order, with earlier ("leftmost") ones dominating later ones.
+withDefCSAttr :: CSAttr -> Widget n -> Widget n
+withDefCSAttr (CSAttr anames) = updateAttrMap $ \amap ->
+  let newDefaultAttr =
+        foldr (flip combineAttrs) (getDefaultAttr amap) [attrMapLookup aname amap | aname <- anames]
+   in setDefaultAttr newDefaultAttr amap
 
 -- * Main Type
 
@@ -299,19 +297,19 @@ renderRow
       renderLastModified ztime sel $
         cropDate (zonedTimeZone ztime) (DateAndTime (lastStatusModified daLatestAutodates))
     statusW = renderStatus sel status (gLocalActionability llabel)
-    -- TODO This matches either one OR the other but not both. That's not actually correct.
     regexHighlights =
-      map (second Endo) $
-        catMaybes
-          [ mrx <&> (,icsfTextMatchL .~ True)
-          , Just (urlRegex, icsfUrlL .~ True)
-          ]
+      catMaybes
+        [ mrx <&> (,(attrName "text_match"))
+        , Just (urlRegex, (attrName "url"))
+        ]
+    regexHighlightsWithSel =
+      for regexHighlights $
+        second $
+          csAttrName . if sel then (attrName "selected" <>) else id
     nameW =
-      let chunksMatches = regexSplitsWithMatchesOverlap regexHighlights (T.pack name)
-          chunks = for chunksMatches $ \(mods, s) ->
-            withDefAttrWithSel (icsfAttrName $ appEndo mods emptyItemChunkStyleFlags) (txt s)
+      let chunksMatches = regexSplitsWithMatchesOverlap regexHighlightsWithSel (T.pack name)
+          chunks = for chunksMatches $ \(csa, s) -> withDefCSAttr csa (txt s)
        in hBox chunks
-    withDefAttrWithSel a = withDefAttr $ (if sel then attrName "selected" else mempty) <> a
 
 withSelAttr :: Bool -> Widget n -> Widget n
 withSelAttr = withDefAttrIf AppAttr.selected_item_row
