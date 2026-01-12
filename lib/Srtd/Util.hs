@@ -1,3 +1,7 @@
+-- TODO I think not used
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE ViewPatterns #-}
+
 -- | Collected simple utilities. Most of them are prob in extra but w/e.
 module Srtd.Util where
 
@@ -7,8 +11,10 @@ import Control.Monad.Except
 import Control.Monad.State
 import Data.Array qualified as Array
 import Data.Either (fromRight)
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, sort, sortBy)
 import Data.Maybe (listToMaybe)
+import Data.Ord (comparing)
+import Data.PQueue.Prio.Min qualified as PQ
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Tree (Forest, Tree (..), foldTree)
@@ -261,6 +267,7 @@ pureET ev = (ExceptT $ return ev)
 
 -- * Regex helpers
 
+-- | Split a text into matching and non-matching chunks according to a regex
 regexSplitWithMatches :: Regex -> Text -> [(Bool, Text)]
 regexSplitWithMatches regex input = go 0 matches
  where
@@ -276,6 +283,8 @@ regexSplitWithMatches regex input = go 0 matches
           ++ [(True, matched)]
           ++ go (start + len) rest
 
+-- | Split a text into labeled chunks according to multiple regexs. Chunks cannot overlap and regexs
+-- are applied in order.
 regexSplitsWithMatches :: [(Regex, a)] -> Text -> [(Maybe a, Text)]
 regexSplitsWithMatches [] input = [(Nothing, input)]
 regexSplitsWithMatches ((regex, label) : items) input =
@@ -283,6 +292,48 @@ regexSplitsWithMatches ((regex, label) : items) input =
     if isMatch
       then [(Just label, txt)]
       else regexSplitsWithMatches items txt
+
+-- | Split a text into labeled chunks according to multiple regexs. Chunks can overlap but we split
+-- further then. Where chunks overlap, combine the labels using the Monoid instance.
+--
+-- The order of combination is arbitrary, so the monoid should be commutative.
+--
+-- SOMEDAY Make the order correspond to the matches?
+regexSplitsWithMatchesOverlap :: (Monoid a) => [(Regex, a)] -> Text -> [(a, Text)]
+regexSplitsWithMatchesOverlap items input = go 0 matchesLabels PQ.empty
+ where
+  -- Text matches in (start, exclusive end, label) form.
+  matchesLabels = sortBy cmp12 . flip concatMap items $ \(regex, label) ->
+    let matches :: [(Int, Int)]
+        matches = getAllMatches $ match regex input
+     in for matches $ \(start, len) -> (start, start + len, label)
+  cmp12 = comparing $ \(start, len, _label) -> (start, len)
+
+  -- We keep our current position until which we have emitted, the input list of matches, and a prio
+  -- queue of active matches by end position.
+  -- pos and end position are exclusive.
+  go :: (Monoid a) => Int -> [(Int, Int, a)] -> PQ.MinPQueue Int a -> [(a, Text)]
+  go pos matches stack = case (matches, PQ.minViewWithKey stack) of
+    ([], Nothing)
+      | pos < T.length input -> [(mempty, T.drop pos input)]
+      | otherwise -> []
+    ([], Just ((stend, _), strest)) -> recur pos stend stack [] strest
+    (((mstart, mend, mlabel) : mrest), Nothing) ->
+      recur pos mstart stack mrest (PQ.insert mend mlabel stack)
+    (((mstart, mend, mlabel) : mrest), Just ((stend, _), strest))
+      | mstart < stend -> recur pos mstart stack mrest (PQ.insert mend mlabel stack)
+      -- In the equality case, it doesn't matter which one we use.
+      | otherwise -> recur pos stend stack matches strest
+
+  recur ::
+    (Monoid a) =>
+    Int -> Int -> PQ.MinPQueue Int a -> [(Int, Int, a)] -> PQ.MinPQueue Int a -> [(a, Text)]
+  recur pos end stack matches' stack'
+    | pos < end = (mconcat . PQ.elemsU $ stack, chunk) : nxt
+    | otherwise = nxt
+   where
+    nxt = go end matches' stack'
+    chunk = T.take (end - pos) $ T.drop pos input
 
 -- * Text helpers
 

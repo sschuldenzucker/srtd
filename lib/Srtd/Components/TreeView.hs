@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 {-| A view component for a 'Subtree'.
 
 To be imported qualified.
@@ -7,12 +9,14 @@ module Srtd.Components.TreeView where
 import Brick hiding (on)
 import Brick.Widgets.List qualified as L
 import Control.Applicative (asum)
+import Control.Arrow (Arrow (second))
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 import Data.List (maximumBy, minimumBy)
 import Data.Maybe (catMaybes, fromMaybe)
+import Data.Monoid (Endo (..))
 import Data.Ord (comparing)
 import Data.Text qualified as T
 import Data.Time (ZonedTime (..))
@@ -45,6 +49,7 @@ import Srtd.Util (
   pureET,
   regexSplitWithMatches,
   regexSplitsWithMatches,
+  regexSplitsWithMatchesOverlap,
   urlRegex,
  )
 import Text.Regex.TDFA (RegexLike (..))
@@ -73,6 +78,28 @@ instance HasLocalDerivedAttr ListIdLabel where
 instance HasEID ListIdLabel where getEIDL = lilEIDL
 
 type TreeViewList = L.List AppResourceName ListIdLabel
+
+-- * Other types (have to come early b/c TemplateHaskell)
+
+-- SOMEDAY this is kinda dumb & I should find a way to do this programmatically.
+-- We will probably only ever define style but not color for these so it should be fine.
+-- TODO this works but is incredibly clunky.
+data ItemChunkStyleFlags = ItemChunkStyleFlags
+  { icsfTextMatch :: Bool
+  , icsfUrl :: Bool
+  }
+
+suffixLenses ''ItemChunkStyleFlags
+
+emptyItemChunkStyleFlags :: ItemChunkStyleFlags
+emptyItemChunkStyleFlags = ItemChunkStyleFlags False False
+
+icsfAttrName :: ItemChunkStyleFlags -> AttrName
+icsfAttrName (ItemChunkStyleFlags {..})
+  | icsfTextMatch && icsfUrl = attrName "text_match_url"
+  | icsfTextMatch = attrName "text_match"
+  | icsfUrl = attrName "url"
+  | otherwise = mempty
 
 -- * Main Type
 
@@ -274,13 +301,15 @@ renderRow
     statusW = renderStatus sel status (gLocalActionability llabel)
     -- TODO This matches either one OR the other but not both. That's not actually correct.
     regexHighlights =
-      catMaybes
-        [ mrx <&> (,attrName "text_match")
-        , Just (urlRegex, attrName "url")
-        ]
+      map (second Endo) $
+        catMaybes
+          [ mrx <&> (,icsfTextMatchL .~ True)
+          , Just (urlRegex, icsfUrlL .~ True)
+          ]
     nameW =
-      let chunksMatches = regexSplitsWithMatches regexHighlights (T.pack name)
-          chunks = for chunksMatches $ \(mattr, s) -> withDefAttrWithSel (fromMaybe mempty mattr) (txt s)
+      let chunksMatches = regexSplitsWithMatchesOverlap regexHighlights (T.pack name)
+          chunks = for chunksMatches $ \(mods, s) ->
+            withDefAttrWithSel (icsfAttrName $ appEndo mods emptyItemChunkStyleFlags) (txt s)
        in hBox chunks
     withDefAttrWithSel a = withDefAttr $ (if sel then attrName "selected" else mempty) <> a
 
