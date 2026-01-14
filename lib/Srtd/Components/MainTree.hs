@@ -75,6 +75,7 @@ data Overlay = forall s a b. (AppComponent s a b) => Overlay
   { olState :: s
   , olOnContinue :: (?actx :: AppContext) => a -> EventM AppResourceName MainTree (AppEventReturn () ())
   , olOnConfirm :: (?actx :: AppContext) => b -> EventM AppResourceName MainTree (AppEventReturn () ())
+  , olOnCanceled :: (?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn () ())
   }
 
 -- | Helper to use for 'olOnContinue' or 'olOnConfirm' when you want to ignore these events.
@@ -216,7 +217,7 @@ rootKeymap =
                       let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
                       modifyModelAsync $ modifyAttrByEID cur f
                       zoom mtTreeViewL $ TV.moveToEID cur
-                pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb
+                pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb aerContinue
               Nothing -> return ()
         )
       , kmSub (ctrl 't') debugKeymap
@@ -414,7 +415,7 @@ editDateKeymap =
           modifyModelAsync $ modifyAttrByEID cur f
           zoom mtTreeViewL $ TV.moveToEID cur
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
-     in pushOverlay mkDateEdit overlayNoop cb
+     in pushOverlay mkDateEdit overlayNoop cb aerContinue
 
 moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree () ())
 moveSubtreeModeKeymap =
@@ -544,7 +545,8 @@ searchKeymap =
   sticky $
     kmMake
       "Find mode"
-      [ ( kmLeafA_ (bind '/') "Search" $
+      [ ( kmLeafA_ (bind '/') "Search" $ do
+            oldSearchRx <- use mtSearchRxL
             let
               onContinue = aerVoid . assign mtSearchRxL
               onConfirm (rx, ctype) = do
@@ -553,8 +555,11 @@ searchKeymap =
                   RegularConfirm -> TV.searchForRxAction TV.Forward True
                   AltConfirm -> TV.searchForRxSiblingAction TV.Forward
                 aerContinue
+              onCanceled = aerVoid $ assign mtSearchRxL oldSearchRx
              in
-              pushOverlay regexSearchEntryOverlay onContinue onConfirm
+              -- TODO use oldSearchRx as the initial state. We need the text form. Need some infra
+              -- around that. (TDFA does not give it to us, Regex is a one-way conversion)
+              pushOverlay regexSearchEntryOverlay onContinue onConfirm onCanceled
         )
       , (kmLeafA_ (bind 'n') "Next match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Forward False)
       , (kmLeafA_ (bind 'N') "Prev match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Backward False)
@@ -606,7 +611,7 @@ spaceKeymap =
                   let eid = EIDNormal uuid
                   zoom mtTreeViewL $ TV.moveToEID eid
                   aerContinue
-        pushOverlay (newNodeOverlay "" "New Item as Parent") overlayNoop cb
+        pushOverlay (newNodeOverlay "" "New Item as Parent") overlayNoop cb aerContinue
     ]
 
 viewportKeymap :: Keymap (AppEventAction MainTree () ())
@@ -655,8 +660,9 @@ pushOverlay ::
   (AppResourceName -> s) ->
   ((?actx :: AppContext) => a -> EventM AppResourceName MainTree (AppEventReturn () ())) ->
   ((?actx :: AppContext) => b -> EventM AppResourceName MainTree (AppEventReturn () ())) ->
+  ((?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn () ())) ->
   EventM AppResourceName MainTree ()
-pushOverlay mk onContinue onConfirm = do
+pushOverlay mk onContinue onConfirm onCanceled = do
   hasExisting <- isJust <$> use mtOverlayL
   when hasExisting $
     let s =
@@ -665,7 +671,7 @@ pushOverlay mk onContinue onConfirm = do
      in liftIO $ glogL WARNING s
   rootRname <- use mtResourceNameL
   let rname = Component.OverlayFor 0 rootRname
-  let ol = Overlay (mk rname) onContinue onConfirm
+  let ol = Overlay (mk rname) onContinue onConfirm onCanceled
   mtOverlayL .= Just ol
 
 -- ** Item manipulation
@@ -694,7 +700,7 @@ pushInsertNewItemRelToCur go = do
             let eid = EIDNormal uuid
             zoom mtTreeViewL $ TV.moveToEID eid
             aerContinue
-  pushOverlay (newNodeOverlay "" "New Item") overlayNoop cb
+  pushOverlay (newNodeOverlay "" "New Item") overlayNoop cb aerContinue
 
 setStatus :: (?actx :: AppContext) => Status -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
@@ -1083,7 +1089,7 @@ instance AppComponent MainTree () () where
         (True, Just illabel) -> Just ("Item Details", renderItemDetails now illabel)
         _ -> Nothing
       ovl = case mtOverlay of
-        Just (Overlay ol _ _) -> Just $ (componentTitle ol, renderComponent ol)
+        Just (Overlay ol _ _ _) -> Just $ (componentTitle ol, renderComponent ol)
         Nothing -> Nothing
       now = acZonedTime ?actx
 
@@ -1129,20 +1135,20 @@ instance AppComponent MainTree () () where
       lift $ do
         mol <- use mtOverlayL
         case mol of
-          Just (Overlay ol onContinue onConfirm) -> do
+          Just (Overlay ol onContinue onConfirm onCanceled) -> do
             -- SOMEDAY all of this wants some abstraction I think
             (ol', res) <- nestEventM ol (handleEvent ev)
-            mtOverlayL .= Just (Overlay ol' onContinue onConfirm)
+            mtOverlayL .= Just (Overlay ol' onContinue onConfirm onCanceled)
             case res of
               Continue x -> onContinue x
               Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
-              Canceled -> mtOverlayL .= Nothing >> aerContinue
+              Canceled -> mtOverlayL .= Nothing >> onCanceled
           Nothing -> actMain
     handleFallback e = zoom mtTreeViewL $ handleEvent e
 
   componentKeyDesc s = case mtOverlay s of
     Nothing -> kmzDesc . mtKeymap $ s
-    Just (Overlay ol _ _) -> (componentKeyDesc ol) {kdIsToplevel = False} -- always show key help for overlays
+    Just (Overlay ol _ _ _) -> (componentKeyDesc ol) {kdIsToplevel = False} -- always show key help for overlays
 
   -- "Root name - Realm" unless the Realm is the root itself, or higher.
   componentTitle s = T.pack $ pathStr
