@@ -63,6 +63,11 @@ keymap =
           sEditorL %= applyEdit TZ.clearZipper
           Continue <$> use sValueL
       )
+    , ( kmLeafA (ctrl 'l') "Clear" $ do
+          setText ""
+          sEditorL %= applyEdit TZ.clearZipper
+          Continue <$> use sValueL
+      )
     ]
 
 keymapZipper :: KeymapZipper MyAppEventAction
