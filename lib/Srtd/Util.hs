@@ -293,47 +293,51 @@ regexSplitsWithMatches ((regex, label) : items) input =
       then [(Just label, txt)]
       else regexSplitsWithMatches items txt
 
--- | Split a text into labeled chunks according to multiple regexs. Chunks can overlap but we split
--- further then. Where chunks overlap, combine the labels using the Monoid instance.
---
--- The order of combination is arbitrary, so the monoid should be commutative.
---
--- SOMEDAY Make the order correspond to the matches?
+-- | Split a text into labeled chunks according to multiple regexs. Matches can overlap and we split
+-- further then. Where matches overlap, combine the labels using the Monoid instance. The order of
+-- combination is the order of the `(regex, label)` rules given. Chunks where no regex matches have
+-- `mempty` as their label.
 regexSplitsWithMatchesOverlap :: (Monoid a) => [(Regex, a)] -> Text -> [(a, Text)]
 regexSplitsWithMatchesOverlap items input = go 0 matchesLabels PQ.empty
  where
-  -- Text matches in (start, exclusive end, label) form.
-  matchesLabels = sortBy cmp12 . flip concatMap items $ \(regex, label) ->
+  -- Text matches in (start, exclusive end, label, priority) form.
+  matchesLabels = sortBy cmp12 . flip concatMap (zip [1 ..] items) $ \(prio, (regex, label)) ->
     let matches :: [(Int, Int)]
         matches = getAllMatches $ match regex input
-     in for matches $ \(start, len) -> (start, start + len, label)
-  cmp12 = comparing $ \(start, len, _label) -> (start, len)
+     in for matches $ \(start, len) -> (start, start + len, label, prio)
+  cmp12 = comparing $ \(start, len, _label, _prio) -> (start, len)
 
   -- We keep our current position until which we have emitted, the input list of matches, and a prio
   -- queue of active matches by end position.
   -- pos and end position are exclusive.
-  go :: (Monoid a) => Int -> [(Int, Int, a)] -> PQ.MinPQueue Int a -> [(a, Text)]
+  go :: (Monoid a) => Int -> [(Int, Int, a, Int)] -> PQ.MinPQueue Int (a, Int) -> [(a, Text)]
   go pos matches stack = case (matches, PQ.minViewWithKey stack) of
     ([], Nothing)
       | pos < T.length input -> [(mempty, T.drop pos input)]
       | otherwise -> []
     ([], Just ((stend, _), strest)) -> recur pos stend stack [] strest
-    (((mstart, mend, mlabel) : mrest), Nothing) ->
-      recur pos mstart stack mrest (PQ.insert mend mlabel stack)
-    (((mstart, mend, mlabel) : mrest), Just ((stend, _), strest))
-      | mstart < stend -> recur pos mstart stack mrest (PQ.insert mend mlabel stack)
+    (((mstart, mend, mlabel, mprio) : mrest), Nothing) ->
+      recur pos mstart stack mrest (PQ.insert mend (mlabel, mprio) stack)
+    (((mstart, mend, mlabel, mprio) : mrest), Just ((stend, _), strest))
+      | mstart < stend -> recur pos mstart stack mrest (PQ.insert mend (mlabel, mprio) stack)
       -- In the equality case, it doesn't matter which one we use.
       | otherwise -> recur pos stend stack matches strest
 
   recur ::
     (Monoid a) =>
-    Int -> Int -> PQ.MinPQueue Int a -> [(Int, Int, a)] -> PQ.MinPQueue Int a -> [(a, Text)]
+    Int ->
+    Int ->
+    PQ.MinPQueue Int (a, Int) ->
+    [(Int, Int, a, Int)] ->
+    PQ.MinPQueue Int (a, Int) ->
+    [(a, Text)]
   recur pos end stack matches' stack'
-    | pos < end = (mconcat . PQ.elemsU $ stack, chunk) : nxt
+    | pos < end = (combinedLabel, chunk) : nxt
     | otherwise = nxt
    where
-    nxt = go end matches' stack'
+    combinedLabel = mconcat . map fst . sortBy (comparing snd) . PQ.elemsU $ stack
     chunk = T.take (end - pos) $ T.drop pos input
+    nxt = go end matches' stack'
 
 -- * Text helpers
 

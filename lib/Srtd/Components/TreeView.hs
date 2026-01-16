@@ -22,6 +22,7 @@ import Data.Text qualified as T
 import Data.Time (ZonedTime (..))
 import Data.Vector qualified as Vec
 import Graphics.Vty (Button (..), Event (..), Key (..))
+import Graphics.Vty.Attributes qualified as VtyAttr
 import Lens.Micro.Platform (use, (%=), (%~), (&), (.=), (.~), (<&>), (^.))
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
@@ -95,9 +96,27 @@ csAttrName aname = CSAttr [aname]
 -- Components are combined in order, with earlier ("leftmost") ones dominating later ones.
 withDefCSAttr :: CSAttr -> Widget n -> Widget n
 withDefCSAttr (CSAttr anames) = updateAttrMap $ \amap ->
-  let newDefaultAttr =
-        foldr (flip combineAttrs) (getDefaultAttr amap) [attrMapLookup aname amap | aname <- anames]
-   in setDefaultAttr newDefaultAttr amap
+  let
+    emptyAttr :: VtyAttr.Attr
+    emptyAttr = VtyAttr.Attr VtyAttr.KeepCurrent VtyAttr.KeepCurrent VtyAttr.KeepCurrent VtyAttr.KeepCurrent
+    -- We set the default attr to the empty attr so that lookups into the attrmap below aren't
+    -- combined with it, which would *always* give them a color and prevent combining style with
+    -- color. It's kinda stupid that we don't just have a function to do these "raw" lookups into
+    -- attrmap.
+    --
+    -- SOMEDAY This solves about 50% of the problem. Example:
+    -- `url` indeed just sets style, so ordering doesn't matter when it's combined with `text_match`.
+    -- But `selected.url` also sets color, so ordering suddenly matters when it's combined with `selected.text_match`.
+    --
+    -- Another instance where Brick's attr hierarchy is really weird and constraining at times.
+    --
+    -- SOMEDAY maybe these things should be handled using a different mechanism. There's a way to
+    -- apply an `Attr -> Attr` function directly in brick.
+    amap' = setDefaultAttr emptyAttr amap
+    newDefaultAttr =
+      foldr (flip combineAttrs) (getDefaultAttr amap) [attrMapLookup aname amap' | aname <- anames]
+   in
+    setDefaultAttr newDefaultAttr amap
 
 -- * Main Type
 
@@ -299,6 +318,10 @@ renderRow
     statusW = renderStatus sel status (gLocalActionability llabel)
     regexHighlights =
       catMaybes
+        -- SOMEDAY Order matters here, unfortunately:
+        -- The text match has to take priority b/c it changes color and the URL only changes style.
+        -- This is not gonna work if a theme flips these around.
+        -- See `withDefCSAttr` for a known bug.
         [ mrx <&> (,(attrName "text_match"))
         , Just (urlRegex, (attrName "url"))
         ]

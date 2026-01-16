@@ -3,6 +3,7 @@
 module Main (main) where
 
 import Data.Maybe (fromMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Time
 import Data.Tree (Tree (..))
@@ -258,7 +259,9 @@ testTransformIdForestDownUpRec =
 regexTests =
   testGroup
     "Test regex helpers"
-    [testRegexSplitWithMatches]
+    [ testRegexSplitWithMatches
+    , textRegexSplitsWithMatchesOverlap
+    ]
 
 testRegexSplitWithMatches =
   testGroup
@@ -272,6 +275,39 @@ testRegexSplitWithMatches =
         let (Right rx) = compile (defaultCompOpt {caseSensitive = False}) defaultExecOpt "o+"
             res = regexSplitWithMatches rx "foOfOoBar"
             expd = [(False, "f"), (True, "oO"), (False, "f"), (True, "Oo"), (False, "Bar")]
+         in res @?= expd
+    ]
+
+textRegexSplitsWithMatchesOverlap =
+  testGroup
+    "Test regexSplitsWithMatchesOverlap"
+    [ testCase "url with trailing match" $
+        let (Right rx) = compile defaultCompOpt defaultExecOpt "the h|om foo"
+            haystack = "the https://google.com foobar"
+            res =
+              regexSplitsWithMatchesOverlap [(urlRegex, Set.singleton "url"), (rx, Set.singleton "rx")] haystack
+            expd =
+              [ (Set.singleton "rx", "the ")
+              , (Set.fromList ["url", "rx"], "h")
+              , (Set.singleton "url", "ttps://google.c")
+              , (Set.fromList ["url", "rx"], "om")
+              , (Set.singleton "rx", " foo")
+              , (Set.empty, "bar")
+              ]
+         in res @?= expd
+    , testCase "url with trailing match, with ordering" $
+        let (Right rx) = compile defaultCompOpt defaultExecOpt "the h|om foo"
+            haystack = "the https://google.com foobar"
+            res =
+              regexSplitsWithMatchesOverlap [(rx, ["rx"]), (urlRegex, ["url"])] haystack
+            expd =
+              [ (["rx"], "the ")
+              , (["rx", "url"], "h")
+              , (["url"], "ttps://google.c")
+              , (["rx", "url"], "om")
+              , (["rx"], " foo")
+              , ([], "bar")
+              ]
          in res @?= expd
     ]
 
