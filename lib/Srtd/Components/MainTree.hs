@@ -176,7 +176,7 @@ makeWithFilters root filters hhf doFollowItem model rname = do
   tv <-
     TV.makeFromModel
       root
-      (fromJust $ CList.focus filters)
+      (chainFilters (hideHierarchyFilter hhf) (fromJust $ CList.focus filters))
       doFollowItem
       Config.scrolloff
       model
@@ -291,17 +291,16 @@ rootKeymap =
       , ( kmLeafA
             (bind '-')
             "Un/collapse"
-            ( withCurOrElse aerContinue $ \cur -> do
-                modify (mtHideHierarchyFilterL %~ hhfToggle cur)
-                notFoundToAER_ reloadModel
+            ( withCurOrElse aerContinue $ \cur ->
+                notFoundToAER_ $
+                  modifyHideHierarchyFilter (hhfToggle cur)
             )
         )
       , ( kmLeafA
             (bind '0')
             "Uncollapse all"
-            ( do
-                modify (mtHideHierarchyFilterL .~ emptyHideHierarchyFilter)
-                notFoundToAER_ reloadModel
+            ( notFoundToAER_ $
+                modifyHideHierarchyFilter (const emptyHideHierarchyFilter)
             )
         )
       , kmSub (bind ' ') spaceKeymap
@@ -357,8 +356,7 @@ collapseLevelKeymap =
           root <- gets mtRoot
           notFoundToAER_ $ do
             subtree <- pureET $ translateAppFilterContext $ runFilter normalFilter root model'
-            lift $ mtHideHierarchyFilterL .= subtreeLevelHHF i subtree
-            reloadModel
+            modifyHideHierarchyFilter $ const $ subtreeLevelHHF i subtree
       )
   subtreeLevelHHF i subtree = HideHierarchyFilter (Set.fromList $ forestIdsAtLevel i (stForest subtree))
 
@@ -597,9 +595,7 @@ spaceKeymap =
               let f hhf =
                     let val = hhfIsCollapsed cur hhf || (not $ all (\eid -> hhfIsCollapsed eid hhf) c_eids)
                      in hhfSetCollapseds c_eids val hhf
-              mtHideHierarchyFilterL
-                %= (hhfSetCollapseds [cur] False . f)
-              reloadModel
+              modifyHideHierarchyFilter (hhfSetCollapseds [cur] False . f)
         )
     , kmLeafA_ (bind 'n') "New as parent" $ withCur $ \cur -> do
         -- Copied from 'pushInsertNewItemRelToCur' but that function can't handle "insert as parent".
@@ -814,6 +810,11 @@ resetTreeViewFilter = do
     collapseFilter = hideHierarchyFilter . mtHideHierarchyFilter $ mt
     -- NB we know that filters will be non-empty.
     normalFilter = fromJust . CList.focus . mtFilters $ mt
+
+modifyHideHierarchyFilter ::
+  (?actx :: AppContext) =>
+  (HideHierarchyFilter -> HideHierarchyFilter) -> EventMOrNotFound AppResourceName MainTree ()
+modifyHideHierarchyFilter f = mtHideHierarchyFilterL %= f >> resetTreeViewFilter
 
 cycleNextFilter :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
 cycleNextFilter = do
