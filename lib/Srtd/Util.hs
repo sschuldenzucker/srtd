@@ -348,24 +348,24 @@ unsafeSingleDigitUIntToChar i = case (show i) of
 
 -- ** Regex helpers
 
--- SOMEDAY these should be moved to another module.
-findFirstURL :: String -> Maybe String
-findFirstURL s =
-  case matchAllText urlRegex s of
-    [] -> Nothing
-    -- Elements are arrays consisting of subgroup matches. Index 0 exists and is the full pattern.
-    ma : _ -> Just $ fst $ ma Array.! 0
-
 urlRegex :: Regex
 urlRegex =
   fromRight (error $ "Constant regex failed to compile") $
     compile defaultCompOpt defaultExecOpt "\\b[a-z]+://[a-zA-Z0-9./?=&-_%]+"
 
-findFirstHexCode :: String -> Maybe String
-findFirstHexCode s = listToMaybe $ getAllTextMatches (s =~ pat :: AllTextMatches [] String)
- where
-  pat :: String
-  pat = "0x[0-9a-fA-F]+"
+hexNumberRegex :: Regex
+hexNumberRegex =
+  fromRight (error $ "Constant regex failed to compile") $
+    compile defaultCompOpt defaultExecOpt "0x[0-9a-fA-F]+"
+
+decimalNonNegIntegerRegex :: Regex
+decimalNonNegIntegerRegex =
+  fromRight (error $ "Constant regex failed to compile") $
+    compile defaultCompOpt defaultExecOpt "[0-9]+"
+
+-- | Find first match of a regex, if any.
+findFirstMatch :: Regex -> String -> Maybe String
+findFirstMatch rx = listToMaybe . getAllTextMatches . match rx
 
 -- * IO helpers
 

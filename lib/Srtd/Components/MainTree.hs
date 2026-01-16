@@ -441,13 +441,16 @@ openExternallyKeymap =
   kmMake
     "Open externally"
     [ ( kmLeafA_ (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
-          whenJust (findFirstURL name) $ \url -> liftIO (openURL url)
+          whenJust (findFirstMatch urlRegex name) $ \url -> liftIO (openURL url)
       )
     , ( kmLeafA_ (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
           liftIO $ setClipboard name
       )
     , ( kmLeafA_ (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
-          whenJust (findFirstHexCode name) $ \code -> liftIO (setClipboard code)
+          whenJust (findFirstMatch hexNumberRegex name) $ \code -> liftIO (setClipboard code)
+      )
+    , ( kmLeafA_ (bind 'n') "Copy first non-negative integer" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
+          whenJust (findFirstMatch decimalNonNegIntegerRegex name) $ \code -> liftIO (setClipboard code)
       )
     ]
 
