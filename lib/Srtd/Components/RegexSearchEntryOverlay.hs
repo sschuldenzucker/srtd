@@ -1,5 +1,10 @@
 -- | A component that lets the user enter a regex. We validate and stream as we go.
-module Srtd.Components.RegexSearchEntryOverlay (regexSearchEntryOverlay, ConfirmType (..)) where
+module Srtd.Components.RegexSearchEntryOverlay (
+  regexSearchEntryOverlay,
+  RegexWithSource (..),
+  compileWithSource,
+  ConfirmType (..),
+) where
 
 import Brick
 import Brick.Keybindings (binding, ctrl)
@@ -22,23 +27,33 @@ data ConfirmType
   | -- | Signals Meta-return
     AltConfirm
 
+data RegexWithSource = RegexWithSource
+  { rxsRegex :: Regex
+  , rxsSource :: T.Text
+  }
+
+compileWithSource :: CompOption -> ExecOption -> Text -> Either String RegexWithSource
+compileWithSource compOpt execOpt s =
+  compile compOpt execOpt s <&> \rx ->
+    RegexWithSource rx s
+
 data MyState = MyState
   { sEditor :: Editor Text AppResourceName
-  , sValue :: Maybe Regex
+  , -- NB there is some redundancy here (text being stored in two places) but it's easier to return stuff this way.
+    sValue :: Maybe RegexWithSource
   }
 
 suffixLenses ''MyState
 
-type MyAppEventAction = AppEventAction MyState (Maybe Regex) (Regex, ConfirmType)
+type MyAppEventAction =
+  AppEventAction MyState (Maybe RegexWithSource) (RegexWithSource, ConfirmType)
 
-regexSearchEntryOverlay :: AppResourceName -> MyState
-regexSearchEntryOverlay rname =
+regexSearchEntryOverlay :: Text -> AppResourceName -> MyState
+regexSearchEntryOverlay s rname =
   MyState
-    { sEditor = theEditor
-    , sValue = Nothing
+    { sEditor = editor (EditorFor rname) (Just 1) s & applyEdit TZ.gotoEOF
+    , sValue = eitherToMaybe $ compileWithSource myCompOpt myExecOpt s
     }
- where
-  theEditor = editor (EditorFor rname) (Just 1) ""
 
 keymap :: Keymap MyAppEventAction
 keymap =
@@ -83,10 +98,10 @@ setText :: Text -> EventM AppResourceName MyState ()
 -- Can't search for an empty string.
 setText "" = sValueL .= Nothing
 setText s = do
-  let erx = compile myCompOpt myExecOpt s
+  let erx = compileWithSource myCompOpt myExecOpt s
   sValueL .= eitherToMaybe erx
 
-instance AppComponent MyState (Maybe Regex) (Regex, ConfirmType) where
+instance AppComponent MyState (Maybe RegexWithSource) (RegexWithSource, ConfirmType) where
   renderComponent self = editUI
    where
     editUI = renderEditor (withAttr myAttr . txt . T.intercalate "\n") True (sEditor self)

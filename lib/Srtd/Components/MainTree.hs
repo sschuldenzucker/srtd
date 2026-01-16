@@ -124,7 +124,7 @@ mtSubtree = TV.tvSubtree . mtTreeView
 mtRoot :: MainTree -> EID
 mtRoot = root . mtSubtree
 
-mtSearchRxL :: Lens' MainTree (Maybe Regex)
+mtSearchRxL :: Lens' MainTree (Maybe RegexWithSource)
 mtSearchRxL = mtTreeViewL . TV.tvSearchRxL
 
 mtDoFollowItemL :: Lens' MainTree Bool
@@ -548,6 +548,7 @@ searchKeymap =
       [ ( kmLeafA_ (bind '/') "Search" $ do
             oldSearchRx <- use mtSearchRxL
             let
+              initText = maybe "" rxsSource oldSearchRx
               onContinue = aerVoid . assign mtSearchRxL
               onConfirm (rx, ctype) = do
                 assign mtSearchRxL (Just rx)
@@ -557,9 +558,7 @@ searchKeymap =
                 aerContinue
               onCanceled = aerVoid $ assign mtSearchRxL oldSearchRx
              in
-              -- TODO use oldSearchRx as the initial state. We need the text form. Need some infra
-              -- around that. (TDFA does not give it to us, Regex is a one-way conversion)
-              pushOverlay regexSearchEntryOverlay onContinue onConfirm onCanceled
+              pushOverlay (regexSearchEntryOverlay initText) onContinue onConfirm onCanceled
         )
       , (kmLeafA_ (bind 'n') "Next match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Forward False)
       , (kmLeafA_ (bind 'N') "Prev match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Backward False)
