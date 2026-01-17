@@ -20,6 +20,7 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 import Data.CircularList as CList
 import Data.Functor (void)
+import Data.List (intersperse)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -986,12 +987,13 @@ renderItemDetails ztime (eid, llabel) =
 
 renderStatusActionabilityCounts :: StatusActionabilityCounts -> Widget n
 renderStatusActionabilityCounts sac =
-  -- We use a special structure here b/c we feel it's best for performance not to vary the widgets we create.
-  -- SOMEDAY is that true?
+  -- SOMEDAY There _may_ be a performance issue b/c we vary the created set of widget on selection
+  -- move.
   -- SOMEDAY show Done/Canceled statuses?
   hBox $
     [ hBox
-        . mapLast (\f -> f emptyWidget) (\f -> f sepIntraGroup)
+        . intersperse sepIntraGroup
+        . catMaybes
         $ [ maybeRenderIndicatorSingle WIP
           , maybeRenderIndicatorSingle Next
           , maybeRenderIndicatorSingle Waiting
@@ -999,7 +1001,7 @@ renderStatusActionabilityCounts sac =
           -- , maybeRenderIndicatorSingle Open
           ]
     , sepSingleProjects
-    , hBox . mapLast (\f -> f emptyWidget) (\f -> f sepIntraGroup) $
+    , hBox . intersperse sepIntraGroup . catMaybes $
         map maybeRenderIndicatorProject displayedProjectActionabilities
           ++ [stuckProjectActionabilitiesW]
     ]
@@ -1009,23 +1011,25 @@ renderStatusActionabilityCounts sac =
   sepMarkerCount = emptyWidget
   sepSingleProjects = str "  "
   sepIntraGroup = str " "
-  maybeRenderIndicatorSingle s sep =
+  maybeRenderIndicatorSingle s =
     let n = MapLike.findWithDefault 0 s . sacSingleStatuses $ sac
      in if n == 0
-          then emptyWidget
+          then Nothing
           else
-            withAttr (actionabilityAttr False s) $
-              hBox [renderStatus False s s, sepMarkerCount, str . show $ n, sep]
-  maybeRenderIndicatorProject a sep =
+            Just $
+              withAttr (actionabilityAttr False s) $
+                hBox [renderStatus False s s, sepMarkerCount, str . show $ n]
+  maybeRenderIndicatorProject a =
     let n = MapLike.findWithDefault 0 a . sacProjects $ sac
      in if n == 0
-          then emptyWidget
+          then Nothing
           else
-            withAttr (actionabilityAttr False a) $
-              hBox [renderStatus False Project a, sepMarkerCount, str . show $ n, sep]
+            Just $
+              withAttr (actionabilityAttr False a) $
+                hBox [renderStatus False Project a, sepMarkerCount, str . show $ n]
   -- Not displaying LATER b/c I think that's basically stuck and we need to prune down items.
   displayedProjectActionabilities = [WIP, Next, Waiting]
-  stuckProjectActionabilitiesW sep =
+  stuckProjectActionabilitiesW =
     let
       totalProjects = MapLike.findWithDefault 0 Project $ sacSingleStatuses sac
       n = sacNStalledProjects sac
@@ -1034,10 +1038,11 @@ renderStatusActionabilityCounts sac =
       --   - sum [MapLike.findWithDefault 0 a (sacProjects sac) | a <- displayedProjectActionabilities]
 
       if n == 0
-        then emptyWidget
+        then Nothing
         else
-          withAttr (actionabilityAttr False Someday) $
-            hBox [renderStatus False Project Someday, sepMarkerCount, str . show $ n, sep]
+          Just $
+            withAttr (actionabilityAttr False Someday) $
+              hBox [renderStatus False Project Someday, sepMarkerCount, str . show $ n]
 
 -- * Component instance
 
