@@ -18,7 +18,7 @@ import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
-import Data.CircularList as CList
+import Data.CircularList qualified as CList
 import Data.Functor (void)
 import Data.List (intersperse)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
