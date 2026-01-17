@@ -990,9 +990,8 @@ renderStatusActionabilityCounts sac =
   -- SOMEDAY There _may_ be a performance issue b/c we vary the created set of widget on selection
   -- move.
   -- SOMEDAY show Done/Canceled statuses?
-  hBox $
-    [ hBox
-        . intersperse sepIntraGroup
+  hBox . concat . intersperse [sepSingleProjects] . filter (not . null) $
+    [ intersperse sepIntraGroup
         . catMaybes
         $ [ maybeRenderIndicatorSingle WIP
           , maybeRenderIndicatorSingle Next
@@ -1000,10 +999,9 @@ renderStatusActionabilityCounts sac =
           -- , maybeRenderIndicatorSingle Later
           -- , maybeRenderIndicatorSingle Open
           ]
-    , sepSingleProjects
-    , hBox . intersperse sepIntraGroup . catMaybes $
+    , intersperse sepIntraGroup . catMaybes $
         map maybeRenderIndicatorProject displayedProjectActionabilities
-          ++ [stuckProjectActionabilitiesW]
+          ++ [maybeStuckProjectsActionabilitiesW]
     ]
  where
   -- Not rendering Opens by actionability b/c I think that's too much information
@@ -1029,7 +1027,7 @@ renderStatusActionabilityCounts sac =
                 hBox [renderStatus False Project a, sepMarkerCount, str . show $ n]
   -- Not displaying LATER b/c I think that's basically stuck and we need to prune down items.
   displayedProjectActionabilities = [WIP, Next, Waiting]
-  stuckProjectActionabilitiesW =
+  maybeStuckProjectsActionabilitiesW =
     let
       totalProjects = MapLike.findWithDefault 0 Project $ sacSingleStatuses sac
       n = sacNStalledProjects sac
