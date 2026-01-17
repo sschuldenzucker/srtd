@@ -990,7 +990,7 @@ renderStatusActionabilityCounts sac =
   -- SOMEDAY There _may_ be a performance issue b/c we vary the created set of widget on selection
   -- move.
   -- SOMEDAY show Done/Canceled statuses?
-  hBox . concat . intersperse [sepSingleProjects] . filter (not . null) $
+  hBox . concat $
     [ intersperse sepIntraGroup
         . catMaybes
         $ [ maybeRenderIndicatorSingle WIP
@@ -999,6 +999,7 @@ renderStatusActionabilityCounts sac =
           -- , maybeRenderIndicatorSingle Later
           -- , maybeRenderIndicatorSingle Open
           ]
+    , [sepSingleProjects]
     , intersperse sepIntraGroup . catMaybes $
         map maybeRenderIndicatorProject displayedProjectActionabilities
           ++ [maybeStuckProjectsActionabilitiesW]
@@ -1007,7 +1008,7 @@ renderStatusActionabilityCounts sac =
   -- Not rendering Opens by actionability b/c I think that's too much information
   -- SOMEDAY alt, if n == 0, show the number and the indicator but in standard gray. Could make it less busy.
   sepMarkerCount = emptyWidget
-  sepSingleProjects = str "  "
+  sepSingleProjects = str " | "
   sepIntraGroup = str " "
   maybeRenderIndicatorSingle s =
     let n = MapLike.findWithDefault 0 s . sacSingleStatuses $ sac
