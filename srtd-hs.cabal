@@ -39,6 +39,7 @@ library
         Srtd.ModelJSON
         Srtd.ModelSaver
         Srtd.ModelServer
+        Srtd.Query
         Srtd.Ticker
         Srtd.Todo
         Srtd.Util

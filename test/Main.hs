@@ -10,6 +10,7 @@ import Data.Tree (Tree (..))
 import Srtd.Data.IdTree (IdForest (..), transformIdForestDownUpRec)
 import Srtd.Dates
 import Srtd.Util
+import Srtd.Query
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Megaparsec as Parsec
@@ -45,6 +46,9 @@ parseAndInterpretDateE s now = do
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left x) = Left $ f x
 mapLeft f (Right y) = Right y
+
+dropLeft :: Either a b -> Either () b
+dropLeft = mapLeft (const ())
 
 -- | Better than raw `@?=` b/c multi-line errors are formatted better (e.g. for parsers).
 shouldBeRight (Left errstr) _ = assertFailure errstr
@@ -174,6 +178,32 @@ prettyPastStrictRelativeAdaptiveTests =
  where
   now1 = ZonedTime (LocalTime (fromGregorian 2024 8 10) (TimeOfDay 8 0 0)) cet
   cet = hoursToTimeZone 1
+
+parseQueryE :: Text -> Either String ParsedQuery
+parseQueryE = mapLeft Parsec.errorBundlePretty . Parsec.parse pQuery "none"
+
+queryTests =
+  testGroup
+    "Query"
+      [parseQueryTests]
+
+parseQueryTests =
+  testGroup
+    "Parsing"
+      [parseQueryRegexTests]
+
+parseQueryRegexTests = 
+  testGroup
+    "Parse Regex Queries"
+    [ testCase "single unfenced" $
+        parseQueryE "ab.cd" `shouldBeRight` (ParsedQueryRegexParts ["ab.cd"])
+    , testCase "multi unfenced with whitespace" $
+        parseQueryE "  ab   cd ef" `shouldBeRight` (ParsedQueryRegexParts ["ab", "cd", "ef"])
+    , testCase "mixed fenced" $
+        parseQueryE "xy /ab cd/ ef /g h/" `shouldBeRight` (ParsedQueryRegexParts ["xy", "ab cd", "ef", "g h"])
+    , testCase "error on unfinished delimiter" $
+        (dropLeft $ parseQueryE "xy /ab cd") @?= Left ()
+    ]
 
 treeTests =
   testGroup
@@ -312,7 +342,7 @@ textRegexSplitsWithMatchesOverlap =
     ]
 
 tests :: TestTree
-tests = testGroup "Tests" [testTests, dateTests, treeTests, regexTests]
+tests = testGroup "Tests" [testTests, dateTests, queryTests, treeTests, regexTests]
 
 main :: IO ()
 main = defaultMain tests
