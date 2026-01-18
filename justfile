@@ -22,5 +22,5 @@ add-module modname:
     let path = $"lib/($modname | str replace -a '.' '/').hs"
     let dirpath = $path | path dirname 
     mkdir $dirpath
-    $"module ($modname) where" | save $path
+    $"module ($modname) where\n" | save $path
     cabal run cabal-helper -- add-exposed-module $modname
