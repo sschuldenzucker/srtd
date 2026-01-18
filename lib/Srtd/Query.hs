@@ -13,6 +13,7 @@ module Srtd.Query (
 
 import Control.Monad ((>=>))
 import Data.Char (isSpace)
+import Data.Functor (void)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void)
@@ -61,11 +62,28 @@ pQuery = space >> pQuery' <* (space >> eof)
 pQuery' :: Parser ParsedQuery
 pQuery' = ParsedQueryRegexParts <$> pChunks
  where
+  -- TODO I think these fences would be unnecessary if we just let people escape space (and backslash). Also looks nicer.
   -- NO `try` on the first branch since we want it to fail on unclosed '/'.
+  pChunks :: Parser [Text]
   pChunks = (pSlashFencedRegex <|> pUnfencedRegex) `sepBy` space1
+  pSlashFencedRegex = do
+    void $ char '/'
+    chunks <- manyTill pFencedChunk (char '/' <?> "closing '/'")
+    pure (T.concat chunks)
+  -- TODO why do we need the first one below?
+  pUnfencedRegex = do
+    void $ notFollowedBy (char '/')
+    chunks <- some pUnfencedChunk
+    pure $ T.concat chunks
+  pEscapedChunk = backslashEscapedCharOf "\\/"
 
-pSlashFencedRegex :: Parser Text
-pSlashFencedRegex = single '/' >> takeWhile1P (Just "/") (/= '/') <* single '/'
+  -- A chunk of text inside a '/' fence.
+  pFencedChunk =
+    pEscapedChunk
+      <|> takeWhile1P (Just "quoted text") (`notElem` ("/\\" :: String))
 
-pUnfencedRegex :: Parser Text
-pUnfencedRegex = takeWhile1P (Just "non-space") (not . isSpace)
+  -- A chunk of text outside a '/' fence.
+  pUnfencedChunk = pEscapedChunk <|> takeWhile1P (Just "unquoted text") (\c -> not (isSpace c) && c /= '\\')
+
+backslashEscapedCharOf :: String -> Parser Text
+backslashEscapedCharOf chars = T.singleton <$> (char '\\' >> oneOf chars)

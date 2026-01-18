@@ -199,10 +199,18 @@ parseQueryRegexTests =
         parseQueryE "ab.cd" `shouldBeRight` (ParsedQueryRegexParts ["ab.cd"])
     , testCase "multi unfenced with whitespace" $
         parseQueryE "  ab   cd ef" `shouldBeRight` (ParsedQueryRegexParts ["ab", "cd", "ef"])
+    , testCase "single fenced" $
+        parseQueryE "/a b/" `shouldBeRight` (ParsedQueryRegexParts ["a b"])
     , testCase "mixed fenced" $
         parseQueryE "xy /ab cd/ ef /g h/" `shouldBeRight` (ParsedQueryRegexParts ["xy", "ab cd", "ef", "g h"])
     , testCase "error on unfinished delimiter" $
         (dropLeft $ parseQueryE "xy /ab cd") @?= Left ()
+    , testCase "escaping '/' outside fence" $
+        parseQueryE "x\\/y" `shouldBeRight` (ParsedQueryRegexParts ["x/y"])
+    , testCase "escaping '\\' outside fence" $
+        parseQueryE "x\\\\y" `shouldBeRight` (ParsedQueryRegexParts ["x\\y"])
+    , testCase "escaping '/' inside fence" $
+        parseQueryE "/x \\/ y/ z" `shouldBeRight` (ParsedQueryRegexParts ["x / y", "z"])
     ]
 
 treeTests =
