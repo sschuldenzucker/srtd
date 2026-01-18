@@ -62,7 +62,7 @@ pQuery = space >> pQuery' <* (space >> eof)
 pQuery' :: Parser ParsedQuery
 pQuery' = ParsedQueryRegexParts <$> pChunks
  where
-  -- TODO I think these fences would be unnecessary if we just let people escape space (and backslash). Also looks nicer.
+  -- TODO I don't think we need fencing b/c people can just escape space.
   -- NO `try` on the first branch since we want it to fail on unclosed '/'.
   pChunks :: Parser [Text]
   pChunks = (pSlashFencedRegex <|> pUnfencedRegex) `sepBy` space1
@@ -75,15 +75,15 @@ pQuery' = ParsedQueryRegexParts <$> pChunks
     void $ notFollowedBy (char '/')
     chunks <- some pUnfencedChunk
     pure $ T.concat chunks
-  pEscapedChunk = backslashEscapedCharOf "\\/"
 
-  -- A chunk of text inside a '/' fence.
+  pFencedEscapedChunk = backslashEscapedCharOf "\\/"
+  pUnfencedEscapedChunk = backslashEscapedCharOf "\\/ "
+
   pFencedChunk =
-    pEscapedChunk
+    pFencedEscapedChunk
       <|> takeWhile1P (Just "quoted text") (`notElem` ("/\\" :: String))
 
-  -- A chunk of text outside a '/' fence.
-  pUnfencedChunk = pEscapedChunk <|> takeWhile1P (Just "unquoted text") (\c -> not (isSpace c) && c /= '\\')
+  pUnfencedChunk = pUnfencedEscapedChunk <|> takeWhile1P (Just "unquoted text") (\c -> not (isSpace c) && c /= '\\')
 
 backslashEscapedCharOf :: String -> Parser Text
 backslashEscapedCharOf chars = T.singleton <$> (char '\\' >> oneOf chars)

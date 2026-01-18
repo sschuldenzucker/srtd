@@ -211,6 +211,8 @@ parseQueryRegexTests =
         parseQueryE "x\\\\y" `shouldBeRight` (ParsedQueryRegexParts ["x\\y"])
     , testCase "escaping '/' inside fence" $
         parseQueryE "/x \\/ y/ z" `shouldBeRight` (ParsedQueryRegexParts ["x / y", "z"])
+    , testCase "escaping space" $
+        parseQueryE "x\\ y a\\ b" `shouldBeRight` (ParsedQueryRegexParts ["x y", "a b"])
     ]
 
 treeTests =
