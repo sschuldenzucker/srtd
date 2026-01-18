@@ -17,7 +17,7 @@ copy:
 
 # Add a new exposed module below `lib/`
 add-module modname:
-    #!/usr/bin/env/nu
+    #!/usr/bin/env nu
     let modname = "{{modname}}"
     let path = $"lib/($modname | str replace -a '.' '/').hs"
     let dirpath = $path | path dirname 
