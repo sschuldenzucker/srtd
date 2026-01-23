@@ -3,7 +3,8 @@
 Right now, it can only match nodes
 -}
 module Srtd.Query (
-  Query (..),
+  Query,
+  SingleItemQuery (..),
   ParsedQuery (..),
   parseAndCompileQuery,
   parseQuery,
@@ -24,7 +25,12 @@ import Text.Regex.TDFA (CompOption (..), ExecOption (..), Regex, defaultCompOpt,
 import Text.Regex.TDFA.Text (compile)
 
 -- | A compiled query
-data Query = QueryRegexParts
+--
+-- To be extended SOMEDAY to queries that go across hierarchy
+type Query = SingleItemQuery
+
+-- | A compiled query for a single item
+data SingleItemQuery = QueryRegexParts
   { qrxParts :: [Regex]
   }
 
