@@ -42,9 +42,9 @@ import Srtd.Components.Attr (
   renderMostUrgentDateMaybe,
   renderStatus,
  )
+import Srtd.Components.CompilingTextEntry
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
-import Srtd.Components.RegexSearchEntryOverlay
 import Srtd.Components.TreeView qualified as TV
 import Srtd.Config qualified as Config
 import Srtd.Data.IdTree
@@ -125,7 +125,7 @@ mtSubtree = TV.tvSubtree . mtTreeView
 mtRoot :: MainTree -> EID
 mtRoot = root . mtSubtree
 
-mtSearchRxL :: Lens' MainTree (Maybe RegexWithSource)
+mtSearchRxL :: Lens' MainTree (Maybe (CompiledWithSource Regex))
 mtSearchRxL = mtTreeViewL . TV.tvSearchRxL
 
 mtDoFollowItemL :: Lens' MainTree Bool
@@ -550,7 +550,7 @@ searchKeymap =
       [ ( kmLeafA_ (bind '/') "Search" $ do
             oldSearchRx <- use mtSearchRxL
             let
-              initText = maybe "" rxsSource oldSearchRx
+              initText = maybe "" cwsSource oldSearchRx
               onContinue = aerVoid . assign mtSearchRxL
               onConfirm (rx, ctype) = do
                 assign mtSearchRxL (Just rx)
@@ -560,7 +560,7 @@ searchKeymap =
                 aerContinue
               onCanceled = aerVoid $ assign mtSearchRxL oldSearchRx
              in
-              pushOverlay (regexSearchEntryOverlay initText) onContinue onConfirm onCanceled
+              pushOverlay (compilingRegexEntry initText) onContinue onConfirm onCanceled
         )
       , (kmLeafA_ (bind 'n') "Next match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Forward False)
       , (kmLeafA_ (bind 'N') "Prev match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Backward False)
@@ -572,6 +572,8 @@ searchKeymap =
         )
       , (kmLeafA_ (bind 'l') "Clear" $ mtSearchRxL .= Nothing)
       , (kmLeafA_ (ctrl 'l') "Clear" $ mtSearchRxL .= Nothing)
+      -- TODO WIP design interaction pattern for search filter (using singleItemQueryFlatFilter)
+      -- I feel the _very_ general filter infra may have reached its limits.
       ]
 
 -- | Catchall keymap for variants and stuff

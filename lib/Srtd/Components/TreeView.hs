@@ -31,7 +31,8 @@ import Srtd.BrickHelpers (strTruncateAvailable)
 import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
 import Srtd.Components.Attr (renderLastModified, renderMostUrgentDate, renderStatus)
-import Srtd.Components.RegexSearchEntryOverlay (RegexWithSource (..))
+-- import Srtd.Components.RegexSearchEntryOverlay (RegexWithSource (..))
+import Srtd.Components.CompilingTextEntry (CompiledWithSource (..))
 import Srtd.Data.IdTree (IdForest (..), forestGoFromToId, zForestFindId, zGetId)
 import Srtd.Data.TreeZipper
 import Srtd.Dates (DateOrTime (..), cropDate)
@@ -138,7 +139,7 @@ data TreeView = TreeView
   -- ^ Safe to edit directly to the same degree that 'L.List' is.
   , tvResourceName :: AppResourceName
   -- ^ NOT safe to edit directly
-  , tvSearchRx :: Maybe RegexWithSource
+  , tvSearchRx :: Maybe (CompiledWithSource Regex)
   -- ^ safe to edit directly
   , tvDoFollowItem :: Bool
   -- ^ safe to edit directly
@@ -224,7 +225,7 @@ instance AppComponent TreeView () () where
         mseli = if canFitScrolloff then (L.listSelected $ tvList s) else Nothing
     render $
       L.renderListWithIndex
-        (renderRow now (fmap rxsRegex . tvSearchRx $ s) (tvScrolloff s) mseli)
+        (renderRow now (fmap cwsCompiled . tvSearchRx $ s) (tvScrolloff s) mseli)
         True
         (tvList s)
    where
@@ -500,7 +501,7 @@ searchForRxAction dir curOk = do
   mrx <- use tvSearchRxL
   case mrx of
     Nothing -> return ()
-    Just rx -> tvListL %= searchForRx dir curOk (rxsRegex rx)
+    Just rx -> tvListL %= searchForRx dir curOk (cwsCompiled rx)
 
 -- SOMEDAY if this is slow, we might instead go via the tree. Note that this has wrap-around, though.
 searchForRxSiblingAction :: SearchDirection -> EventM n TreeView ()
@@ -511,7 +512,7 @@ searchForRxSiblingAction dir = do
   case (mrx, mCurAttr) of
     (Just rx, Just (_i, curllabel)) ->
       let curpar = stParentEID st curllabel
-       in tvListL %= searchForRxNextSibling dir (rxsRegex rx) curpar st
+       in tvListL %= searchForRxNextSibling dir (cwsCompiled rx) curpar st
     _ -> return ()
  where
   searchForRxNextSibling Forward rx curpar st = L.listFindBy (p rx curpar st)

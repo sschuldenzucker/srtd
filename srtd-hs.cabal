@@ -21,6 +21,7 @@ library
         Srtd.CmdlineArgs
         Srtd.Component
         Srtd.Components.Attr
+        Srtd.Components.CompilingTextEntry
         Srtd.Components.DateSelectOverlay
         Srtd.Components.MainTree
         Srtd.Components.NewNodeOverlay
