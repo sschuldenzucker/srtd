@@ -31,7 +31,6 @@ import Srtd.BrickHelpers (strTruncateAvailable)
 import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
 import Srtd.Components.Attr (renderLastModified, renderMostUrgentDate, renderStatus)
--- import Srtd.Components.RegexSearchEntryOverlay (RegexWithSource (..))
 import Srtd.Components.CompilingTextEntry (CompiledWithSource (..))
 import Srtd.Data.IdTree (IdForest (..), forestGoFromToId, zForestFindId, zGetId)
 import Srtd.Data.TreeZipper
