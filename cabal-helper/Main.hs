@@ -2,17 +2,18 @@
 
 module Main (main) where
 
+import Control.Monad (forM)
+import Control.Monad.State
 import Data.ByteString qualified as BS
 import Data.List (isSuffixOf, nub, sort)
+import Data.Maybe (catMaybes)
 import Distribution.ModuleName (ModuleName)
--- import Distribution.ModuleName qualified as ModuleName
 import Distribution.PackageDescription (GenericPackageDescription (..), Library (..))
 import Distribution.PackageDescription.Parsec (parseGenericPackageDescriptionMaybe)
 import Distribution.PackageDescription.PrettyPrint (writeGenericPackageDescription)
 import Distribution.Text qualified as DText
 import Distribution.Types.CondTree (mapCondTree)
 import Distribution.Types.Lens qualified as L
--- import Distribution.Types.Library.Lens qualified as L
 import Lens.Micro
 import Options.Applicative
 import System.Directory
@@ -23,9 +24,13 @@ main = execParser cmdParser >>= runCmd
 
 data Cmd
   = AddExposedModule AddExposedModuleOpts
+  | RemoveExposedModule RemoveExposedModuleOpts
   deriving (Show)
 
 data AddExposedModuleOpts = AddExposedModuleOpts ModuleName
+  deriving (Show)
+
+data RemoveExposedModuleOpts = RemoveExposedModuleOpts ModuleName
   deriving (Show)
 
 cmdParser :: ParserInfo Cmd
@@ -39,7 +44,7 @@ cmdParser =
  where
   parser :: Parser Cmd
   parser =
-    hsubparser
+    hsubparser $
       ( command
           "add-exposed-module"
           ( info
@@ -48,6 +53,13 @@ cmdParser =
           )
           <> metavar "COMMAND"
       )
+        <> ( command
+               "remove-exposed-module"
+               ( info
+                   (RemoveExposedModule <$> removeExposedModuleOptsParser)
+                   (progDesc "Remove an entry from exposed-modules of the library section")
+               )
+           )
   addExposedModuleOptsParser = do
     moduleName <-
       argument
@@ -56,6 +68,14 @@ cmdParser =
             <> help "Module name, e.g., Foo.Bar.Qux"
         )
     pure $ AddExposedModuleOpts moduleName
+  removeExposedModuleOptsParser = do
+    moduleName <-
+      argument
+        (maybeReader DText.simpleParse)
+        ( metavar "MODULE"
+            <> help "Module name, e.g., Foo.Bar.Qux"
+        )
+    pure $ RemoveExposedModuleOpts moduleName
 
 runCmd :: Cmd -> IO ()
 runCmd (AddExposedModule (AddExposedModuleOpts modname)) = do
@@ -67,6 +87,20 @@ runCmd (AddExposedModule (AddExposedModuleOpts modname)) = do
     Just gpd -> do
       let gpd' = addExposedModule modname gpd
       writeGenericPackageDescription cabalFile gpd'
+runCmd (RemoveExposedModule (RemoveExposedModuleOpts modname)) = do
+  cabalFile <- findCabalFile
+  cabalFileContent <- BS.readFile cabalFile
+  let mgpd = parseGenericPackageDescriptionMaybe cabalFileContent
+  case mgpd of
+    Nothing -> die $ "Unreadable .cabal file: " ++ cabalFile
+    Just gpd -> do
+      let mgpd' = tryRemoveExposedModule modname gpd
+      case mgpd' of
+        Nothing ->
+          die $
+            "Module not in project: " ++ show modname
+        Just gpd' ->
+          writeGenericPackageDescription cabalFile gpd'
 
 -- | Add exposed module to the default library.
 addExposedModule :: ModuleName -> GenericPackageDescription -> GenericPackageDescription
@@ -75,6 +109,22 @@ addExposedModule m = L.condLibrary %~ fmap (mapCondTree go id id)
  where
   go :: Library -> Library
   go = L.exposedModules %~ nub . sort . (m :)
+
+tryRemoveExposedModule ::
+  ModuleName -> GenericPackageDescription -> Maybe GenericPackageDescription
+tryRemoveExposedModule m gpd = case runState act False of
+  (_, False) -> Nothing
+  (gpd', True) -> Just gpd'
+ where
+  act :: State Bool GenericPackageDescription
+  act = forOf L.condLibrary gpd $ traverse (traverse goLib)
+  goLib :: Library -> State Bool Library
+  goLib lib =
+    forOf L.exposedModules lib $ \mods ->
+      fmap catMaybes . forM mods $ \mo ->
+        if mo == m
+          then put True >> return Nothing
+          else return (Just mo)
 
 findCabalFile :: IO FilePath
 findCabalFile = do

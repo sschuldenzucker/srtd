@@ -114,6 +114,7 @@ executable cabal-helper
     ghc-options:      -Wall -Wcompat
     build-depends:
         base >=4.17.2.1 && <4.22,
+        mtl ^>=2.3,
         optparse-applicative >=0.18.1.0 && <0.20,
         Cabal-syntax ^>=3.16,
         directory ^>=1.3,
