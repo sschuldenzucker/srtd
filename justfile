@@ -24,3 +24,13 @@ add-module modname:
     mkdir $dirpath
     $"module ($modname) where\n" | save $path
     cabal run cabal-helper -- add-exposed-module $modname
+
+# Remove an exposed module below `lib/`
+remove-module modname:
+    #!/usr/bin/env nu
+    let modname = "{{modname}}"
+    let path = $"lib/($modname | str replace -a '.' '/').hs"
+    let dirpath = $path | path dirname 
+    cabal run cabal-helper -- remove-exposed-module $modname
+    rm $path
+
