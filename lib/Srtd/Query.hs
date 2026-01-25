@@ -6,9 +6,13 @@ module Srtd.Query (
   Query,
   SingleItemQuery (..),
   ParsedQuery (..),
+  ParsedSingleItemQuery,
   parseAndCompileQuery,
+  parseAndCompileSingleItemQuery,
   parseQuery,
   compileQuery,
+  parseSingleItemQuery,
+  compileSingleItemQuery,
   pQuery,
 ) where
 
@@ -42,12 +46,20 @@ data SingleItemQuery = QueryRegexParts
 parseAndCompileQuery :: Text -> Maybe Query
 parseAndCompileQuery = parseQuery >=> compileQuery
 
+parseAndCompileSingleItemQuery :: Text -> Maybe SingleItemQuery
+parseAndCompileSingleItemQuery = parseAndCompileQuery
+
 parseQuery :: Text -> Maybe ParsedQuery
 parseQuery = parseMaybe pQuery
+
+parseSingleItemQuery :: Text -> Maybe ParsedSingleItemQuery
+parseSingleItemQuery = parseQuery
 
 type Parser = Parsec Void Text
 
 type MyParseErrorBundle = ParseErrorBundle Text Void
+
+type ParsedSingleItemQuery = ParsedQuery
 
 data ParsedQuery = ParsedQueryRegexParts [Text]
   deriving (Eq, Show)
@@ -55,6 +67,9 @@ data ParsedQuery = ParsedQueryRegexParts [Text]
 compileQuery :: ParsedQuery -> Maybe Query
 compileQuery (ParsedQueryRegexParts parts) =
   QueryRegexParts <$> mapM (eitherToMaybe . compile myCompOpt myExecOpt) parts
+
+compileSingleItemQuery :: ParsedSingleItemQuery -> Maybe Query
+compileSingleItemQuery = compileQuery
 
 myCompOpt :: CompOption
 myCompOpt = defaultCompOpt {caseSensitive = False}
