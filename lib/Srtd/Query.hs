@@ -19,13 +19,23 @@ module Srtd.Query (
 import Control.Monad ((>=>))
 import Data.Char (isSpace)
 import Data.Functor (void)
+import Data.List (foldl1', sortBy)
+import Data.Ord (comparing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void)
 import Srtd.Util (eitherToMaybe)
 import Text.Megaparsec
 import Text.Megaparsec.Char
-import Text.Regex.TDFA (CompOption (..), ExecOption (..), Regex, defaultCompOpt, defaultExecOpt)
+import Text.Regex.TDFA (
+  AllMatches (..),
+  CompOption (..),
+  ExecOption (..),
+  Regex,
+  defaultCompOpt,
+  defaultExecOpt,
+ )
+import Text.Regex.TDFA qualified as RX
 import Text.Regex.TDFA.Text (compile)
 
 -- | A compiled query
@@ -76,6 +86,33 @@ myCompOpt = defaultCompOpt {caseSensitive = False}
 
 myExecOpt :: ExecOption
 myExecOpt = defaultExecOpt {captureGroups = False}
+
+-- * Compatibility
+
+-- We _could_ make SingleItemQuery an instance of RegexLike but it doesn't really quite fit: it doesn't necessarily match a contiguous string, so `matchOnce` is kinda ill-defined.
+
+-- TODO draft:
+
+{- -- | Like `getAllMatches . match regex` specialized to a list of (start, len)
+--
+-- Overlaps are collapsed and matches are in order.
+singleItemQueryAllMatches :: SingleItemQuery -> Text -> [(Int, Int)]
+singleItemQueryAllMatches (QueryRegexParts rxs) input = _todo
+ where
+  -- TODO is this even the right thing?!?
+  -- I think there's a deeper conceptual question here.
+  matchesWithOverlaps :: [(Int, Int)]
+  matchesWithOverlaps = sortBy (comparing fst) . flip concatMap rxs $ \rx ->
+    getAllMatches (RX.match rx input)
+  dropOverlaps :: [(Int, Int)] -> [(Int, Int)]
+  dropOverlaps = _todo
+
+-- | Like 'regexSplitsWithMatchesOverlap' but for queries.
+-- SOMEDAY not clear to me how long this can be here b/c I may also match other things (like metadata)
+querySplitsWithMatchesOverlap :: (Monoid a) => [(SingleItemQuery, a)] -> Text -> [(a, Text)]
+querySplitsWithMatchesOverlap = _todo -}
+
+-- * Parsing
 
 pQuery :: Parser ParsedQuery
 pQuery = space >> pQuery' <* (space >> eof)
