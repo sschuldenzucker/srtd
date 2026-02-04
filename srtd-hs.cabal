@@ -25,6 +25,7 @@ library
         Srtd.Components.DateSelectOverlay
         Srtd.Components.MainTree
         Srtd.Components.NewNodeOverlay
+        Srtd.Components.QuickFilter
         Srtd.Components.TestOverlay
         Srtd.Components.TreeView
         Srtd.Config
