@@ -45,6 +45,7 @@ import Srtd.Components.Attr (
 import Srtd.Components.CompilingTextEntry
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
+import Srtd.Components.QuickFilter qualified as QF
 import Srtd.Components.TreeView qualified as TV
 import Srtd.Config qualified as Config
 import Srtd.Data.IdTree
@@ -613,6 +614,19 @@ spaceKeymap =
                   zoom mtTreeViewL $ TV.moveToEID eid
                   aerContinue
         pushOverlay (newNodeOverlay "" "New Item as Parent") overlayNoop cb aerContinue
+    , kmLeafA_ (bind 'j') "Quick jump" $ do
+        tv <- gets mtTreeView
+        -- TODO better reaction: use the returned query for highlights and enable alternative filter confirm
+        -- TODO WIP finish this simple integration, then try out the basic version.
+        let cb (_mCompiledRegex, eid) = do
+              zoom mtTreeViewL $ TV.moveToEID eid
+              aerContinue
+        s <- maybe "" cwsSource <$> gets (TV.tvSearchRx . mtTreeView)
+        pushOverlay
+          (QF.quickFilterFromTreeView QF.NodeSelection tv s "Quick jump")
+          overlayNoop
+          cb
+          aerContinue
     ]
 
 viewportKeymap :: Keymap (AppEventAction MainTree () ())
