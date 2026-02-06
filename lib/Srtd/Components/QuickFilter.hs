@@ -105,7 +105,7 @@ quickFilterFromTreeView ::
 quickFilterFromTreeView _v tv s name rname =
   QuickFilter
     { sTextEntry = textEntry
-    , sTreeView = TV.setResourceName (MainListFor rname) tv
+    , sTreeView = TV.setResourceName (MainListFor rname) tv & TV.tvSearchRxL .~ Nothing
     , sOldValue = Empty
     , sBaseFilter = tvFilter tv
     , sKMZ = keymapToZipper $ mkKeymap name
@@ -196,9 +196,6 @@ maybeSyncFilterToTreeView ::
 maybeSyncFilterToTreeView = do
   meoldVal <- gets sOldValue
   menewVal <- gets (CTE.maybeEmptyValue . sTextEntry)
-  -- TODO update the search rx.
-  -- 1. initially it should be Nothing
-  -- 2. as we update here, it should also be updated.
   if
     -- TODO This reloads the _whole_ subtree including all local derived attrs, on each key press.
     -- That wouldn't be needed if we give TreeView a way to filter only what's already there.
@@ -211,11 +208,13 @@ maybeSyncFilterToTreeView = do
           q = QueryRegexParts [rx]
           fullFilter = chainFilters (singleItemQueryFlatFilter q) baseFilter
         zoom sTreeViewL $ TV.replaceFilter fullFilter
+        sTreeViewL . TV.tvSearchRxL .= Just newVal
         sOldValueL .= menewVal
     | Empty <- menewVal
     , meoldVal /= menewVal -> do
         baseFilter <- gets sBaseFilter
         zoom sTreeViewL $ TV.replaceFilter baseFilter
+        sTreeViewL . TV.tvSearchRxL .= Nothing
         sOldValueL .= menewVal
     | otherwise -> return ()
 
