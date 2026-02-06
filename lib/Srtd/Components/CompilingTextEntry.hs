@@ -14,6 +14,11 @@ module Srtd.Components.CompilingTextEntry (
   compilingSingleItemQueryEntry,
   compilingQueryEntry,
   compilingRegexEntry,
+
+  -- * Helpers
+  MaybeEmpty (..),
+  maybeToMaybeEmpty,
+  maybeEmptyValue,
 ) where
 
 import Brick
@@ -67,6 +72,24 @@ data CompilingTextEntry c = CompilingTextEntry
   }
 
 suffixLenses ''CompilingTextEntry
+
+-- | A tertiary value that can be valid, empty, or invalid. We sometimes use this for regexs. (the
+-- empty regex is invalid but should still receive some special treatment)
+--
+-- SOMEDAY we could make this the default return value type of CompilingTextEntry
+data MaybeEmpty a = Valid a | Empty | Invalid
+  deriving (Eq, Ord, Show)
+
+-- | Map a Maybe to MaybeEmpty. The result will never be Empty.
+maybeToMaybeEmpty :: Maybe a -> MaybeEmpty a
+maybeToMaybeEmpty = \case
+  Just x -> Valid x
+  Nothing -> Invalid
+
+maybeEmptyValue :: CompilingTextEntry a -> MaybeEmpty (CompiledWithSource a)
+maybeEmptyValue cte
+  | (T.intercalate "\n" . getEditContents . sEditor) cte == "" = Empty
+  | otherwise = maybeToMaybeEmpty . sValue $ cte
 
 type MyAppEventAction c =
   AppEventAction
