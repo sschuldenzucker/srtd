@@ -14,6 +14,7 @@ module Srtd.Components.QuickFilter where
 
 import Brick
 import Brick.Keybindings
+import Brick.Widgets.Border
 import Control.Monad (liftM2)
 import Control.Monad.Trans (lift)
 import Data.Functor (void)
@@ -138,6 +139,7 @@ instance (VariantBehavior v, a ~ ContinueType v, b ~ ConfirmType v) => AppCompon
   renderComponent s =
     vBox
       [ renderComponent (sTextEntry s)
+      , hBorder
       , renderComponent (sTreeView s)
       ]
 
