@@ -171,19 +171,12 @@ instance (VariantBehavior v, a ~ ContinueType v, b ~ ConfirmType v) => AppCompon
       myAERContinue
     -- This weird case selection is required for routing b/c I have no way of knowing if an event
     -- got actually supported/handled. That is quite sad.
-    handleFallback ev@(VtyEvent (EvKey k [])) = case k of
-      -- TODO what to do with the keymap? E.g. the user can clear using C-l, complete with tab, etc. How to make this visible?
-      KDown -> routeToTreeView
-      KUp -> routeToTreeView
-      -- By default, everything else should go to the editor.
-      _ -> routeToEdit
-     where
-      routeToTreeView = myAERVoid $ zoom sTreeViewL $ handleEvent ev
-      routeToEdit = do
-        void $ zoom sTextEntryL $ handleEvent ev
-        notFoundToAER $ do
-          maybeSyncFilterToTreeView
-          lift $ myAERContinue
+    handleFallback ev@(VtyEvent (EvKey KDown [])) = routeToTreeView ev
+    handleFallback ev@(VtyEvent (EvKey KUp [])) = routeToTreeView ev
+    handleFallback ev@(VtyEvent (EvKey _k _mods)) = routeToEdit ev
+    handleFallback ev@(MouseDown rname _k _mods _loc)
+      | (MainListFor _) <- rname = routeToTreeView ev
+      | (EditorFor _) <- rname = routeToEdit ev
     handleFallback _ = myAERContinue
 
   componentTitle = kmName . cur . kmzTop . sKMZ
@@ -191,6 +184,22 @@ instance (VariantBehavior v, a ~ ContinueType v, b ~ ConfirmType v) => AppCompon
   -- TODO include key desc from sTextEntry, which we also support.
   -- This needs some more infra, maybe a change to how components work.
   componentKeyDesc = kmzDesc . sKMZ
+
+routeToTreeView ::
+  (VariantBehavior v, ?actx :: AppContext) =>
+  BrickEvent AppResourceName AppMsg ->
+  EventM AppResourceName (QuickFilter v) (AppEventReturn (ContinueType v) (ConfirmType v))
+routeToTreeView ev = myAERVoid $ zoom sTreeViewL $ handleEvent ev
+
+routeToEdit ::
+  (VariantBehavior v, ?actx :: AppContext) =>
+  BrickEvent AppResourceName AppMsg ->
+  EventM AppResourceName (QuickFilter v) (AppEventReturn (ContinueType v) (ConfirmType v))
+routeToEdit ev = do
+  void $ zoom sTextEntryL $ handleEvent ev
+  notFoundToAER $ do
+    maybeSyncFilterToTreeView
+    lift $ myAERContinue
 
 -- | Sync entered filter to tree view on change
 maybeSyncFilterToTreeView ::
