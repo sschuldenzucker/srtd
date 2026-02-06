@@ -25,6 +25,7 @@ import Srtd.Component
 import Srtd.Components.CompilingTextEntry (
   CompiledWithSource (..),
   CompilingTextEntry,
+  MaybeEmpty (..),
   compilingRegexEntry,
  )
 import Srtd.Components.CompilingTextEntry qualified as CTE
@@ -83,7 +84,7 @@ myAERVoid = (>> myAERContinue)
 data QuickFilter v = QuickFilter
   { sTextEntry :: CompilingTextEntry Regex
   , sTreeView :: TreeView
-  , sOldValue :: Maybe (CompiledWithSource Regex)
+  , sOldValue :: MaybeEmpty (CompiledWithSource Regex)
   , sBaseFilter :: Filter
   , sKMZ :: KeymapZipper (MyAppEventAction v)
   }
@@ -105,7 +106,7 @@ quickFilterFromTreeView _v tv s name rname =
   QuickFilter
     { sTextEntry = textEntry
     , sTreeView = TV.setResourceName (MainListFor rname) tv
-    , sOldValue = Nothing
+    , sOldValue = Empty
     , sBaseFilter = tvFilter tv
     , sKMZ = keymapToZipper $ mkKeymap name
     }
@@ -193,24 +194,29 @@ instance (VariantBehavior v, a ~ ContinueType v, b ~ ConfirmType v) => AppCompon
 maybeSyncFilterToTreeView ::
   (?actx :: AppContext) => EventMOrNotFound AppResourceName (QuickFilter v) ()
 maybeSyncFilterToTreeView = do
-  moldVal <- gets sOldValue
-  mnewVal <- gets (CTE.sValue . sTextEntry)
+  meoldVal <- gets sOldValue
+  menewVal <- gets (CTE.maybeEmptyValue . sTextEntry)
   -- TODO update the search rx.
   -- 1. initially it should be Nothing
   -- 2. as we update here, it should also be updated.
   if
-    -- TODO handle empty text. This yields mnewVal == Nothing so does nothing but should reset the filter.
-    | (Just newVal) <- mnewVal
-    , moldVal /= mnewVal -> do
-        -- TODO This reloads the _whole_ subtree including all local derived attrs, on each key press.
-        -- That wouldn't be needed if we give TreeView a way to filter only what's already there.
+    -- TODO This reloads the _whole_ subtree including all local derived attrs, on each key press.
+    -- That wouldn't be needed if we give TreeView a way to filter only what's already there.
+    -- Or create a new tree view each time, filtered by us personally.
+    | (Valid newVal) <- menewVal
+    , meoldVal /= menewVal -> do
         baseFilter <- gets sBaseFilter
         let
           (CompiledWithSource rx _) = newVal
           q = QueryRegexParts [rx]
           fullFilter = chainFilters (singleItemQueryFlatFilter q) baseFilter
         zoom sTreeViewL $ TV.replaceFilter fullFilter
-        sOldValueL .= mnewVal
+        sOldValueL .= menewVal
+    | Empty <- menewVal
+    , meoldVal /= menewVal -> do
+        baseFilter <- gets sBaseFilter
+        zoom sTreeViewL $ TV.replaceFilter baseFilter
+        sOldValueL .= menewVal
     | otherwise -> return ()
 
 -- * Variant instances
