@@ -20,6 +20,7 @@ import Brick
 import Brick.Keybindings
 import Brick.Widgets.Edit
 import Control.Monad (when)
+import Data.Function qualified as Function
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -47,6 +48,12 @@ data CompiledWithSource c = CompiledWithSource
   { cwsCompiled :: c
   , cwsSource :: Text
   }
+
+-- The Eq instances compares the _source_ not the compiled one. This creates a correct Eq instance
+-- but note that two different sources can give rise to the same (e.g.) regex.
+-- Where equality is used for reloading, this also means that there will be false positives when only unimportant details changed (e.g., spacing in a Query). This is not detected.
+instance Eq (CompiledWithSource c) where
+  (==) = (==) `Function.on` cwsSource
 
 compileWithSource :: (Text -> Maybe c) -> Text -> Maybe (CompiledWithSource c)
 compileWithSource f t = CompiledWithSource <$> (f t) <*> pure t
