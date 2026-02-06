@@ -181,9 +181,15 @@ instance (VariantBehavior v, a ~ ContinueType v, b ~ ConfirmType v) => AppCompon
 
   componentTitle = kmName . cur . kmzTop . sKMZ
 
-  -- TODO include key desc from sTextEntry, which we also support.
-  -- This needs some more infra, maybe a change to how components work.
-  componentKeyDesc = kmzDesc . sKMZ
+  componentKeyDesc s = (kmzDesc . sKMZ $ s) & kdPairsL %~ (++ extraPairs)
+   where
+    -- HACK. Some keys we map through dispatch, but they're not in our keymap.
+    -- SOMEDAY that's ugly.
+    extraPairs =
+      [ ("Tab", "Complete")
+      , ("C-l", "Clear")
+      , ("C-d", "Clear")
+      ]
 
 routeToTreeView ::
   (VariantBehavior v, ?actx :: AppContext) =>
