@@ -23,10 +23,12 @@ import Brick.Keybindings (Binding)
 import Control.Monad.Except
 import Data.Text (Text)
 import Data.Time (ZonedTime)
+import Graphics.Vty.Input (Key, Modifier)
 import Lens.Micro.Platform
-import Srtd.Keymap (KeyDesc, KeymapItem, kmLeaf)
+import Srtd.Keymap (KeyDesc, KeymapItem, KeymapResult (..), KeymapZipper, kmLeaf, kmzLookup)
 import Srtd.Model (FilterContext (..), IdNotFoundError)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
+import Srtd.Util (ALens' (..))
 
 -- | Global messages sent through Srtd at the app (top) level together with any brick events.
 -- Individual components can define their own message type.
@@ -90,6 +92,8 @@ data AppEventReturn a b
   = -- | Event processed successfully and the component should be kept open, returns an intermediate
     -- result of type `a`. (choose `a = ()`) for components that don't return any intermediate result,
     -- which are most of them.
+    --
+    -- SOMEDAY I'm not sure this is such a great idea. Makes it clunky to write composite components, e.g., QuickFilter.
     Continue a
   | -- | Event processed successfully and the user has confirmed whatever action encoded.
     -- The component should be closed.
@@ -205,6 +209,33 @@ kmLeafA_ ::
 -- NB this is one of the few cases where we can't make this point-free b/c the definition of
 -- 'aerVoid' doesn't include the `?actx` constraint.
 kmLeafA_ b n x = kmLeafA b n (aerVoid x)
+
+-- | Common dispatch routine for keymaps. Given a lens where we store a KeymapZipper, look up,
+-- execute, and update the keymap, or execute a fallback.
+kmzDispatch ::
+  (?actx :: AppContext) =>
+  -- | Lens where the KeymapZipper is stored
+  ALens' s (KeymapZipper (AppEventAction s a b)) ->
+  -- | Pressed key from VtyEvent
+  Key ->
+  -- | Pressed modifiers from VtyEvent
+  [Modifier] ->
+  -- | Default Continue-like action
+  EventM AppResourceName s (AppEventReturn a b) ->
+  -- | Fallback action if no key matches
+  EventM AppResourceName s (AppEventReturn a b) ->
+  EventM AppResourceName s (AppEventReturn a b)
+kmzDispatch al key mods cnt fallback = do
+  kmz <- use (runALens' al)
+  case kmzLookup kmz key mods of
+    NotFound -> fallback
+    LeafResult act nxt -> do
+      res <- runAppEventAction act
+      runALens' al .= nxt
+      return res
+    SubmapResult nxt -> do
+      runALens' al .= nxt
+      cnt
 
 -- | Return `Continue ()`.
 aerContinue :: (Monad m) => m (AppEventReturn () b)
