@@ -608,7 +608,7 @@ singleItemQueryFlatFilter (QueryRegexParts rxs) =
     fmap snd
       . filterIdForest p
       . fmap (\a -> (matchScore a, a))
-      . withIdForest forestFlattenPostorder
+      . withIdForest forestFlatten
   -- SOMEDAY this is a _very_ simple scoring. And very simple presentation.
   p (score, _) = score > 0
   matchScore llabel =
