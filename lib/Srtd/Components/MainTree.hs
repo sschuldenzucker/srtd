@@ -616,10 +616,11 @@ spaceKeymap =
         pushOverlay (newNodeOverlay "" "New Item as Parent") overlayNoop cb aerContinue
     , kmLeafA_ (bind 'j') "Quick jump" $ do
         tv <- gets mtTreeView
-        -- TODO better reaction: use the returned query for highlights and enable alternative filter confirm
-        -- TODO WIP finish this simple integration, then try out the basic version.
-        let cb (_mCompiledRegex, eid) = do
-              zoom mtTreeViewL $ TV.moveToEID eid
+        let cb (mCompiledRegex, eid) = do
+              zoom mtTreeViewL $ do
+                TV.moveToEID eid
+                whenJust mCompiledRegex $ \rxs ->
+                  TV.tvSearchRxL .= Just rxs
               aerContinue
         s <- maybe "" cwsSource <$> gets (TV.tvSearchRx . mtTreeView)
         pushOverlay
