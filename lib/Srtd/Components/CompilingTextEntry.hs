@@ -8,6 +8,7 @@ module Srtd.Components.CompilingTextEntry (
   CompiledWithSource (..),
   ConfirmType (..),
   CompilingTextEntry (..),
+  compileWithSource,
 
   -- * Construction
   compilingTextEntry,
