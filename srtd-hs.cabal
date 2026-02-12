@@ -39,6 +39,7 @@ library
         Srtd.ModelJSON
         Srtd.ModelSaver
         Srtd.ModelServer
+        Srtd.ProactiveBandana
         Srtd.Query
         Srtd.Ticker
         Srtd.Todo
@@ -56,6 +57,7 @@ library
         -fwrite-ide-info
 
     build-depends:
+        microlens-mtl ^>=0.2.1.0,
         base >=4.17.2.1 && <4.22,
         brick >=2.4 && <2.10,
         vty >=6.2 && <6.5,
