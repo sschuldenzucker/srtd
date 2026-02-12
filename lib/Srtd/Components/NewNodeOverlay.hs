@@ -25,7 +25,7 @@ newNodeOverlay initName title rname = NewNodeOverlay (editor editorRName (Just 1
  where
   editorRName = EditorFor rname
 
-instance AppComponent NewNodeOverlay () String where
+instance AppComponent NewNodeOverlay String where
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
   renderComponent self = renderEditor (str . intercalate "\n") True (self ^. nnEditor)
 

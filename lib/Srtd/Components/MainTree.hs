@@ -72,16 +72,12 @@ import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 --
 -- Might also be related to that question of representation of having a data structure vs the list
 -- of filled fields in some priority order (e.g., for dates rendering).
-data Overlay = forall s a b. (AppComponent s a b) => Overlay
+data Overlay = forall s b. (AppComponent s b) => Overlay
   { olState :: s
-  , olOnContinue :: (?actx :: AppContext) => a -> EventM AppResourceName MainTree (AppEventReturn () ())
-  , olOnConfirm :: (?actx :: AppContext) => b -> EventM AppResourceName MainTree (AppEventReturn () ())
-  , olOnCanceled :: (?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn () ())
+  , olOnContinue :: (?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())
+  , olOnConfirm :: (?actx :: AppContext) => b -> EventM AppResourceName MainTree (AppEventReturn ())
+  , olOnCanceled :: (?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())
   }
-
--- | Helper to use for 'olOnContinue' or 'olOnConfirm' when you want to ignore these events.
-overlayNoop :: (Monad m) => p -> m (AppEventReturn () b)
-overlayNoop _ = aerContinue
 
 -- * Main Data Structure
 
@@ -218,7 +214,7 @@ rootKeymap =
                       let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
                       modifyModelAsync $ modifyAttrByEID cur f
                       zoom mtTreeViewL $ TV.moveToEID cur
-                pushOverlay (newNodeOverlay oldName "Edit Item") overlayNoop cb aerContinue
+                pushOverlay (newNodeOverlay oldName "Edit Item") aerContinue cb aerContinue
               Nothing -> return ()
         )
       , kmSub (ctrl 't') debugKeymap
@@ -414,7 +410,7 @@ editDateKeymap =
           modifyModelAsync $ modifyAttrByEID cur f
           zoom mtTreeViewL $ TV.moveToEID cur
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
-     in pushOverlay mkDateEdit overlayNoop cb aerContinue
+     in pushOverlay mkDateEdit aerContinue cb aerContinue
 
 moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree () ())
 moveSubtreeModeKeymap =
@@ -551,7 +547,9 @@ searchKeymap =
             oldSearchRx <- use mtSearchRxL
             let
               initText = maybe "" cwsSource oldSearchRx
-              onContinue = aerVoid . assign mtSearchRxL
+              -- TODO recover auto reaction on search. This should come from child events.
+              -- onContinue = aerVoid . assign mtSearchRxL
+              onContinue = aerContinue
               onConfirm (rx, ctype) = do
                 assign mtSearchRxL (Just rx)
                 zoom mtTreeViewL $ case ctype of
@@ -612,7 +610,7 @@ spaceKeymap =
                   let eid = EIDNormal uuid
                   zoom mtTreeViewL $ TV.moveToEID eid
                   aerContinue
-        pushOverlay (newNodeOverlay "" "New Item as Parent") overlayNoop cb aerContinue
+        pushOverlay (newNodeOverlay "" "New Item as Parent") aerContinue cb aerContinue
     ]
 
 viewportKeymap :: Keymap (AppEventAction MainTree () ())
@@ -657,11 +655,11 @@ debugKeymap =
 -- ** Overlays
 
 pushOverlay ::
-  (AppComponent s a b) =>
+  (AppComponent s b) =>
   (AppResourceName -> s) ->
-  ((?actx :: AppContext) => a -> EventM AppResourceName MainTree (AppEventReturn () ())) ->
-  ((?actx :: AppContext) => b -> EventM AppResourceName MainTree (AppEventReturn () ())) ->
-  ((?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn () ())) ->
+  ((?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())) ->
+  ((?actx :: AppContext) => b -> EventM AppResourceName MainTree (AppEventReturn ())) ->
+  ((?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())) ->
   EventM AppResourceName MainTree ()
 pushOverlay mk onContinue onConfirm onCanceled = do
   hasExisting <- isJust <$> use mtOverlayL
@@ -701,7 +699,7 @@ pushInsertNewItemRelToCur go = do
             let eid = EIDNormal uuid
             zoom mtTreeViewL $ TV.moveToEID eid
             aerContinue
-  pushOverlay (newNodeOverlay "" "New Item") overlayNoop cb aerContinue
+  pushOverlay (newNodeOverlay "" "New Item") aerContinue cb aerContinue
 
 setStatus :: (?actx :: AppContext) => Status -> EventM n MainTree ()
 setStatus status' = withCur $ \cur ->
@@ -1051,7 +1049,7 @@ renderStatusActionabilityCounts sac =
 -- that there was some kind of issue and the tab had to close (e.g., the parent was deleted.)
 --
 -- SOMEDAY that's a bit nasty.
-instance AppComponent MainTree () () where
+instance AppComponent MainTree () where
   renderComponentWithOverlays
     s@MainTree
       { mtTreeView =
@@ -1149,7 +1147,7 @@ instance AppComponent MainTree () () where
             (ol', res) <- nestEventM ol (handleEvent ev)
             mtOverlayL .= Just (Overlay ol' onContinue onConfirm onCanceled)
             case res of
-              Continue x -> onContinue x
+              Continue -> onContinue
               Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
               Canceled -> mtOverlayL .= Nothing >> onCanceled
           Nothing -> actMain

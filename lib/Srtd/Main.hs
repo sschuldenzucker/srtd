@@ -143,7 +143,7 @@ myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
           let ?actx = asContext
            in renderComponentWithOverlays tab0
      in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar asTabs <=> w0]
-  renderTabTitle :: (AppComponent c () (), Ord n) => Bool -> n -> c -> Widget n
+  renderTabTitle :: (AppComponent c (), Ord n) => Bool -> n -> c -> Widget n
   renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 25 $ txt (componentTitle c)
    where
     theAttrName =
@@ -218,7 +218,7 @@ myHandleEvent ev = wrappingActions $
     _ -> do
       res <- zoom activeTabL $ handleEvent ev
       case res of
-        Continue () -> return ()
+        Continue -> return ()
         -- See the AppComponent instance of MainTree
         Confirmed () -> popTabOrQuitAction
         Canceled -> popTabAction
@@ -243,7 +243,7 @@ eachTabHandleEvent ev = do
   mtabs' <- lzForM tabs $ \(rname, tabCmp) -> do
     (tabCmp', res) <- nestEventM tabCmp $ handleEvent ev
     return $ case res of
-      Continue _ -> Just (rname, tabCmp')
+      Continue -> Just (rname, tabCmp')
       _ -> Nothing
   let tabs' = lzCatMaybesLeftNonEmpty $ mtabs'
   asTabsL .= tabs'

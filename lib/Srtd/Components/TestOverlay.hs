@@ -32,7 +32,7 @@ stickySubmap =
 newTestOverlay :: TestOverlay
 newTestOverlay = TestOverlay (keymapToZipper keymap)
 
-instance AppComponent TestOverlay () () where
+instance AppComponent TestOverlay () where
   renderComponent _ = str "Test Component. Press T to close."
 
   handleEvent (VtyEvent (EvKey KEsc [])) = do

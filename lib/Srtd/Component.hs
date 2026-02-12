@@ -86,11 +86,11 @@ translateAppFilterContext x =
 
 -- | Return data returned by 'handleEvent' (see below) to tell the parent component if the child
 -- component should be kept around.
-data AppEventReturn a b
+data AppEventReturn b
   = -- | Event processed successfully and the component should be kept open, returns an intermediate
     -- result of type `a`. (choose `a = ()`) for components that don't return any intermediate result,
     -- which are most of them.
-    Continue a
+    Continue
   | -- | Event processed successfully and the user has confirmed whatever action encoded.
     -- The component should be closed.
     Confirmed b
@@ -102,9 +102,9 @@ data AppEventReturn a b
     -- distinction.
     Canceled
 
-forgetAppEventReturnData :: AppEventReturn a b -> AppEventReturn () ()
+forgetAppEventReturnData :: AppEventReturn b -> AppEventReturn ()
 forgetAppEventReturnData = \case
-  Continue _ -> Continue ()
+  Continue -> Continue
   Confirmed _ -> Confirmed ()
   Canceled -> Canceled
 
@@ -119,13 +119,11 @@ acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 -- Parameters:
 --
 -- - `s` The state type of the component
--- - `a` The type of intermediate messages that is passed to the parent/caller when the component
---   remains visible.
 -- - `b` The type of final messages that is passed to the parent/caller when the component is
 --   closed.
 --
 -- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented.
-class AppComponent s a b | s -> a, s -> b where
+class AppComponent s b | s -> b where
   -- | Render this component to a widget. Like `appRender` for apps, or the many render functions.
   renderComponent :: (?actx :: AppContext) => s -> Widget AppResourceName
   renderComponent = fst . renderComponentWithOverlays
@@ -144,7 +142,7 @@ class AppComponent s a b | s -> a, s -> b where
   handleEvent ::
     (?actx :: AppContext) =>
     BrickEvent AppResourceName AppMsg ->
-    EventM AppResourceName s (AppEventReturn a b)
+    EventM AppResourceName s (AppEventReturn b)
 
   -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
   componentKeyDesc :: s -> KeyDesc
@@ -153,9 +151,9 @@ class AppComponent s a b | s -> a, s -> b where
   componentTitle :: s -> Text
 
 -- | Wrapper that encapsulates any AppComponent and forgets results.
-data SomeAppComponent = forall s a b. (AppComponent s a b) => SomeAppComponent s
+data SomeAppComponent = forall s b. (AppComponent s b) => SomeAppComponent s
 
-instance AppComponent SomeAppComponent () () where
+instance AppComponent SomeAppComponent () where
   renderComponent (SomeAppComponent s) = renderComponent s
   renderComponentWithOverlays (SomeAppComponent s) = renderComponentWithOverlays s
 
@@ -183,7 +181,7 @@ instance AppComponent SomeAppComponent () () where
 newtype AppEventAction s a b = AppEventAction
   { runAppEventAction ::
       (?actx :: AppContext) =>
-      EventM AppResourceName s (AppEventReturn a b)
+      EventM AppResourceName s (AppEventReturn b)
   }
 
 -- | Like 'kmLeaf' but wrap the given action in 'AppEventAction'
@@ -191,7 +189,7 @@ kmLeafA ::
   Binding ->
   Text ->
   -- NB For some reason, *this* use of the constraint inside the type doesn't need ImpredicativeTypes.
-  ((?actx :: AppContext) => EventM AppResourceName s (AppEventReturn a b)) ->
+  ((?actx :: AppContext) => EventM AppResourceName s (AppEventReturn b)) ->
   (Binding, KeymapItem (AppEventAction s a b))
 kmLeafA b n x = kmLeaf b n (AppEventAction x)
 
@@ -207,11 +205,11 @@ kmLeafA_ ::
 kmLeafA_ b n x = kmLeafA b n (aerVoid x)
 
 -- | Return `Continue ()`.
-aerContinue :: (Monad m) => m (AppEventReturn () b)
-aerContinue = return $ Continue ()
+aerContinue :: (Monad m) => m (AppEventReturn b)
+aerContinue = return $ Continue
 
 -- | Variant of 'void' for the (common) case where there's no intermediate result.
-aerVoid :: (Monad m) => m a -> m (AppEventReturn () b)
+aerVoid :: (Monad m) => m a -> m (AppEventReturn b)
 aerVoid act = act >> aerContinue
 
 -- * Error Handling
@@ -224,13 +222,13 @@ aerVoid act = act >> aerContinue
 type EventMOrNotFound n s a = ExceptT IdNotFoundError (EventM n s) a
 
 -- | Convert exception handling.
-notFoundToAER_ :: EventMOrNotFound n s () -> EventM n s (AppEventReturn () ())
+notFoundToAER_ :: EventMOrNotFound n s () -> EventM n s (AppEventReturn ())
 notFoundToAER_ = notFoundToAER . aerVoid
 
 -- | Merge exception handling.
 --
 -- An exception is treated equivalent to returning 'Canceled'.
-notFoundToAER :: EventMOrNotFound n s (AppEventReturn a b) -> EventM n s (AppEventReturn a b)
+notFoundToAER :: EventMOrNotFound n s (AppEventReturn b) -> EventM n s (AppEventReturn b)
 notFoundToAER act = do
   eres <- runExceptT act
   case eres of

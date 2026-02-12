@@ -100,23 +100,23 @@ keymap =
         mv <- use sValueL
         case mv of
           -- NB the user can't confirm an invalid regex.
-          Nothing -> return $ Continue Nothing
+          Nothing -> return $ Continue
           Just v -> return $ Confirmed (v, RegularConfirm)
     , kmLeafA (binding KEnter [MMeta]) "Confirm (alt)" $ do
         mv <- use sValueL
         case mv of
           -- NB the user can't confirm an invalid regex.
-          Nothing -> return $ Continue Nothing
+          Nothing -> return $ Continue
           Just v -> return $ Confirmed (v, AltConfirm)
     , ( kmLeafA (ctrl 'd') "Clear" $ do
           setText ""
           sEditorL %= applyEdit TZ.clearZipper
-          Continue <$> use sValueL
+          return Continue
       )
     , ( kmLeafA (ctrl 'l') "Clear" $ do
           setText ""
           sEditorL %= applyEdit TZ.clearZipper
-          Continue <$> use sValueL
+          return Continue
       )
     , kmLeafA (bind '\t') "Complete" $ do
         s0 <- gets (getEditContents . sEditor)
@@ -128,7 +128,7 @@ keymap =
         when (s `T.isPrefixOf` init_) $ do
           sEditorL %= applyEdit (const $ TZ.textZipper [init_] (Just 1))
           setText init_
-        Continue <$> use sValueL
+        return Continue
     ]
 
 keymapZipper :: KeymapZipper (MyAppEventAction c)
@@ -145,7 +145,6 @@ setText s = do
 instance
   AppComponent
     (CompilingTextEntry c)
-    (Maybe (CompiledWithSource c))
     ((CompiledWithSource c), ConfirmType)
   where
   renderComponent self = editUI
@@ -166,7 +165,7 @@ instance
       zoom sEditorL $ handleEditorEvent ev'
       text <- (T.intercalate "\n" . getEditContents) <$> use sEditorL
       setText text
-      Continue <$> use sValueL
+      return Continue
 
   componentKeyDesc _self = kmzDesc keymapZipper
 
