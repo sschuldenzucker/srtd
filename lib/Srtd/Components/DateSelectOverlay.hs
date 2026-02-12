@@ -62,7 +62,9 @@ keymapZipper = keymapToZipper keymap
 --
 -- In contrast, cancellation is handled through a 'Canceled' return value. The user cannot enter an
 -- invalid date.
-instance AppComponent DateSelectOverlay (Maybe DateOrTime) where
+instance AppComponent DateSelectOverlay where
+  type Return DateSelectOverlay = Maybe DateOrTime
+
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
   -- TODO make prettier, e.g., colors, spacing, padding, etc.
   renderComponent self = editUI <=> dateUI <=> origDateUI

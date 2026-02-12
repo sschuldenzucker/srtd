@@ -72,10 +72,12 @@ import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 --
 -- Might also be related to that question of representation of having a data structure vs the list
 -- of filled fields in some priority order (e.g., for dates rendering).
-data Overlay = forall s b. (AppComponent s b) => Overlay
+data Overlay = forall s. (AppComponent s) => Overlay
   { olState :: s
   , olOnContinue :: (?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())
-  , olOnConfirm :: (?actx :: AppContext) => b -> EventM AppResourceName MainTree (AppEventReturn ())
+  , olOnConfirm ::
+      (?actx :: AppContext) =>
+      Return s -> EventM AppResourceName MainTree (AppEventReturn ())
   , olOnCanceled :: (?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())
   }
 
@@ -655,10 +657,10 @@ debugKeymap =
 -- ** Overlays
 
 pushOverlay ::
-  (AppComponent s b) =>
+  (AppComponent s) =>
   (AppResourceName -> s) ->
   ((?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())) ->
-  ((?actx :: AppContext) => b -> EventM AppResourceName MainTree (AppEventReturn ())) ->
+  ((?actx :: AppContext) => (Return s) -> EventM AppResourceName MainTree (AppEventReturn ())) ->
   ((?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())) ->
   EventM AppResourceName MainTree ()
 pushOverlay mk onContinue onConfirm onCanceled = do
@@ -1049,7 +1051,9 @@ renderStatusActionabilityCounts sac =
 -- that there was some kind of issue and the tab had to close (e.g., the parent was deleted.)
 --
 -- SOMEDAY that's a bit nasty.
-instance AppComponent MainTree () where
+instance AppComponent MainTree where
+  type Return MainTree = ()
+
   renderComponentWithOverlays
     s@MainTree
       { mtTreeView =

@@ -49,7 +49,7 @@ library
     default-language:   GHC2024
     default-extensions:
         OverloadedStrings ImplicitParams TemplateHaskell DeriveGeneric
-        LambdaCase NumericUnderscores
+        LambdaCase NumericUnderscores TypeFamilies
 
     ghc-options:
         -Wall -Werror=missing-methods -Werror=missing-fields

@@ -215,7 +215,9 @@ tvCurWithAttr TreeView {tvList} = L.listSelectedElement tvList & fmap (\(_, itm)
 
 -- * Component Instance
 
-instance AppComponent TreeView () where
+instance AppComponent TreeView where
+  type Return TreeView = ()
+
   renderComponent s = Widget Greedy Greedy $ do
     c <- getContext
     -- NB this doesn't quite work as expected, but it avoids a situation where the selected row

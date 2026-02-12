@@ -145,8 +145,9 @@ setText s = do
 instance
   AppComponent
     (CompilingTextEntry c)
-    ((CompiledWithSource c), ConfirmType)
   where
+  type Return (CompilingTextEntry c) = ((CompiledWithSource c), ConfirmType)
+
   renderComponent self = editUI
    where
     editUI = renderEditor (withAttr myAttr . txt . T.intercalate "\n") True (sEditor self)

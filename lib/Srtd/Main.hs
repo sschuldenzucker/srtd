@@ -143,7 +143,7 @@ myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
           let ?actx = asContext
            in renderComponentWithOverlays tab0
      in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar asTabs <=> w0]
-  renderTabTitle :: (AppComponent c (), Ord n) => Bool -> n -> c -> Widget n
+  renderTabTitle :: (AppComponent c, Ord n) => Bool -> n -> c -> Widget n
   renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 25 $ txt (componentTitle c)
    where
     theAttrName =

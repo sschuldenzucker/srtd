@@ -1,5 +1,4 @@
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FunctionalDependencies #-}
 
 {-| A model defining a unified component interface. I have no idea why Brick doesn't include this.
 
@@ -123,7 +122,9 @@ acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 --   closed.
 --
 -- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented.
-class AppComponent s b | s -> b where
+class AppComponent s where
+  type Return s
+
   -- | Render this component to a widget. Like `appRender` for apps, or the many render functions.
   renderComponent :: (?actx :: AppContext) => s -> Widget AppResourceName
   renderComponent = fst . renderComponentWithOverlays
@@ -142,7 +143,7 @@ class AppComponent s b | s -> b where
   handleEvent ::
     (?actx :: AppContext) =>
     BrickEvent AppResourceName AppMsg ->
-    EventM AppResourceName s (AppEventReturn b)
+    EventM AppResourceName s (AppEventReturn (Return s))
 
   -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
   componentKeyDesc :: s -> KeyDesc
@@ -151,9 +152,11 @@ class AppComponent s b | s -> b where
   componentTitle :: s -> Text
 
 -- | Wrapper that encapsulates any AppComponent and forgets results.
-data SomeAppComponent = forall s b. (AppComponent s b) => SomeAppComponent s
+data SomeAppComponent = forall s. (AppComponent s) => SomeAppComponent s
 
-instance AppComponent SomeAppComponent () where
+instance AppComponent SomeAppComponent where
+  type Return SomeAppComponent = ()
+
   renderComponent (SomeAppComponent s) = renderComponent s
   renderComponentWithOverlays (SomeAppComponent s) = renderComponentWithOverlays s
 
