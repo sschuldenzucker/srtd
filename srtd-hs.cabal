@@ -23,6 +23,7 @@ library
         Srtd.Components.Attr
         Srtd.Components.CompilingTextEntry
         Srtd.Components.DateSelectOverlay
+        Srtd.Components.EditorProactive
         Srtd.Components.MainTree
         Srtd.Components.NewNodeOverlay
         Srtd.Components.TestOverlay
@@ -39,6 +40,7 @@ library
         Srtd.ModelJSON
         Srtd.ModelSaver
         Srtd.ModelServer
+        Srtd.MonadBrick
         Srtd.ProactiveBandana
         Srtd.Query
         Srtd.Ticker

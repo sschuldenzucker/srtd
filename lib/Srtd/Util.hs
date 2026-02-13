@@ -6,9 +6,11 @@
 module Srtd.Util where
 
 import Control.Applicative (liftA2, (<|>))
+import Control.Arrow (Arrow (second))
 import Control.Monad ((<=<))
 import Control.Monad.Except
 import Control.Monad.State
+import Control.Monad.Trans.Writer.Strict (WriterT (WriterT, runWriterT), mapWriterT, tell)
 import Data.Array qualified as Array
 import Data.Either (fromRight)
 import Data.List (isPrefixOf, sort, sortBy)
@@ -371,3 +373,19 @@ findFirstMatch rx = listToMaybe . getAllTextMatches . match rx
 
 openURL :: String -> IO ()
 openURL url = callProcess "open" [url]
+
+-- * MTL helpers
+
+-- | Map the logs of a WriterT using some function
+mapWriterTLog :: (Monad m) => (w -> w') -> WriterT w m a -> WriterT w' m a
+mapWriterTLog f = mapWriterT $ fmap (second $ f)
+
+-- | Capture the logs of a WriterT without emitting them
+captureWriterT :: (Monad m, Monoid w') => WriterT w m a -> WriterT w' m (a, w)
+captureWriterT act = WriterT $ do
+  (a, w) <- runWriterT act
+  return ((a, w), mempty)
+
+-- | Tell a single value for a list writer
+tell1 :: (Monad m) => a -> WriterT [a] m ()
+tell1 x = tell [x]

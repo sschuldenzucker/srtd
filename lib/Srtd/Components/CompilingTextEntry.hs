@@ -18,18 +18,18 @@ module Srtd.Components.CompilingTextEntry (
 
 import Brick
 import Brick.Keybindings
-import Brick.Widgets.Edit
-import Control.Monad (when)
+import Control.Monad (forM_, when)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Zipper qualified as TZ
 import Graphics.Vty.Input.Events
-import Lens.Micro.Platform
 import Srtd.Component
+import Srtd.Components.EditorProactive
 import Srtd.Keymap
+import Srtd.ProactiveBandana
 import Srtd.Query
-import Srtd.Util (eitherToMaybe)
+import Srtd.Util (captureWriterT, eitherToMaybe, tell1)
 import Text.Regex.TDFA (
   CompOption (..),
   ExecOption (..),
@@ -52,11 +52,9 @@ compileWithSource :: (Text -> Maybe c) -> Text -> Maybe (CompiledWithSource c)
 compileWithSource f t = CompiledWithSource <$> (f t) <*> pure t
 
 data CompilingTextEntry c = CompilingTextEntry
-  { sEditor :: Editor Text AppResourceName
-  , -- NB there is some redundancy here (text being stored in two places) but it's easier to return stuff this way.
-    sValue :: Maybe (CompiledWithSource c)
+  { sEditor :: EditorProactive
+  , sValue :: Cell Text (AppEventM (CompilingTextEntry c) ()) (Maybe (CompiledWithSource c))
   , sInitialText :: Text
-  , sCompile :: Text -> Maybe c
   }
 
 suffixLenses ''CompilingTextEntry
@@ -72,11 +70,19 @@ compilingTextEntry :: (Text -> Maybe c) -> Text -> AppResourceName -> CompilingT
 compilingTextEntry f s rname =
   -- SOMEDAY actual completion and highlight the previous pattern
   CompilingTextEntry
-    { sEditor = editorText (EditorFor rname) (Just 1) ""
-    , sValue = Nothing
+    { sEditor = editorProactiveText "" (EditorFor rname)
+    , sValue = simpleMappingCell Nothing compile' $ \mv' -> do
+        -- A bit hacky b/c our component interface doesn't let us pass parameters, so we store this
+        -- in state
+        callIntoEditor $ setPostRender (postRenderFor mv')
+        tell1 (ValueChanged mv')
     , sInitialText = s
-    , sCompile = f
     }
+ where
+  -- Special case so that the empty string is _always_ Nothing.
+  -- This wouldn't be all that necessary b/c empty regexs are invalid but let's be sure about it.
+  compile' "" = Nothing
+  compile' t = compileWithSource f $ t
 
 compilingSingleItemQueryEntry :: Text -> AppResourceName -> CompilingTextEntry SingleItemQuery
 compilingSingleItemQueryEntry = compilingTextEntry parseAndCompileSingleItemQuery
@@ -97,50 +103,49 @@ keymap =
     [ kmLeafA (binding KEsc []) "Cancel" $ return Canceled
     , -- SOMEDAY more descriptive names for this: it's confirm-and-go and confirm-and-go-to-sibling.
       kmLeafA (binding KEnter []) "Confirm" $ do
-        mv <- use sValueL
+        mv <- gets (cValue . sValue)
         case mv of
           -- NB the user can't confirm an invalid regex.
           Nothing -> return $ Continue
           Just v -> return $ Confirmed (v, RegularConfirm)
     , kmLeafA (binding KEnter [MMeta]) "Confirm (alt)" $ do
-        mv <- use sValueL
+        mv <- gets (cValue . sValue)
         case mv of
           -- NB the user can't confirm an invalid regex.
           Nothing -> return $ Continue
           Just v -> return $ Confirmed (v, AltConfirm)
     , ( kmLeafA (ctrl 'd') "Clear" $ do
-          setText ""
-          sEditorL %= applyEdit TZ.clearZipper
+          callIntoEditor $ applyEdit TZ.clearZipper
           return Continue
       )
     , ( kmLeafA (ctrl 'l') "Clear" $ do
-          setText ""
-          sEditorL %= applyEdit TZ.clearZipper
+          callIntoEditor $ applyEdit TZ.clearZipper
           return Continue
       )
     , kmLeafA (bind '\t') "Complete" $ do
-        s0 <- gets (getEditContents . sEditor)
-        let s = case s0 of
-              [s_] -> s_
-              _ -> error "Single-line editor must have a single line."
-        init_ <- gets sInitialText
+        s <- gets (getEditorText . sEditor)
         -- SOMEDAY proper completion, also have a visual hint.
+        init_ <- gets sInitialText
         when (s `T.isPrefixOf` init_) $ do
-          sEditorL %= applyEdit (const $ TZ.textZipper [init_] (Just 1))
-          setText init_
+          callIntoEditor $ applyEdit (const $ TZ.textZipper [init_] (Just 1))
         return Continue
     ]
 
 keymapZipper :: KeymapZipper (MyAppEventAction c)
 keymapZipper = keymapToZipper keymap
 
-setText :: Text -> EventM AppResourceName (CompilingTextEntry c) ()
--- Can't search for an empty string.
-setText "" = sValueL .= Nothing
-setText s = do
-  f <- gets sCompile
-  let erx = compileWithSource f s
-  sValueL .= erx
+callIntoEditor :: AppEventM EditorProactive a -> AppEventM (CompilingTextEntry c) a
+callIntoEditor act = do
+  (ret, events) <- captureWriterT $ zoom sEditorL act
+  forM_ events $ \case
+    TextChanged t -> runUpdateLens sValueL t
+  return ret
+
+postRenderFor :: Maybe a -> Widget n -> Widget n
+postRenderFor mv =
+  withAttr $ attrName "search_entry" <> (if isNothing mv then attrName "error" else mempty)
+
+data CompilingTextEntryEvent c = ValueChanged (Maybe (CompiledWithSource c))
 
 instance
   AppComponent
@@ -148,10 +153,9 @@ instance
   where
   type Return (CompilingTextEntry c) = ((CompiledWithSource c), ConfirmType)
 
-  renderComponent self = editUI
-   where
-    editUI = renderEditor (withAttr myAttr . txt . T.intercalate "\n") True (sEditor self)
-    myAttr = attrName "search_entry" <> (if isNothing (sValue self) then attrName "error" else mempty)
+  type Event (CompilingTextEntry c) = CompilingTextEntryEvent c
+
+  renderComponent = renderComponent . sEditor
 
   handleEvent ev =
     case ev of
@@ -163,9 +167,7 @@ instance
       _ -> handleFallback ev
    where
     handleFallback ev' = do
-      zoom sEditorL $ handleEditorEvent ev'
-      text <- (T.intercalate "\n" . getEditContents) <$> use sEditorL
-      setText text
+      _resIsAlwaysContinue <- callIntoEditor $ handleEvent ev'
       return Continue
 
   componentKeyDesc _self = kmzDesc keymapZipper

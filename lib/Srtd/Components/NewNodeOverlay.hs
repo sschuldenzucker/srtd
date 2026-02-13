@@ -5,42 +5,50 @@ TODO Rename. It's more of a generic name editing component.
 module Srtd.Components.NewNodeOverlay where
 
 import Brick
-import Brick.Widgets.Edit
-import Data.List (intercalate)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Graphics.Vty (Event (..), Key (..))
 import Lens.Micro.Platform
 import Srtd.Component
+import Srtd.Components.EditorProactive
 import Srtd.Keymap (KeyDesc (..))
+import Srtd.Util (captureWriterT)
 
 data NewNodeOverlay = NewNodeOverlay
-  { _nnEditor :: Editor String AppResourceName
+  { _nnEditor :: EditorProactive
   , _nnTitle :: Text
   }
 
 makeLenses ''NewNodeOverlay
 
 newNodeOverlay :: String -> Text -> AppResourceName -> NewNodeOverlay
-newNodeOverlay initName title rname = NewNodeOverlay (editor editorRName (Just 1) initName) title
+newNodeOverlay initName title rname =
+  NewNodeOverlay (editorProactiveText (T.pack initName) editorRName) title
  where
   editorRName = EditorFor rname
 
+callIntoEditor :: AppEventM EditorProactive a -> AppEventM NewNodeOverlay a
+callIntoEditor act = do
+  -- events are ignored b/c we don't need them for now.
+  (ret, _events) <- captureWriterT $ zoom nnEditor act
+  return ret
+
 instance AppComponent NewNodeOverlay where
   type Return NewNodeOverlay = String
+  type Event NewNodeOverlay = ()
 
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
-  renderComponent self = renderEditor (str . intercalate "\n") True (self ^. nnEditor)
+  renderComponent self = renderComponent (self ^. nnEditor)
 
   handleEvent ev = case ev of
     (VtyEvent (EvKey KEsc [])) -> return Canceled
     (VtyEvent (EvKey KEnter [])) -> do
       NewNodeOverlay {_nnEditor} <- get
-      -- `intercalate "\n"`, *not* `unlines` b/c that adds a trailing newline.
-      let res = intercalate "\n" $ getEditContents _nnEditor
-      return $ Confirmed res
+      let res = getEditorText _nnEditor
+      return $ Confirmed (T.unpack res)
     _ -> do
-      zoom nnEditor $ handleEditorEvent ev
-      aerContinue
+      _resIsAlwaysContinue <- callIntoEditor $ handleEvent ev
+      return Continue
 
   componentKeyDesc self = KeyDesc (_nnTitle self) True [("esc", "cancel"), ("enter", "confirm")]
 

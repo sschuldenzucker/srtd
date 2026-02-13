@@ -16,9 +16,7 @@ import Lens.Micro.Platform
 -- - `o` is the output type: updates result in that value being output. Usually, `o = m ()` where
 --    `m` is some monad. Usually, `m` is another state monad and then we can run the update and the
 --    returned action via 'runUpdateALens'.
--- - `v` is the type of the stored value. Usually either `()` or `i`.
---
--- SOMEDAY not clear if we need v or if v is always either () or i.
+-- - `v` is the type of the stored value.
 data Cell i o v = Cell
   { cValue :: v
   -- ^ Stored value
@@ -39,6 +37,15 @@ justCallCell f =
 simpleCell :: v -> (v -> o) -> Cell v o v
 simpleCell x0 f =
   Cell x0 $ \x' -> cValueL .= x' >> return (f x')
+
+-- | A variant of 'simpleCell' that maps its input to its value using a function.
+--
+-- We have `simpleCell x0 g == simpleMappingCell x0 id g`
+simpleMappingCell :: v -> (i -> v) -> (v -> o) -> Cell i o v
+simpleMappingCell y0 f g =
+  Cell y0 $ \x' ->
+    let y' = f x'
+     in cValueL .= y' >> return (g y')
 
 -- | A cell that just stores its input and doesn't have a callback.
 justStoreCell :: v -> Cell v () v
@@ -108,4 +115,14 @@ runUpdateLens l x = do
   act <- zoom l $ do
     up <- gets cUpdate
     state (runState (up x))
+  act
+
+-- | Apply a pure modification function to a cell inside a lens
+runModifyLens ::
+  (Zoom n m (Cell v (m b) v) t, Functor (Zoomed n (m b))) =>
+  Lens' t (Cell v (m b) v) -> (v -> v) -> m b
+runModifyLens l f = do
+  act <- zoom l $ do
+    (Cell x up) <- get
+    state (runState (up $ f x))
   act

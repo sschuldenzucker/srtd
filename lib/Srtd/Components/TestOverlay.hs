@@ -34,6 +34,7 @@ newTestOverlay = TestOverlay (keymapToZipper keymap)
 
 instance AppComponent TestOverlay where
   type Return TestOverlay = ()
+  type Event TestOverlay = ()
 
   renderComponent _ = str "Test Component. Press T to close."
 

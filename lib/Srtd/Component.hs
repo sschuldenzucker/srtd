@@ -19,13 +19,16 @@ module Srtd.Component where
 import Brick
 import Brick.BChan (BChan)
 import Brick.Keybindings (Binding)
+import Control.Arrow (second)
 import Control.Monad.Except
+import Control.Monad.Writer.Strict
 import Data.Text (Text)
 import Data.Time (ZonedTime)
 import Lens.Micro.Platform
 import Srtd.Keymap (KeyDesc, KeymapItem, kmLeaf)
 import Srtd.Model (FilterContext (..), IdNotFoundError)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
+import Srtd.Util (captureWriterT)
 
 -- | Global messages sent through Srtd at the app (top) level together with any brick events.
 -- Individual components can define their own message type.
@@ -113,6 +116,8 @@ forgetAppEventReturnData = \case
 acZonedTimeL :: Lens' AppContext ZonedTime
 acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 
+type AppEventM s a = WriterT [Event s] (EventM AppResourceName s) a
+
 -- | A class of components. All Brick components (hopefully,,,) satisfy this.
 --
 -- Parameters:
@@ -124,6 +129,9 @@ acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 -- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented.
 class AppComponent s where
   type Return s
+
+  -- TODO should this be data?
+  type Event s
 
   -- | Render this component to a widget. Like `appRender` for apps, or the many render functions.
   renderComponent :: (?actx :: AppContext) => s -> Widget AppResourceName
@@ -143,7 +151,7 @@ class AppComponent s where
   handleEvent ::
     (?actx :: AppContext) =>
     BrickEvent AppResourceName AppMsg ->
-    EventM AppResourceName s (AppEventReturn (Return s))
+    AppEventM s (AppEventReturn (Return s))
 
   -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
   componentKeyDesc :: s -> KeyDesc
@@ -156,6 +164,7 @@ data SomeAppComponent = forall s. (AppComponent s) => SomeAppComponent s
 
 instance AppComponent SomeAppComponent where
   type Return SomeAppComponent = ()
+  type Event SomeAppComponent = ()
 
   renderComponent (SomeAppComponent s) = renderComponent s
   renderComponentWithOverlays (SomeAppComponent s) = renderComponentWithOverlays s
@@ -167,7 +176,8 @@ instance AppComponent SomeAppComponent where
     (SomeAppComponent s) <- get
     -- Alternatively, we could make the actual transform and use unsafeCoerce. But this seems to work fine.
     let theLens = lens (const s) (const SomeAppComponent)
-    res <- zoom theLens $ handleEvent ev
+    -- This ignores events! And also the Confirmed value.
+    (res, _events) <- zoom theLens $ captureWriterT $ handleEvent ev
     return $ forgetAppEventReturnData res
 
   componentKeyDesc (SomeAppComponent s) = componentKeyDesc s
@@ -184,7 +194,7 @@ instance AppComponent SomeAppComponent where
 newtype AppEventAction s a b = AppEventAction
   { runAppEventAction ::
       (?actx :: AppContext) =>
-      EventM AppResourceName s (AppEventReturn b)
+      WriterT [Event s] (EventM AppResourceName s) (AppEventReturn b)
   }
 
 -- | Like 'kmLeaf' but wrap the given action in 'AppEventAction'
@@ -192,7 +202,7 @@ kmLeafA ::
   Binding ->
   Text ->
   -- NB For some reason, *this* use of the constraint inside the type doesn't need ImpredicativeTypes.
-  ((?actx :: AppContext) => EventM AppResourceName s (AppEventReturn b)) ->
+  ((?actx :: AppContext) => WriterT [Event s] (EventM AppResourceName s) (AppEventReturn b)) ->
   (Binding, KeymapItem (AppEventAction s a b))
 kmLeafA b n x = kmLeaf b n (AppEventAction x)
 
@@ -201,7 +211,7 @@ kmLeafA b n x = kmLeaf b n (AppEventAction x)
 kmLeafA_ ::
   Binding ->
   Text ->
-  ((?actx :: AppContext) => EventM AppResourceName s ()) ->
+  ((?actx :: AppContext) => WriterT [Event s] (EventM AppResourceName s) ()) ->
   (Binding, KeymapItem (AppEventAction s () b))
 -- NB this is one of the few cases where we can't make this point-free b/c the definition of
 -- 'aerVoid' doesn't include the `?actx` constraint.
@@ -225,13 +235,13 @@ aerVoid act = act >> aerContinue
 type EventMOrNotFound n s a = ExceptT IdNotFoundError (EventM n s) a
 
 -- | Convert exception handling.
-notFoundToAER_ :: EventMOrNotFound n s () -> EventM n s (AppEventReturn ())
+notFoundToAER_ :: (Monad m) => ExceptT IdNotFoundError m b -> m (AppEventReturn b)
 notFoundToAER_ = notFoundToAER . aerVoid
 
 -- | Merge exception handling.
 --
 -- An exception is treated equivalent to returning 'Canceled'.
-notFoundToAER :: EventMOrNotFound n s (AppEventReturn b) -> EventM n s (AppEventReturn b)
+notFoundToAER :: (Monad m) => ExceptT IdNotFoundError m (AppEventReturn b) -> m (AppEventReturn b)
 notFoundToAER act = do
   eres <- runExceptT act
   case eres of

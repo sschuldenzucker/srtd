@@ -46,6 +46,7 @@ import Srtd.Model (
   stParentEID,
  )
 import Srtd.ModelServer (getModel)
+import Srtd.MonadBrick
 import Srtd.Util (
   for,
   forestFlattenToList,
@@ -120,6 +121,9 @@ withDefCSAttr (CSAttr anames) = updateAttrMap $ \amap ->
     setDefaultAttr newDefaultAttr amap
 
 -- * Main Type
+
+-- TODO WIP this is one of the big places where proactive stuff will be actually useful.
+-- Design where to use it. E.g., how deeply should we reach into the model stuff? (prob yes, also filter)
 
 -- | An 'AppComponent' to view a 'Subtree' as a scrollable, movable list.
 --
@@ -218,6 +222,9 @@ tvCurWithAttr TreeView {tvList} = L.listSelectedElement tvList & fmap (\(_, itm)
 instance AppComponent TreeView where
   type Return TreeView = ()
 
+  -- TODO we want some events I think
+  type Event TreeView = ()
+
   renderComponent s = Widget Greedy Greedy $ do
     c <- getContext
     -- NB this doesn't quite work as expected, but it avoids a situation where the selected row
@@ -233,7 +240,8 @@ instance AppComponent TreeView where
     now = acZonedTime ?actx
 
   -- TODO process the Tick event and update its filter b/c last-modified now depends on time (in a hacky way). - Or maybe explicitly don't and add a manual refresh??
-  handleEvent ev = do
+  -- TODO WIP make this not a dummy.
+  handleEvent ev = liftEventM $ do
     listRName <- gets (L.listName . tvList)
     case ev of
       AppEvent (ModelUpdated _) -> notFoundToAER_ reloadModel
