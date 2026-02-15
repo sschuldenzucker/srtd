@@ -598,7 +598,7 @@ searchKeymap =
                   RegularConfirm -> TV.searchForRxAction TV.Forward True
                   AltConfirm -> TV.searchForRxSiblingAction TV.Forward
                 return Continue
-              onCanceled = aerVoid $ mtSearchRxL .= oldSearchRx
+              onCanceled = aerSafeVoid $ mtSearchRxL .= oldSearchRx
              in
               pushOverlay (compilingRegexEntry initText) onConfirm onCanceled onEvent
         )
@@ -1198,8 +1198,8 @@ instance AppComponent MainTree where
             -- having some abstraction here would be good if we need it again.
             -- SOMEDAY slightly inconsistent: if the user should expect BS to always go up, we
             -- shouldn't bind it to anything else.
-            (VtyEvent (Vty.EvKey KEsc [])) -> aerVoid $ mtKeymapL %= kmzResetRoot
-            (VtyEvent (Vty.EvKey KBS [])) -> aerVoid $ mtKeymapL %= kmzUp
+            (VtyEvent (Vty.EvKey KEsc [])) -> aerSafeVoid $ mtKeymapL %= kmzResetRoot
+            (VtyEvent (Vty.EvKey KBS [])) -> aerSafeVoid $ mtKeymapL %= kmzUp
             _ -> do
               liftIO $ glogL DEBUG "handle fallback"
               routeToTreeView
