@@ -7,7 +7,37 @@
 This is basically a thin upgrade over an imperative setter function, but provides a single point
 of entry and some basic consistency enforcement / hiding.
 -}
-module Srtd.ProactiveBandana where
+module Srtd.ProactiveBandana (
+  -- * Type
+
+  -- NB we intentionally do not export the constructor or fields for safety; the only way to update
+  -- a cell is to at least observe the handler.
+  Cell,
+  cValue,
+  cUpdate,
+
+  -- * Construction
+  justCallCell,
+  justStoreCell,
+  justStoreCellM,
+  simpleCell,
+  simpleMappingCell,
+  simplePreMappingCell,
+  uniqueCell,
+  uniqueCellM,
+  uniqueMaybeCell,
+  uniqueMaybeCellM,
+
+  -- * Access
+  getValue,
+  getsValue,
+  useValue,
+
+  -- * Updating
+  updateCellState,
+  runUpdateLens,
+  runModifyLens,
+) where
 
 import Brick (suffixLenses)
 import Control.Monad.State
@@ -25,13 +55,25 @@ import Lens.Micro.Platform
 --    returned action via 'runUpdateALens'.
 -- - `v` is the type of the stored value.
 data Cell i h v = Cell
-  { cValue :: v
+  { _cValue :: v
   -- ^ Stored value
-  , cUpdate :: i -> State (Cell i h v) h
+  , _cUpdate :: i -> State (Cell i h v) h
   -- ^ Update routine that updates the cell state in response to a new value and returns a handler.
   }
 
 suffixLenses ''Cell
+
+-- | Get the current value of a cell
+cValue :: Cell i h v -> v
+-- NB we cannot just export the field b/c that would let users modify the cell. (there's no way to
+-- just export the accessor function but not the field.)
+cValue = _cValue
+
+-- | Get the update routine of a cell.
+--
+-- NB You usually want to use 'runUpdateLens' instead.
+cUpdate :: Cell i h v -> i -> State (Cell i h v) h
+cUpdate = _cUpdate
 
 -- * Construction
 
@@ -43,7 +85,7 @@ justCallCell f =
 -- | A cell that stores its input and calls the handler on each update.
 simpleCell :: v -> (v -> h) -> Cell v h v
 simpleCell x0 f =
-  Cell x0 $ \x' -> cValueL .= x' >> return (f x')
+  Cell x0 $ \x' -> _cValueL .= x' >> return (f x')
 
 -- | A variant of 'simpleCell' that maps its input to its value using a function.
 --
@@ -52,7 +94,7 @@ simpleMappingCell :: v -> (i -> v) -> (v -> h) -> Cell i h v
 simpleMappingCell y0 f g =
   Cell y0 $ \x' ->
     let y' = f x'
-     in cValueL .= y' >> return (g y')
+     in _cValueL .= y' >> return (g y')
 
 -- | Like 'simpleMappingCell' but the handler depends on the _input_, not the mapped value.
 --
@@ -62,7 +104,7 @@ simplePreMappingCell :: v -> (i -> v) -> (i -> h) -> Cell i h v
 simplePreMappingCell y0 f g =
   Cell y0 $ \x' ->
     let y' = f x'
-     in cValueL .= y' >> return (g x')
+     in _cValueL .= y' >> return (g x')
 
 -- | A cell that just stores its input and doesn't have a handler.
 justStoreCell :: v -> Cell v () v
@@ -78,7 +120,7 @@ uniqueCell dflt x0 f =
   Cell x0 $ \x' -> do
     x <- gets cValue
     if
-      | x /= x' -> cValueL .= x' >> return (f x')
+      | x /= x' -> _cValueL .= x' >> return (f x')
       | otherwise -> return $ dflt
 
 -- | Monadic version of 'uniqueCell' that does nothing on no change.
@@ -95,9 +137,9 @@ uniqueMaybeCell dflt mx0 f =
   Cell mx0 $ \mx' -> do
     mx <- gets cValue
     case (mx, mx') of
-      (Nothing, Just x') -> cValueL .= Just x' >> return (f x')
+      (Nothing, Just x') -> _cValueL .= Just x' >> return (f x')
       (Just x, Just x')
-        | x == x' -> cValueL .= Just x' >> return (f x')
+        | x == x' -> _cValueL .= Just x' >> return (f x')
         | otherwise -> return dflt
       (_, Nothing) -> return dflt
 
@@ -123,9 +165,17 @@ getsValue f = gets (cValue . f)
 
 -- | Get the value of a lens pointing to a Cell in a state monad
 useValue :: (MonadState s m) => Lens' s (Cell i h a) -> m a
-useValue l = use (l . cValueL)
+useValue l = use (l . _cValueL)
 
 -- * Updating
+
+-- | Update a cell in a state monad.
+--
+-- NB You usually want to use 'runUpdateLens' instead.
+updateCellState :: i -> State (Cell i h v) h
+updateCellState x = do
+  c <- get
+  cUpdate c x
 
 -- | Given a lens pointing to a cell with monadic output type, supply a new value and run the
 -- handler action.
@@ -136,7 +186,7 @@ runUpdateLens ::
   Lens' t (Cell i (m b) v) -> i -> m b
 runUpdateLens l x = do
   act <- zoom l $ do
-    up <- gets cUpdate
+    up <- gets _cUpdate
     state (runState (up x))
   act
 

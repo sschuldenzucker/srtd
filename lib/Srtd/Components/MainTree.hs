@@ -1091,13 +1091,15 @@ instance AppComponent MainTree where
   renderComponentWithOverlays
     s@MainTree
       { mtTreeView =
-        mtTreeView@(TV.TreeView {tvSubtree = Cell {cValue = Subtree {rootLabel, breadcrumbs}}, tvDoFollowItem})
+        mtTreeView@(TV.TreeView {tvSubtree, tvDoFollowItem})
       , mtFilters
       , mtShowDetails
       , mtOverlay
       } =
       (box, catMaybes [ovl, detailsOvl])
      where
+      Subtree {rootLabel, breadcrumbs} = cValue tvSubtree
+
       -- NOT `hAlignRightLayer` b/c that breaks background colors in light mode for some reason.
       headrow =
         withDefAttr AppAttr.header_row $
