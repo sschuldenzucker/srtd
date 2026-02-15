@@ -4,7 +4,7 @@
 
 A Component is a piece of data that can be rendered to brick and supports a vaguely "call" like
 interface where a parent can hold and call it and the component can tell it when it's done and
-return a value (and/or pass a stream of intermediate values if desired). It also provides context
+return a value (and/or pass a stream of intermediate events if desired). It also provides context
 info (e.g., a list of supported keybindings) to the parent for rendering.
 
 This is very similar to [brick-panes](https://github.com/kquick/brick-panes), though more
@@ -92,10 +92,11 @@ translateAppFilterContext x =
 
 -- | Return data returned by 'handleEvent' (see below) to tell the parent component if the child
 -- component should be kept around.
+--
+-- NB this is obviously a functor and could be made a monad, but we don't provide these instances
+-- for now b/c they don't seem super useful.
 data AppEventReturn b
-  = -- | Event processed successfully and the component should be kept open, returns an intermediate
-    -- result of type `a`. (choose `a = ()`) for components that don't return any intermediate result,
-    -- which are most of them.
+  = -- | Event processed successfully and the component should be kept open.
     Continue
   | -- | Event processed successfully and the user has confirmed whatever action encoded.
     -- The component should be closed.
@@ -150,8 +151,8 @@ class AppComponent s where
 
   -- | Handle an event. Like the `handleEvent` functions.
   --
-  -- The return value gives the caller an intermediate or final result and tells them what to do
-  -- with the component.
+  -- The return value gives the caller final result (if Confirmed) and tells them what to do with
+  -- the component.
   handleEvent ::
     (?actx :: AppContext) =>
     BrickEvent AppResourceName AppMsg ->
@@ -209,8 +210,7 @@ kmLeafA ::
   (Binding, KeymapItem (AppEventAction s b))
 kmLeafA b n x = kmLeaf b n (AppEventAction x)
 
--- | Like 'kmLeafA' but also return 'Continue ()'. Useful to simplify code for components that don't
--- return intermediate results.
+-- | Like 'kmLeafA' but also return 'Continue'.
 kmLeafA_ ::
   Binding ->
   Text ->
@@ -224,7 +224,7 @@ kmLeafA_ b n x = kmLeafA b n (aerVoid x)
 aerContinue :: (Monad m) => m (AppEventReturn b)
 aerContinue = return $ Continue
 
--- | Variant of 'void' for the (common) case where there's no intermediate result.
+-- | Execute action and return Continue
 aerVoid :: (Monad m) => m a -> m (AppEventReturn b)
 aerVoid act = act >> aerContinue
 
