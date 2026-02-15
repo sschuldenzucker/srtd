@@ -194,10 +194,12 @@ runUpdateLens l x = do
     state (runState (up x))
   act
 
--- | Apply a pure modification function to a cell inside a lens
+-- | Apply a pure modification function to a cell inside a lens.
+--
+-- You typically use this with i == v (i.e., a Lens') but this is not necessary.
 runModifyLens ::
-  (Zoom n m (Cell v (m b) v) t, Functor (Zoomed n (m b))) =>
-  Lens' t (Cell v (m b) v) -> (v -> v) -> m b
+  (Zoom n m (Cell i (m b) v) t, Functor (Zoomed n (m b))) =>
+  Lens' t (Cell i (m b) v) -> (v -> i) -> m b
 runModifyLens l f = do
   act <- zoom l $ do
     (Cell x up) <- get
