@@ -221,10 +221,6 @@ kmLeafA_ ::
 -- 'aerVoid' doesn't include the `?actx` constraint.
 kmLeafA_ b n x = kmLeafA b n (aerVoid x)
 
--- | Return `Continue ()`.
-aerContinue :: (Monad m) => m (AppEventReturn b)
-aerContinue = return $ Continue
-
 -- | Execute action and return Continue
 aerVoid :: (Monad m) => m () -> m (AppEventReturn b)
 aerVoid act = act >> return Continue

@@ -45,13 +45,13 @@ instance AppComponent TestOverlay where
   handleEvent (VtyEvent (EvKey key mods)) = do
     (TestOverlay kmz) <- get
     case kmzLookup kmz key mods of
-      NotFound -> aerContinue
+      NotFound -> return Continue
       LeafResult act nxt -> do
         res <- runAppEventAction act
         put (TestOverlay nxt)
         return res
-      SubmapResult nxt -> put (TestOverlay nxt) >> aerContinue
-  handleEvent _ = aerContinue
+      SubmapResult nxt -> put (TestOverlay nxt) >> return Continue
+  handleEvent _ = return Continue
 
   componentKeyDesc (TestOverlay kmz) = kmzDesc kmz
 

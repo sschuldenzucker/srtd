@@ -90,10 +90,6 @@ data Overlay t = forall s. (AppComponent s) => Overlay
   , olOnEvent :: (?actx :: AppContext) => Event s -> AppEventM t ()
   }
 
--- | `olOnEvent` handler to ignore events when they are irrelevant
-safeIgnoreEvent :: (Monad m) => () -> m ()
-safeIgnoreEvent () = return ()
-
 -- | `olOnEvent` handler that ignores events
 ignoreEvent :: (Monad m) => a -> m ()
 ignoreEvent _ = return ()
@@ -256,7 +252,7 @@ rootKeymap =
                       modifyModelAsync $ modifyAttrByEID cur f
                       callIntoTreeView $ TV.moveToEID cur
                       return Continue
-                pushOverlay (newNodeOverlay oldName "Edit Item") cb aerContinue absurd
+                pushOverlay (newNodeOverlay oldName "Edit Item") cb (return Continue) absurd
               Nothing -> return ()
         )
       , kmSub (ctrl 't') debugKeymap
@@ -300,13 +296,13 @@ rootKeymap =
       , -- (kmSub (bind 'm') moveSingleModeKeymap),
         (kmSub (bind 'M') moveSubtreeModeKeymap)
       , (kmSub (bind 'D') deleteKeymap)
-      , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse aerContinue $ \cur -> do
+      , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse (return Continue) $ \cur -> do
             notFoundToAER_ $ moveRootToEID cur
         )
       , ( kmLeafA (binding KBS []) "De-hoist" $ do
             mt <- get
             case breadcrumbs . mtSubtree $ mt of
-              [] -> aerContinue
+              [] -> return Continue
               (par, _) : _ -> notFoundToAER_ $ do
                 moveRootToEID par
                 replaceExceptT callIntoTreeView $ TV.moveToEID (mtRoot mt)
@@ -330,7 +326,7 @@ rootKeymap =
       , ( kmLeafA
             (bind '-')
             "Un/collapse"
-            ( withCurOrElse aerContinue $ \cur ->
+            ( withCurOrElse (return Continue) $ \cur ->
                 notFoundToAER_ $
                   modifyHideHierarchyFilter (hhfToggle cur)
             )
@@ -453,7 +449,7 @@ editDateKeymap =
           callIntoTreeView $ TV.moveToEID cur
           return Continue
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
-     in pushOverlay mkDateEdit cb aerContinue ignoreEvent
+     in pushOverlay mkDateEdit cb (return Continue) ignoreEvent
 
 moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree ())
 moveSubtreeModeKeymap =
@@ -547,7 +543,7 @@ goKeymap =
           -- SOMEDAY some code duplication vs the other de-hoist.
           mt <- get
           case breadcrumbs . mtSubtree $ mt of
-            [] -> aerContinue
+            [] -> return Continue
             (par, _) : _ -> notFoundToAER_ $ do
               moveRootToEID par
               -- This is to stay at the current position, but if the subtree is empty, it
@@ -556,7 +552,7 @@ goKeymap =
               let tgt = fromMaybe (mtRoot mt) (mtCur mt)
               replaceExceptT callIntoTreeView $ TV.moveToEID tgt
       )
-    , ( kmLeafA (binding KEnter []) "Hoist 1 step, keep pos" $ withCurWithAttrOrElse aerContinue $ \(cur, llabel) ->
+    , ( kmLeafA (binding KEnter []) "Hoist 1 step, keep pos" $ withCurWithAttrOrElse (return Continue) $ \(cur, llabel) ->
           case reverse (gLocalBreadcrumbs llabel) of
             [] ->
               -- toplevel element, behave like Hoist (this is prob intended)
@@ -624,7 +620,7 @@ spaceKeymap =
     [ kmLeafA
         (bind '-')
         "Toggle collapse children"
-        ( withCurOrElse aerContinue $ \cur -> do
+        ( withCurOrElse (return Continue) $ \cur -> do
             -- See also collapseLevelKeymap
             normalFilter <- gets (fromJust . CList.focus . cValue . mtFilters)
             model' <- liftIO $ getModel (acModelServer ?actx)
@@ -652,7 +648,7 @@ spaceKeymap =
                   let eid = EIDNormal uuid
                   callIntoTreeView $ TV.moveToEID eid
                   return Continue
-        pushOverlay (newNodeOverlay "" "New Item as Parent") cb aerContinue absurd
+        pushOverlay (newNodeOverlay "" "New Item as Parent") cb (return Continue) absurd
     ]
 
 -- SOMEDAY these actions should be functions in MainTree
@@ -744,7 +740,7 @@ pushInsertNewItemRelToCur go = do
             let eid = EIDNormal uuid
             callIntoTreeView $ TV.moveToEID eid
             return Continue
-  pushOverlay (newNodeOverlay "" "New Item") cb aerContinue absurd
+  pushOverlay (newNodeOverlay "" "New Item") cb (return Continue) absurd
 
 setStatus :: (?actx :: AppContext, MonadState MainTree m, MonadIO m) => Status -> m ()
 setStatus status' = withCur $ \cur ->
@@ -1179,7 +1175,7 @@ instance AppComponent MainTree where
           mapM_ onEvent events
           mtOverlayL .= Just (Overlay ols' onConfirm onCanceled onEvent)
           case res of
-            Continue -> aerContinue
+            Continue -> return Continue
             Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
             Canceled -> mtOverlayL .= Nothing >> onCanceled
         Nothing -> actNoOverlay
@@ -1211,7 +1207,7 @@ instance AppComponent MainTree where
           SubmapResult sm -> do
             liftIO $ glogL DEBUG "handle submap"
             mtKeymapL .= sm
-            aerContinue
+            return Continue
       -- vvv never happens
       _miscEvents -> routeToTreeView
 
