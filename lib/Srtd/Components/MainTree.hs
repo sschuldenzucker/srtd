@@ -299,13 +299,13 @@ rootKeymap =
               [] -> aerContinue
               (par, _) : _ -> notFoundToAER_ $ do
                 moveRootToEID par
-                zoom mtTreeViewL $ lift $ TV.moveToEID (mtRoot mt)
+                replaceExceptT callIntoTreeView $ TV.moveToEID (mtRoot mt)
         )
       , (kmSub (bind ';') sortKeymap)
-      , (kmLeafA_ (bind 'h') "Go to parent" (zoom mtTreeViewL $ TV.moveGoWalkerFromCur goParent))
-      , (kmLeafA_ (bind 'J') "Go to next sibling" (zoom mtTreeViewL $ TV.moveGoWalkerFromCur goNextSibling))
-      , (kmLeafA_ (bind 'K') "Go to prev sibling" (zoom mtTreeViewL $ TV.moveGoWalkerFromCur goPrevSibling))
-      , (kmLeafA_ (bind 'H') "Go to next uncle" (zoom mtTreeViewL $ TV.moveGoWalkerFromCur goNextAncestor))
+      , (kmLeafA_ (bind 'h') "Go to parent" (callIntoTreeView $ TV.moveGoWalkerFromCur goParent))
+      , (kmLeafA_ (bind 'J') "Go to next sibling" (callIntoTreeView $ TV.moveGoWalkerFromCur goNextSibling))
+      , (kmLeafA_ (bind 'K') "Go to prev sibling" (callIntoTreeView $ TV.moveGoWalkerFromCur goPrevSibling))
+      , (kmLeafA_ (bind 'H') "Go to next uncle" (callIntoTreeView $ TV.moveGoWalkerFromCur goNextAncestor))
       , (kmSub (bind 't') setStatusKeymap)
       , (kmSub (bind 'o') openExternallyKeymap)
       , (kmLeafA (bind ',') "Prev filter" $ notFoundToAER_ cyclePrevFilter)
@@ -333,8 +333,8 @@ rootKeymap =
             )
         )
       , kmSub (bind ' ') spaceKeymap
-      , kmLeafA_ (bind 'j') "Move down" (zoom mtTreeViewL $ TV.moveBy 1)
-      , kmLeafA_ (bind 'k') "Move up" (zoom mtTreeViewL $ TV.moveBy (-1))
+      , kmLeafA_ (bind 'j') "Move down" (callIntoTreeView $ TV.moveBy 1)
+      , kmLeafA_ (bind 'k') "Move up" (callIntoTreeView $ TV.moveBy (-1))
       , kmSub (bind 'z') viewportKeymap
       ]
     )
@@ -529,9 +529,9 @@ goKeymap =
   kmMake
     "Go to"
     -- We need to redefine 'g' b/c we just overwrote the default binding from list.
-    [ kmLeafA_ (bind 'g') "Top" $ zoom mtTreeViewL $ TV.moveToBeginning
+    [ kmLeafA_ (bind 'g') "Top" $ callIntoTreeView $ TV.moveToBeginning
     , -- For completeness
-      kmLeafA_ (bind 'e') "End" $ zoom mtTreeViewL $ TV.moveToEnd
+      kmLeafA_ (bind 'e') "End" $ callIntoTreeView $ TV.moveToEnd
     , ( kmLeafA (binding KBS []) "De-hoist, keep pos" $ do
           -- SOMEDAY some code duplication vs the other de-hoist.
           mt <- get
@@ -543,7 +543,7 @@ goKeymap =
               -- should still do something for ergonomics, so we instead behave like the regular
               -- "de-hoist".
               let tgt = fromMaybe (mtRoot mt) (mtCur mt)
-              zoom mtTreeViewL $ lift $ TV.moveToEID tgt
+              replaceExceptT callIntoTreeView $ TV.moveToEID tgt
       )
     , ( kmLeafA (binding KEnter []) "Hoist 1 step, keep pos" $ withCurWithAttrOrElse aerContinue $ \(cur, llabel) ->
           case reverse (gLocalBreadcrumbs llabel) of
@@ -552,18 +552,18 @@ goKeymap =
               notFoundToAER_ $ moveRootToEID cur
             (par : _) -> notFoundToAER_ $ do
               moveRootToEID (gEID par)
-              zoom mtTreeViewL $ lift $ TV.moveToEID cur
+              replaceExceptT callIntoTreeView $ TV.moveToEID cur
       )
     , -- SOMEDAY I think some of this functionality should be in TreeView
       kmLeafA_ (bind 't') "Window top" $ withViewport $ \vp -> do
         let tgtIx = (vp ^. vpTop) + Config.scrolloff
-        zoom mtTreeViewL $ TV.moveToIndex tgtIx
+        callIntoTreeView $ TV.moveToIndex tgtIx
     , kmLeafA_ (bind 'b') "Window bottom" $ withViewport $ \vp -> do
         let tgtIx = vp ^. vpTop + snd (vp ^. vpSize) - Config.scrolloff - 1
-        zoom mtTreeViewL $ TV.moveToIndex tgtIx
+        callIntoTreeView $ TV.moveToIndex tgtIx
     , kmLeafA_ (bind 'c') "Window center" $ withViewport $ \vp -> do
         let tgtIx = vp ^. vpTop + snd (vp ^. vpSize) `div` 2
-        zoom mtTreeViewL $ TV.moveToIndex tgtIx
+        callIntoTreeView $ TV.moveToIndex tgtIx
     ]
  where
   withViewport go = do
@@ -583,7 +583,7 @@ searchKeymap =
                 ValueChanged mv' -> mtSearchRxL .= mv'
               onConfirm (rx, ctype) = do
                 assign mtSearchRxL (Just rx)
-                zoom mtTreeViewL $ case ctype of
+                callIntoTreeView $ case ctype of
                   RegularConfirm -> TV.searchForRxAction TV.Forward True
                   AltConfirm -> TV.searchForRxSiblingAction TV.Forward
                 aerContinue
@@ -591,12 +591,12 @@ searchKeymap =
              in
               pushOverlay (compilingRegexEntry initText) onConfirm onCanceled onEvent
         )
-      , (kmLeafA_ (bind 'n') "Next match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Forward False)
-      , (kmLeafA_ (bind 'N') "Prev match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Backward False)
-      , (kmLeafA_ (meta 'n') "Next sibling match" $ zoom mtTreeViewL $ TV.searchForRxSiblingAction TV.Forward)
+      , (kmLeafA_ (bind 'n') "Next match" $ callIntoTreeView $ TV.searchForRxAction TV.Forward False)
+      , (kmLeafA_ (bind 'N') "Prev match" $ callIntoTreeView $ TV.searchForRxAction TV.Backward False)
+      , (kmLeafA_ (meta 'n') "Next sibling match" $ callIntoTreeView $ TV.searchForRxSiblingAction TV.Forward)
       , -- SOMEDAY it's pretty fucking annoying that we can't bind alt-shift (b/c it's occupied by aerospace)
         ( kmLeafA_ (ctrl 'n') "Next sibling match" $
-            zoom mtTreeViewL $
+            callIntoTreeView $
               TV.searchForRxSiblingAction TV.Backward
         )
       , (kmLeafA_ (bind 'l') "Clear" $ mtSearchRxL .= Nothing)
@@ -639,7 +639,7 @@ spaceKeymap =
                 Left _err -> return Canceled
                 Right () -> do
                   let eid = EIDNormal uuid
-                  zoom mtTreeViewL $ TV.moveToEID eid
+                  callIntoTreeView $ TV.moveToEID eid
                   aerContinue
         pushOverlay (newNodeOverlay "" "New Item as Parent") cb aerContinue safeIgnoreEvent
     ]
@@ -731,7 +731,7 @@ pushInsertNewItemRelToCur go = do
           Left _err -> return Canceled
           Right () -> do
             let eid = EIDNormal uuid
-            zoom mtTreeViewL $ TV.moveToEID eid
+            callIntoTreeView $ TV.moveToEID eid
             aerContinue
   pushOverlay (newNodeOverlay "" "New Item") cb aerContinue safeIgnoreEvent
 
@@ -1189,7 +1189,7 @@ instance AppComponent MainTree where
               Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
               Canceled -> mtOverlayL .= Nothing >> onCanceled
           Nothing -> actMain
-    handleFallback e = zoom mtTreeViewL $ handleEvent e
+    handleFallback e = callIntoTreeView $ handleEvent e
 
   componentKeyDesc s = case mtOverlay s of
     Nothing -> kmzDesc . mtKeymap $ s
