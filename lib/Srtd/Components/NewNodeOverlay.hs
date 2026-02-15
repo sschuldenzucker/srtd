@@ -7,6 +7,7 @@ module Srtd.Components.NewNodeOverlay where
 import Brick
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Void (Void)
 import Graphics.Vty (Event (..), Key (..))
 import Lens.Micro.Platform
 import Srtd.Component
@@ -35,7 +36,7 @@ callIntoEditor act = do
 
 instance AppComponent NewNodeOverlay where
   type Return NewNodeOverlay = String
-  type Event NewNodeOverlay = ()
+  type Event NewNodeOverlay = Void
 
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
   renderComponent self = renderComponent (self ^. nnEditor)

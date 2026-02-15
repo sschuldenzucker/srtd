@@ -3,6 +3,7 @@ module Srtd.Components.TestOverlay where
 import Brick
 import Brick.Keybindings (bind)
 import Control.Monad.State (liftIO)
+import Data.Void (Void)
 import Graphics.Vty (Event (..), Key (..))
 import Srtd.Component
 import Srtd.Keymap
@@ -34,7 +35,7 @@ newTestOverlay = TestOverlay (keymapToZipper keymap)
 
 instance AppComponent TestOverlay where
   type Return TestOverlay = ()
-  type Event TestOverlay = ()
+  type Event TestOverlay = Void
 
   renderComponent _ = str "Test Component. Press T to close."
 

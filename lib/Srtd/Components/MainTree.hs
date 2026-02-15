@@ -29,6 +29,7 @@ import Data.Text qualified as T
 import Data.Time (UTCTime, ZonedTime, zonedTimeToUTC, zonedTimeZone)
 import Data.Tree (Tree (Node))
 import Data.UUID.V4 (nextRandom)
+import Data.Void (absurd)
 import Graphics.Vty (Key (..), Modifier (..))
 import Graphics.Vty qualified as Vty
 import Lens.Micro.Platform
@@ -247,7 +248,7 @@ rootKeymap =
                       modifyModelAsync $ modifyAttrByEID cur f
                       callIntoTreeView $ TV.moveToEID cur
                       return Continue
-                pushOverlay (newNodeOverlay oldName "Edit Item") cb aerContinue safeIgnoreEvent
+                pushOverlay (newNodeOverlay oldName "Edit Item") cb aerContinue absurd
               Nothing -> return ()
         )
       , kmSub (ctrl 't') debugKeymap
@@ -643,7 +644,7 @@ spaceKeymap =
                   let eid = EIDNormal uuid
                   callIntoTreeView $ TV.moveToEID eid
                   return Continue
-        pushOverlay (newNodeOverlay "" "New Item as Parent") cb aerContinue safeIgnoreEvent
+        pushOverlay (newNodeOverlay "" "New Item as Parent") cb aerContinue absurd
     ]
 
 -- SOMEDAY these actions should be functions in MainTree
@@ -735,7 +736,7 @@ pushInsertNewItemRelToCur go = do
             let eid = EIDNormal uuid
             callIntoTreeView $ TV.moveToEID eid
             return Continue
-  pushOverlay (newNodeOverlay "" "New Item") cb aerContinue safeIgnoreEvent
+  pushOverlay (newNodeOverlay "" "New Item") cb aerContinue absurd
 
 setStatus :: (?actx :: AppContext, MonadState MainTree m, MonadIO m) => Status -> m ()
 setStatus status' = withCur $ \cur ->

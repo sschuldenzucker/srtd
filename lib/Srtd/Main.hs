@@ -21,6 +21,7 @@ import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Ord (comparing)
 import Data.Text qualified as T
 import Data.Time (getZonedTime)
+import Data.Void
 import GHC.Stack (HasCallStack)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Graphics.Vty qualified as Vty
@@ -219,7 +220,9 @@ myHandleEvent ev = wrappingActions $
     _ -> do
       -- NB we ignore events from child components here.
       -- SOMEDAY information could travel up to us (but not with SomeAppComponent, that one eats events)
-      (res, _events) <- zoom activeTabL $ runWriterT $ handleEvent ev
+      (res, events) <- zoom activeTabL $ runWriterT $ handleEvent ev
+      -- Attests that there are no (non-bottom) events
+      mapM_ absurd events
       case res of
         Continue -> return ()
         -- See the AppComponent instance of MainTree
@@ -246,7 +249,9 @@ eachTabHandleEvent ev = do
   mtabs' <- lzForM tabs $ \(rname, tabCmp) -> do
     -- NB we ignore events from child components here.
     -- SOMEDAY information could travel up to us (but not with SomeAppComponent, that one eats events)
-    (tabCmp', (res, _events)) <- nestEventM tabCmp $ runWriterT $ handleEvent ev
+    (tabCmp', (res, events)) <- nestEventM tabCmp $ runWriterT $ handleEvent ev
+    -- Attests that there are no (non-bottom) events
+    mapM_ absurd events
     return $ case res of
       Continue -> Just (rname, tabCmp')
       _ -> Nothing

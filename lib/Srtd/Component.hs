@@ -24,6 +24,7 @@ import Control.Monad.Except
 import Control.Monad.Writer.Strict
 import Data.Text (Text)
 import Data.Time (ZonedTime)
+import Data.Void (Void)
 import Lens.Micro.Platform
 import Srtd.Keymap (KeyDesc, KeymapItem, kmLeaf)
 import Srtd.Model (FilterContext (..), IdNotFoundError)
@@ -164,12 +165,12 @@ class AppComponent s where
   -- | Title of the component. Used in tabs and (should be used in) overlay titles.
   componentTitle :: s -> Text
 
--- | Wrapper that encapsulates any AppComponent and forgets results.
+-- | Wrapper that encapsulates any AppComponent and forgets results and events. (!)
 data SomeAppComponent = forall s. (AppComponent s) => SomeAppComponent s
 
 instance AppComponent SomeAppComponent where
   type Return SomeAppComponent = ()
-  type Event SomeAppComponent = ()
+  type Event SomeAppComponent = Void
 
   renderComponent (SomeAppComponent s) = renderComponent s
   renderComponentWithOverlays (SomeAppComponent s) = renderComponentWithOverlays s
