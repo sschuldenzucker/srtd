@@ -250,8 +250,6 @@ instance AppComponent TreeView where
   handleEvent ev = do
     listRName <- gets (L.listName . tvList)
     case ev of
-      -- TODO WIP this fails to typecheck b/c I'm still in liftEventM. Drop that.
-      -- Gonna break everything else, which then needs to be fixed.
       AppEvent (ModelUpdated _) -> notFoundToAER_ reloadModel
       (VtyEvent (EvKey KDown [])) -> aerVoid $ liftEventM $ moveBy 1
       (VtyEvent (EvKey KUp [])) -> aerVoid $ liftEventM $ moveBy (-1)
