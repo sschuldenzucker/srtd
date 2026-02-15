@@ -13,6 +13,7 @@ module Srtd.ProactiveBandana (
   -- NB we intentionally do not export the constructor or fields for safety; the only way to update
   -- a cell is to at least observe the handler.
   Cell,
+  Cell',
   cValue,
   cUpdate,
 
@@ -63,6 +64,9 @@ data Cell i h v = Cell
 
 suffixLenses ''Cell
 
+-- | A cell with input == value, which is common.
+type Cell' v h = Cell v h v
+
 -- | Get the current value of a cell
 cValue :: Cell i h v -> v
 -- NB we cannot just export the field b/c that would let users modify the cell. (there's no way to
@@ -83,7 +87,7 @@ justCallCell f =
   Cell () $ \x' -> return (f x')
 
 -- | A cell that stores its input and calls the handler on each update.
-simpleCell :: v -> (v -> h) -> Cell v h v
+simpleCell :: v -> (v -> h) -> Cell' v h
 simpleCell x0 f =
   Cell x0 $ \x' -> _cValueL .= x' >> return (f x')
 
@@ -115,7 +119,7 @@ justStoreCellM :: (Monad m) => v -> Cell v (m ()) v
 justStoreCellM x0 = simpleCell x0 (const $ return ())
 
 -- | A cell that stores its input and calls its handler _iff_ the input has changed. Otherwise a given default.
-uniqueCell :: (Eq v) => h -> v -> (v -> h) -> Cell v h v
+uniqueCell :: (Eq v) => h -> v -> (v -> h) -> Cell' v h
 uniqueCell dflt x0 f =
   Cell x0 $ \x' -> do
     x <- gets cValue

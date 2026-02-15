@@ -20,7 +20,7 @@ import Srtd.Util (tell1)
 
 data EditorProactive = EditorProactive
   { epEditor :: Editor Text AppResourceName
-  , epText :: Cell Text (AppEventM EditorProactive ()) Text
+  , epText :: Cell' Text (AppEventM EditorProactive ())
   , epPostRender :: Widget AppResourceName -> Widget AppResourceName
   -- ^ For applying attrs to rendering only. Could also just be an attr state but whatever
   }

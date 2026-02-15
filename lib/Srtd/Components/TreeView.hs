@@ -134,7 +134,7 @@ withDefCSAttr (CSAttr anames) = updateAttrMap $ \amap ->
 --
 -- SOMEDAY and maybe the constructor should be private b/c of this.
 data TreeView = TreeView
-  { tvSubtree :: Cell Subtree (AppEventM TreeView ()) Subtree
+  { tvSubtree :: Cell' Subtree (AppEventM TreeView ())
   -- ^ NOT safe to edit directly
   , tvFilter :: Cell (Filter, AppContext) (AppEventMOrNotFound TreeView ()) Filter
   -- ^ NOT safe to edit directly. The type is a bit funky b/c changes to the filter have to reload the model b/c it's not stored anywhere here, which may fail.
