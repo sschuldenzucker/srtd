@@ -101,7 +101,8 @@ ignoreEvent _ = return ()
 -- * Main Data Structure
 
 data MainTree = MainTree
-  { mtFilters :: CList.CList Filter
+  { mtFilters ::
+      Cell (CList.CList Filter, AppContext) (AppEventMOrNotFound MainTree ()) (CList.CList Filter)
   , mtTreeView :: TV.TreeView
   , mtResourceName :: AppResourceName
   -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
@@ -113,7 +114,8 @@ data MainTree = MainTree
   -- ^ Active overlay, if any. If this is 'Just', events are forwarded to the overlay.
   --
   -- SOMEDAY do I want to make a wrapper for "things that have overlays" that *consistenly* handles everything?
-  , mtHideHierarchyFilter :: HideHierarchyFilter
+  , mtHideHierarchyFilter ::
+      Cell (HideHierarchyFilter, AppContext) (AppEventMOrNotFound MainTree ()) HideHierarchyFilter
   }
 
 suffixLenses ''MainTree
@@ -213,8 +215,14 @@ makeWithFilters root filters hhf doFollowItem model rname = do
       (TreeFor rname)
   return $
     MainTree
-      { mtFilters = filters
-      , mtHideHierarchyFilter = hhf
+      { mtFilters = simplePreMappingCell filters fst $ \(_fis', actx) ->
+          -- See TreeView tvFilter for why we're doing this.
+          let ?actx = actx
+           in resetTreeViewFilter
+      , mtHideHierarchyFilter = simplePreMappingCell hhf fst $ \(_fis', actx) ->
+          -- See TreeView tvFilter for why we're doing this.
+          let ?actx = actx
+           in resetTreeViewFilter
       , mtTreeView = tv
       , mtResourceName = rname
       , mtKeymap = keymapToZipper rootKeymap
@@ -310,8 +318,8 @@ rootKeymap =
       , (kmLeafA_ (bind 'H') "Go to next uncle" (callIntoTreeView $ TV.moveGoWalkerFromCur goNextAncestor))
       , (kmSub (bind 't') setStatusKeymap)
       , (kmSub (bind 'o') openExternallyKeymap)
-      , (kmLeafA (bind ',') "Prev filter" $ notFoundToAER_ cyclePrevFilter)
-      , (kmLeafA (bind '.') "Next filter" $ notFoundToAER_ cycleNextFilter)
+      , (kmLeafA (bind ',') "Prev filter" $ notFoundToAER_ $ modifyFilters CList.rotL)
+      , (kmLeafA (bind '.') "Next filter" $ notFoundToAER_ $ modifyFilters CList.rotR)
       , (kmSub (bind 'd') editDateKeymap)
       , (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
       , (kmSub (bind 'g') goKeymap)
@@ -382,7 +390,7 @@ collapseLevelKeymap =
       ("Collapse level " <> (T.show i))
       ( do
           -- NB there's some double work going on here but I think it's fine.
-          normalFilter <- gets (fromJust . CList.focus . mtFilters)
+          normalFilter <- gets (fromJust . CList.focus . cValue . mtFilters)
           model' <- liftIO $ getModel (acModelServer ?actx)
           root <- gets mtRoot
           notFoundToAER_ $ do
@@ -618,7 +626,7 @@ spaceKeymap =
         "Toggle collapse children"
         ( withCurOrElse aerContinue $ \cur -> do
             -- See also collapseLevelKeymap
-            normalFilter <- gets (fromJust . CList.focus . mtFilters)
+            normalFilter <- gets (fromJust . CList.focus . cValue . mtFilters)
             model' <- liftIO $ getModel (acModelServer ?actx)
             root <- gets mtRoot
             notFoundToAER_ $ do
@@ -835,7 +843,6 @@ moveRootToEID eid = replaceExceptT callIntoTreeView $ TV.moveRootToEID eid
 -- ** Filters
 
 -- | Reset filter of the tree view to match our currently selected one here.
--- SOMEDAY this shouldn't exist. But I don't wanna wrap the clist infra around everything.
 resetTreeViewFilter :: (?actx :: AppContext) => AppEventMOrNotFound MainTree ()
 resetTreeViewFilter = do
   fi <- gets mtFilter
@@ -844,37 +851,31 @@ resetTreeViewFilter = do
   mtFilter :: MainTree -> Filter
   mtFilter mt = chainFilters collapseFilter normalFilter
    where
-    collapseFilter = hideHierarchyFilter . mtHideHierarchyFilter $ mt
+    collapseFilter = hideHierarchyFilter . cValue . mtHideHierarchyFilter $ mt
     -- NB we know that filters will be non-empty.
-    normalFilter = fromJust . CList.focus . mtFilters $ mt
+    normalFilter = fromJust . CList.focus . cValue . mtFilters $ mt
 
 modifyHideHierarchyFilter ::
   (?actx :: AppContext) =>
   (HideHierarchyFilter -> HideHierarchyFilter) -> AppEventMOrNotFound MainTree ()
-modifyHideHierarchyFilter f = mtHideHierarchyFilterL %= f >> resetTreeViewFilter
+modifyHideHierarchyFilter f = runModifyLens mtHideHierarchyFilterL $ \hhf -> (f hhf, ?actx)
 
-cycleNextFilter :: (?actx :: AppContext) => AppEventMOrNotFound MainTree ()
-cycleNextFilter = do
-  mtFiltersL %= CList.rotR
-  resetTreeViewFilter
-
-cyclePrevFilter :: (?actx :: AppContext) => AppEventMOrNotFound MainTree ()
-cyclePrevFilter = do
-  mtFiltersL %= CList.rotL
-  resetTreeViewFilter
+modifyFilters ::
+  (?actx :: AppContext) =>
+  (CList.CList Filter -> CList.CList Filter) -> AppEventMOrNotFound MainTree ()
+modifyFilters f = runModifyLens mtFiltersL $ \fs -> (f fs, ?actx)
 
 selectFilterByName ::
   (?actx :: AppContext) => String -> AppEventMOrNotFound MainTree ()
 selectFilterByName s = do
   -- We don't use the following short form for updating to propagate the error right.
   -- mtFiltersL %= (fromMaybe <*> CList.findRotateTo ((== s) . fiName))
-  mnewFilters <- CList.findRotateTo ((== s) . fiName) <$> gets mtFilters
+  mnewFilters <- CList.findRotateTo ((== s) . fiName) <$> gets (cValue . mtFilters)
   case mnewFilters of
     -- NB this isn't quite the right error but w/e
     Nothing -> throwError IdNotFoundError
     Just newFilters -> do
-      mtFiltersL .= newFilters
-      resetTreeViewFilter
+      runUpdateLens mtFiltersL (newFilters, ?actx)
 
 -- * Rendering
 
@@ -1111,7 +1112,7 @@ instance AppComponent MainTree where
             , str "  "
             , renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr $ rootLabel
             , str "   "
-            , renderFilters mtFilters
+            , renderFilters . cValue $ mtFilters
             , str " "
             , doFollowBox
             ]
