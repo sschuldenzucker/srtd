@@ -19,7 +19,6 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.Writer.Strict (WriterT (runWriterT))
 import Data.CircularList qualified as CList
 import Data.Functor (void)
 import Data.List (intersperse)
@@ -30,7 +29,8 @@ import Data.Text qualified as T
 import Data.Time (UTCTime, ZonedTime, zonedTimeToUTC, zonedTimeZone)
 import Data.Tree (Tree (Node))
 import Data.UUID.V4 (nextRandom)
-import Graphics.Vty (Event (..), Key (..), Modifier (..))
+import Graphics.Vty (Key (..), Modifier (..))
+import Graphics.Vty qualified as Vty
 import Lens.Micro.Platform
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
@@ -80,33 +80,21 @@ import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 -- SOMEDAY we can process events here as well by adding them to the functions, or just having a separate events processing function! This usually runs *before* the other callbacks. We can access `Event s` here!
 data Overlay = forall s. (AppComponent s) => Overlay
   { olState :: s
-  , olOnContinue :: (?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())
+    olOnContinue :: (?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())
   , olOnConfirm ::
       (?actx :: AppContext) =>
       Return s -> AppEventM MainTree (AppEventReturn ())
   , olOnCanceled :: (?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())
+  , olOnEvent :: (?actx :: AppContext) => Event s -> AppEventM MainTree ()
   }
 
--- see largely SomeAppComponent, it's very similar.
--- TODO This is barely used, should prob be removed.
-instance AppComponent Overlay where
-  type Return Overlay = ()
+-- | `olOnEvent` handler to ignore events when they are irrelevant
+safeIgnoreEvent :: (Monad m) => () -> m ()
+safeIgnoreEvent () = return ()
 
-  -- NB Overlay EATS all events! That kinda sucks but it's a consequence of that existential!
-  type Event Overlay = ()
-
-  -- Overlays cannot have other overlays right now.
-  renderComponent (Overlay s _ _ _) = renderComponent s
-
-  handleEvent ev = do
-    (Overlay s onContinue onConfirm onCanceled) <- get
-    let theLens = lens (const s) (\_s s' -> Overlay s' onContinue onConfirm onCanceled)
-    (res, _events) <- zoom theLens $ captureWriterT $ handleEvent ev
-    return $ forgetAppEventReturnData res
-
-  componentKeyDesc (Overlay s _ _ _) = componentKeyDesc s
-
-  componentTitle (Overlay s _ _ _) = componentTitle s
+-- | `olOnEvent` handler that ignores events
+ignoreEvent :: (Monad m) => a -> m ()
+ignoreEvent _ = return ()
 
 -- * Main Data Structure
 
@@ -257,7 +245,7 @@ rootKeymap =
                       let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
                       modifyModelAsync $ modifyAttrByEID cur f
                       callIntoTreeView $ TV.moveToEID cur
-                pushOverlay (newNodeOverlay oldName "Edit Item") aerContinue cb aerContinue
+                pushOverlay (newNodeOverlay oldName "Edit Item") aerContinue cb aerContinue safeIgnoreEvent
               Nothing -> return ()
         )
       , kmSub (ctrl 't') debugKeymap
@@ -453,7 +441,7 @@ editDateKeymap =
           modifyModelAsync $ modifyAttrByEID cur f
           callIntoTreeView $ TV.moveToEID cur
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
-     in pushOverlay mkDateEdit aerContinue cb aerContinue
+     in pushOverlay mkDateEdit aerContinue cb aerContinue ignoreEvent
 
 moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree ())
 moveSubtreeModeKeymap =
@@ -590,18 +578,17 @@ searchKeymap =
             oldSearchRx <- use mtSearchRxL
             let
               initText = maybe "" cwsSource oldSearchRx
-              -- TODO recover auto reaction on search. This should come from child events.
-              -- onContinue = aerVoid . assign mtSearchRxL
-              onContinue = aerContinue
+              onEvent = \case
+                ValueChanged mv' -> mtSearchRxL .= mv'
               onConfirm (rx, ctype) = do
                 assign mtSearchRxL (Just rx)
                 zoom mtTreeViewL $ case ctype of
                   RegularConfirm -> TV.searchForRxAction TV.Forward True
                   AltConfirm -> TV.searchForRxSiblingAction TV.Forward
                 aerContinue
-              onCanceled = aerVoid $ assign mtSearchRxL oldSearchRx
+              onCanceled = aerVoid $ mtSearchRxL .= oldSearchRx
              in
-              pushOverlay (compilingRegexEntry initText) onContinue onConfirm onCanceled
+              pushOverlay (compilingRegexEntry initText) aerContinue onConfirm onCanceled onEvent
         )
       , (kmLeafA_ (bind 'n') "Next match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Forward False)
       , (kmLeafA_ (bind 'N') "Prev match" $ zoom mtTreeViewL $ TV.searchForRxAction TV.Backward False)
@@ -653,7 +640,7 @@ spaceKeymap =
                   let eid = EIDNormal uuid
                   zoom mtTreeViewL $ TV.moveToEID eid
                   aerContinue
-        pushOverlay (newNodeOverlay "" "New Item as Parent") aerContinue cb aerContinue
+        pushOverlay (newNodeOverlay "" "New Item as Parent") aerContinue cb aerContinue safeIgnoreEvent
     ]
 
 -- SOMEDAY these actions should be functions in MainTree
@@ -704,10 +691,11 @@ pushOverlay ::
   (AppComponent s, MonadState MainTree m, MonadIO m) =>
   (AppResourceName -> s) ->
   ((?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())) ->
-  ((?actx :: AppContext) => (Return s) -> AppEventM MainTree (AppEventReturn ())) ->
+  ((?actx :: AppContext) => Return s -> AppEventM MainTree (AppEventReturn ())) ->
   ((?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())) ->
+  ((?actx :: AppContext) => Event s -> AppEventM MainTree ()) ->
   m ()
-pushOverlay mk onContinue onConfirm onCanceled = do
+pushOverlay mk onContinue onConfirm onCanceled onEvent = do
   hasExisting <- isJust <$> use mtOverlayL
   when hasExisting $
     let s =
@@ -716,7 +704,7 @@ pushOverlay mk onContinue onConfirm onCanceled = do
      in liftIO $ glogL WARNING s
   rootRname <- use mtResourceNameL
   let rname = Component.OverlayFor 0 rootRname
-  let ol = Overlay (mk rname) onContinue onConfirm onCanceled
+  let ol = Overlay (mk rname) onContinue onConfirm onCanceled onEvent
   mtOverlayL .= Just ol
 
 -- ** Item manipulation
@@ -745,7 +733,7 @@ pushInsertNewItemRelToCur go = do
             let eid = EIDNormal uuid
             zoom mtTreeViewL $ TV.moveToEID eid
             aerContinue
-  pushOverlay (newNodeOverlay "" "New Item") aerContinue cb aerContinue
+  pushOverlay (newNodeOverlay "" "New Item") aerContinue cb aerContinue safeIgnoreEvent
 
 setStatus :: (?actx :: AppContext, MonadState MainTree m, MonadIO m) => Status -> m ()
 setStatus status' = withCur $ \cur ->
@@ -1145,7 +1133,7 @@ instance AppComponent MainTree where
       detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
         (True, Just illabel) -> Just ("Item Details", renderItemDetails now illabel)
         _ -> Nothing
-      ovl = mtOverlay <&> \ol -> (componentTitle ol, renderComponent ol)
+      ovl = mtOverlay <&> \(Overlay {olState = ols}) -> (componentTitle ols, renderComponent ols)
       now = acZonedTime ?actx
 
   handleEvent ev =
@@ -1153,7 +1141,7 @@ instance AppComponent MainTree where
     wrappingActions $
       case ev of
         -- Keymap
-        (VtyEvent (EvKey key mods)) -> do
+        (VtyEvent (Vty.EvKey key mods)) -> do
           keymap <- use mtKeymapL
           liftIO $ glogL DEBUG $ "handle a key from keymap"
           case kmzLookup keymap key mods of
@@ -1163,8 +1151,8 @@ instance AppComponent MainTree where
               -- having some abstraction here would be good if we need it again.
               -- SOMEDAY slightly inconsistent: if the user should expect BS to always go up, we
               -- shouldn't bind it to anything else.
-              (VtyEvent (EvKey KEsc [])) -> aerVoid $ mtKeymapL %= kmzResetRoot
-              (VtyEvent (EvKey KBS [])) -> aerVoid $ mtKeymapL %= kmzUp
+              (VtyEvent (Vty.EvKey KEsc [])) -> aerVoid $ mtKeymapL %= kmzResetRoot
+              (VtyEvent (Vty.EvKey KBS [])) -> aerVoid $ mtKeymapL %= kmzUp
               _ -> do
                 liftIO $ glogL DEBUG "handle fallback"
                 handleFallback ev
@@ -1190,10 +1178,10 @@ instance AppComponent MainTree where
       lift $ do
         mol <- use mtOverlayL
         case mol of
-          Just (Overlay ol onContinue onConfirm onCanceled) -> do
-            -- TODO add events processing, see Overlay definition
-            (ol', (res, _events)) <- nestAppEventM ol (handleEvent ev)
-            mtOverlayL .= Just (Overlay ol' onContinue onConfirm onCanceled)
+          Just (Overlay ols onContinue onConfirm onCanceled onEvent) -> do
+            (ols', (res, events)) <- nestAppEventM ols (handleEvent ev)
+            mapM_ onEvent events
+            mtOverlayL .= Just (Overlay ols' onContinue onConfirm onCanceled onEvent)
             case res of
               Continue -> onContinue
               Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
@@ -1203,7 +1191,7 @@ instance AppComponent MainTree where
 
   componentKeyDesc s = case mtOverlay s of
     Nothing -> kmzDesc . mtKeymap $ s
-    Just (Overlay ol _ _ _) -> (componentKeyDesc ol) {kdIsToplevel = False} -- always show key help for overlays
+    Just (Overlay {olState = ols}) -> (componentKeyDesc ols) {kdIsToplevel = False} -- always show key help for overlays
 
   -- "Root name - Realm" unless the Realm is the root itself, or higher.
   componentTitle s = T.pack $ pathStr

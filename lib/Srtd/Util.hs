@@ -47,6 +47,10 @@ safeHead :: [a] -> Maybe a
 safeHead (x : _) = Just x
 safeHead [] = Nothing
 
+-- | Safe 'const', only drops `()`.
+safeConst :: a -> () -> a
+safeConst x () = x
+
 -- Enables regex support for Text
 
 maybeToEither :: a -> Maybe b -> Either a b
