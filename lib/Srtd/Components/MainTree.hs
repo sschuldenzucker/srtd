@@ -242,10 +242,11 @@ rootKeymap =
             case mtCurWithAttr state of
               Just (cur, ((curAttr, _), _)) -> do
                 let oldName = name curAttr
-                let cb name' = aerVoid $ do
+                let cb name' = do
                       let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
                       modifyModelAsync $ modifyAttrByEID cur f
                       callIntoTreeView $ TV.moveToEID cur
+                      return Continue
                 pushOverlay (newNodeOverlay oldName "Edit Item") cb aerContinue safeIgnoreEvent
               Nothing -> return ()
         )
@@ -437,10 +438,11 @@ editDateKeymap =
          ]
  where
   mkDateEditShortcut (kb, label, l0) = kmLeafA_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
-    let cb date' = aerVoid $ do
+    let cb date' = do
           let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runALens' l0 .~ date')
           modifyModelAsync $ modifyAttrByEID cur f
           callIntoTreeView $ TV.moveToEID cur
+          return Continue
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
      in pushOverlay mkDateEdit cb aerContinue ignoreEvent
 
@@ -586,7 +588,7 @@ searchKeymap =
                 callIntoTreeView $ case ctype of
                   RegularConfirm -> TV.searchForRxAction TV.Forward True
                   AltConfirm -> TV.searchForRxSiblingAction TV.Forward
-                aerContinue
+                return Continue
               onCanceled = aerVoid $ mtSearchRxL .= oldSearchRx
              in
               pushOverlay (compilingRegexEntry initText) onConfirm onCanceled onEvent
@@ -640,7 +642,7 @@ spaceKeymap =
                 Right () -> do
                   let eid = EIDNormal uuid
                   callIntoTreeView $ TV.moveToEID eid
-                  aerContinue
+                  return Continue
         pushOverlay (newNodeOverlay "" "New Item as Parent") cb aerContinue safeIgnoreEvent
     ]
 
@@ -732,7 +734,7 @@ pushInsertNewItemRelToCur go = do
           Right () -> do
             let eid = EIDNormal uuid
             callIntoTreeView $ TV.moveToEID eid
-            aerContinue
+            return Continue
   pushOverlay (newNodeOverlay "" "New Item") cb aerContinue safeIgnoreEvent
 
 setStatus :: (?actx :: AppContext, MonadState MainTree m, MonadIO m) => Status -> m ()
@@ -1138,58 +1140,79 @@ instance AppComponent MainTree where
       ovl = mtOverlay <&> \(Overlay {olState = ols}) -> (componentTitle ols, renderComponent ols)
       now = acZonedTime ?actx
 
-  handleEvent ev =
-    -- TODO process the Tick event and update its filter b/c last-modified now depends on time (in a hacky way). - Or maybe explicitly don't and add a manual refresh??
-    wrappingActions $
-      case ev of
-        -- Keymap
-        (VtyEvent (Vty.EvKey key mods)) -> do
-          keymap <- use mtKeymapL
-          liftIO $ glogL DEBUG $ "handle a key from keymap"
-          case kmzLookup keymap key mods of
-            NotFound -> case ev of
-              -- Code for keymap. We handle this here so that we can bind Backspace in a submap
-              -- (and also Esc, though that's a bit too funky for my taste). NB this is a bit nasty,
-              -- having some abstraction here would be good if we need it again.
-              -- SOMEDAY slightly inconsistent: if the user should expect BS to always go up, we
-              -- shouldn't bind it to anything else.
-              (VtyEvent (Vty.EvKey KEsc [])) -> aerVoid $ mtKeymapL %= kmzResetRoot
-              (VtyEvent (Vty.EvKey KBS [])) -> aerVoid $ mtKeymapL %= kmzUp
-              _ -> do
-                liftIO $ glogL DEBUG "handle fallback"
-                handleFallback ev
-            LeafResult act nxt -> do
-              liftIO $ glogL DEBUG "handle leaf"
-              res <- runAppEventAction act
-              mtKeymapL .= nxt
-              return res
-            SubmapResult sm -> do
-              liftIO $ glogL DEBUG "handle submap"
-              mtKeymapL .= sm
-              aerContinue
-        _miscEvents -> handleFallback ev
+  -- NB we normally return Continue. There's noting properly to confirm or cancel here.
+  -- We return Confirmed if the user requests to close the tab and Canceled if there was an error
+  -- (specifically, our subtree was deleted)
+  handleEvent ev = case ev of
+    (AppEvent (ModelUpdated _)) -> do
+      -- NB the return value of tryRouteToOverlay is the return value of the *handler* in case the
+      -- overlay returned. This is practically always Continue in our case.
+      -- SOMEDAY should be handled if this ever changes.
+      --
+      -- Note: errors (specifically, deleted roots of the subtrees) are still handled correctly.
+      -- Components return Canceled in this case, and (1) for the overlay, that will close it before
+      -- returning Continue for *ourselves* and (2) for the tree view, this result is actually used,
+      -- and would have us return Canceled.
+      _returnIsAlwaysContinue <- tryRouteToOverlay
+      routeToTreeView
+    -- TODO would be better to fully match
+    (AppEvent _) -> return Continue
+    (VtyEvent _) -> routeToOverlayOr routeToSelf
+    (MouseDown rname _k _mods _loc) -> case rname of
+      OverlayFor _ _ -> tryRouteToOverlay
+      TreeFor _ -> routeToTreeView
+      _ -> do
+        liftIO $
+          glogL WARNING $
+            "MainTree received click on " ++ show rname ++ ", which we don't recognize. Ignoring."
+        return Continue
+    (MouseUp _rname _mk _loc) -> return Continue
    where
-    wrappingActions actMain = notFoundToAER $ do
-      -- <<Global updates that should happen even if there's an active overlay would go here.>>
-      case ev of
-        (AppEvent (ModelUpdated _)) -> void $ lift $ callIntoTreeView $ handleEvent ev
-        _ -> return ()
+    routeToOverlayOr actNoOverlay = do
+      mol <- use mtOverlayL
+      case mol of
+        Just (Overlay ols onConfirm onCanceled onEvent) -> do
+          (ols', (res, events)) <- nestAppEventM ols (handleEvent ev)
+          mapM_ onEvent events
+          mtOverlayL .= Just (Overlay ols' onConfirm onCanceled onEvent)
+          case res of
+            Continue -> aerContinue
+            Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
+            Canceled -> mtOverlayL .= Nothing >> onCanceled
+        Nothing -> actNoOverlay
 
-      -- Now pass the event to either the overlay or to our main function.
-      -- (these don't raise errors anymore)
-      lift $ do
-        mol <- use mtOverlayL
-        case mol of
-          Just (Overlay ols onConfirm onCanceled onEvent) -> do
-            (ols', (res, events)) <- nestAppEventM ols (handleEvent ev)
-            mapM_ onEvent events
-            mtOverlayL .= Just (Overlay ols' onConfirm onCanceled onEvent)
-            case res of
-              Continue -> aerContinue
-              Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
-              Canceled -> mtOverlayL .= Nothing >> onCanceled
-          Nothing -> actMain
-    handleFallback e = callIntoTreeView $ handleEvent e
+    tryRouteToOverlay = routeToOverlayOr (return Continue)
+
+    routeToSelf = case ev of
+      -- Keymap
+      (VtyEvent (Vty.EvKey key mods)) -> do
+        keymap <- use mtKeymapL
+        liftIO $ glogL DEBUG $ "handle a key from keymap"
+        case kmzLookup keymap key mods of
+          NotFound -> case ev of
+            -- Code for keymap. We handle this here so that we can bind Backspace in a submap
+            -- (and also Esc, though that's a bit too funky for my taste). NB this is a bit nasty,
+            -- having some abstraction here would be good if we need it again.
+            -- SOMEDAY slightly inconsistent: if the user should expect BS to always go up, we
+            -- shouldn't bind it to anything else.
+            (VtyEvent (Vty.EvKey KEsc [])) -> aerVoid $ mtKeymapL %= kmzResetRoot
+            (VtyEvent (Vty.EvKey KBS [])) -> aerVoid $ mtKeymapL %= kmzUp
+            _ -> do
+              liftIO $ glogL DEBUG "handle fallback"
+              routeToTreeView
+          LeafResult act nxt -> do
+            liftIO $ glogL DEBUG "handle leaf"
+            res <- runAppEventAction act
+            mtKeymapL .= nxt
+            return res
+          SubmapResult sm -> do
+            liftIO $ glogL DEBUG "handle submap"
+            mtKeymapL .= sm
+            aerContinue
+      -- vvv never happens
+      _miscEvents -> routeToTreeView
+
+    routeToTreeView = callIntoTreeView $ handleEvent ev
 
   componentKeyDesc s = case mtOverlay s of
     Nothing -> kmzDesc . mtKeymap $ s
@@ -1206,3 +1229,62 @@ instance AppComponent MainTree where
       _ : c : _ -> Just c
       _ -> Nothing
     rootName = name (fst . rootLabel . mtSubtree $ s)
+
+-- TODO killme
+{- handleEventOld ev =
+  -- TODO process the Tick event and update its filter b/c last-modified now depends on time (in a hacky way). - Or maybe explicitly don't and add a manual refresh??
+  wrappingActions $
+    case ev of
+      -- Keymap
+      (VtyEvent (Vty.EvKey key mods)) -> do
+        keymap <- use mtKeymapL
+        liftIO $ glogL DEBUG $ "handle a key from keymap"
+        case kmzLookup keymap key mods of
+          NotFound -> case ev of
+            -- Code for keymap. We handle this here so that we can bind Backspace in a submap
+            -- (and also Esc, though that's a bit too funky for my taste). NB this is a bit nasty,
+            -- having some abstraction here would be good if we need it again.
+            -- SOMEDAY slightly inconsistent: if the user should expect BS to always go up, we
+            -- shouldn't bind it to anything else.
+            (VtyEvent (Vty.EvKey KEsc [])) -> aerVoid $ mtKeymapL %= kmzResetRoot
+            (VtyEvent (Vty.EvKey KBS [])) -> aerVoid $ mtKeymapL %= kmzUp
+            _ -> do
+              liftIO $ glogL DEBUG "handle fallback"
+              handleFallback ev
+          LeafResult act nxt -> do
+            liftIO $ glogL DEBUG "handle leaf"
+            res <- runAppEventAction act
+            mtKeymapL .= nxt
+            return res
+          SubmapResult sm -> do
+            liftIO $ glogL DEBUG "handle submap"
+            mtKeymapL .= sm
+            aerContinue
+      _miscEvents -> handleFallback ev
+ where
+  wrappingActions actMain = notFoundToAER $ do
+    -- <<Global updates that should happen even if there's an active overlay would go here.>>
+    case ev of
+      -- TODO what happens if the current root disappears?
+      -- Then TreeView's handleEvent should return Canceled but (1) I need to check it does and (2) that would also be ignored here. I think the structure is kinda bad. Maybe we need a combinator at the level of AppEventReturn?
+      -- Also not clear to me why we need to process it here.
+      -- This whole structure is kinda brittle tbh.
+      (AppEvent (ModelUpdated _)) -> void $ lift $ callIntoTreeView $ handleEvent ev
+      _ -> return ()
+
+    -- Now pass the event to either the overlay or to our main function.
+    -- (these don't raise errors anymore)
+    -- TODO actually why? What happens when there is a QuickFilter and reloading fails?
+    lift $ do
+      mol <- use mtOverlayL
+      case mol of
+        Just (Overlay ols onConfirm onCanceled onEvent) -> do
+          (ols', (res, events)) <- nestAppEventM ols (handleEvent ev)
+          mapM_ onEvent events
+          mtOverlayL .= Just (Overlay ols' onConfirm onCanceled onEvent)
+          case res of
+            Continue -> aerContinue
+            Confirmed x -> mtOverlayL .= Nothing >> onConfirm x
+            Canceled -> mtOverlayL .= Nothing >> onCanceled
+        Nothing -> actMain
+  handleFallback e = callIntoTreeView $ handleEvent e -}
