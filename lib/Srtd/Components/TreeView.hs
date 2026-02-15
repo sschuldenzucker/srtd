@@ -53,7 +53,6 @@ import Srtd.ProactiveBandana
 import Srtd.Util (
   for,
   forestFlattenToList,
-  pureET,
   regexSplitsWithMatchesOverlap,
   urlRegex,
  )
@@ -206,7 +205,7 @@ moveRootToEID eid = do
   model <- liftIO $ getModel (acModelServer ?actx)
   -- NB we can re-use the resource name b/c we're updating ourselves
   tv' <-
-    pureET $
+    liftEither $
       makeFromModel
         eid
         (cValue $ tvFilter tv)

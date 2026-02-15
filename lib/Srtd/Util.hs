@@ -265,14 +265,6 @@ withLensValue l v act = do
   l .= oldValue
   return res
 
--- * Monad helpers
-
--- | Lift an Either value into the monad computation of an 'ExceptT'.
---
--- TODO This is just `liftEither`, and that one is more general. Eliminate!
-pureET :: (Monad m) => Either e a -> ExceptT e m a
-pureET ev = (ExceptT $ return ev)
-
 -- * Regex helpers
 
 -- | Split a text into matching and non-matching chunks according to a regex
