@@ -31,36 +31,36 @@ import Srtd.Model (FilterContext (..), IdNotFoundError)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
 import Srtd.Util (captureWriterT)
 
--- | Global messages sent through Srtd at the app (top) level together with any brick events.
--- Individual components can define their own message type.
+-- | Messages that reach the root of the app. They do not recur into individual components.
 --
--- SOMEDAY these could be events emitted by MainTree, not global events! Not sure they should be b/c right now, anyone can push tabs, which could come in handy later.
---
--- TODO restructure into RootMsg vs other messages so we can safely ignore messages meant for the root (which we don't receive anyways)
-data AppMsg
-  = -- SOMEDAY the first couple ones are for MainTree to communicate with Main. May not be needed, could just be the message returned by MainTree.
-    -- (but let's keep them for now in case I have some funky interaction pattern later)
-    PushTab (AppResourceName -> SomeAppComponent)
+-- SOMEDAY these messages could also be returned as child events from components up the tree. But
+-- I'm not doing that right now.
+data AppRootMsg
+  = PushTab (AppResourceName -> SomeAppComponent)
   | NextTab
   | PrevTab
   | SwapTabNext
   | SwapTabPrev
-  | ModelUpdated MsgModelUpdated
+  | AppComponentMsg AppComponentMsg
+
+-- | Messages that reach individual components and cascade hierarchically.
+data AppComponentMsg
+  = ModelUpdated MsgModelUpdated
   | -- | A signal sent once per minute. Only needs to be handled for components where the internal
     -- state depends on the clock. (which typically means they cache data that depends on entered
     -- dates). Even then, blanket handlers (running on *every* event) are often fine.
     Tick
+  deriving (Show)
 
 -- SOMEDAY we could make Show a precondition for BrickComponent or for SomeBrickComponent for better vis
 -- This is a custom instance b/c some constructors' data doesn't have show and there are no sane defaults. :/
-instance Show AppMsg where
+instance Show AppRootMsg where
   show (PushTab _) = "PushTab _"
   show NextTab = "NextTab"
   show PrevTab = "PrevTab"
   show SwapTabNext = "SwapTabNext"
   show SwapTabPrev = "SwapTabPrev"
-  show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
-  show Tick = "Tick"
+  show (AppComponentMsg msg) = "AppComponentMsg (" ++ show msg ++ ")"
 
 -- | Global type for Brick "resource names", which are used to detect clicks (and also visibility/scroll, but I'm not using that right now). This can be anything but resource names need to be globally unique.
 --
@@ -80,7 +80,7 @@ data AppResourceName
 -- | App conext passed down from the app (top) level to components that need it.
 data AppContext = AppContext
   { acModelServer :: ModelServer
-  , acAppChan :: BChan AppMsg
+  , acAppChan :: BChan AppRootMsg
   , acZonedTime :: ZonedTime
   -- ^ Current time and time zone at the time of processing this event. ONLY for user-facing
   -- interactions, NOT for internal process coordination!
@@ -156,7 +156,7 @@ class AppComponent s where
   -- the component.
   handleEvent ::
     (?actx :: AppContext) =>
-    BrickEvent AppResourceName AppMsg ->
+    BrickEvent AppResourceName AppComponentMsg ->
     AppEventM s (AppEventReturn (Return s))
 
   -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
@@ -228,6 +228,10 @@ aerContinue = return $ Continue
 -- | Execute action and return Continue
 aerVoid :: (Monad m) => m a -> m (AppEventReturn b)
 aerVoid act = act >> aerContinue
+
+-- | Restriction of aerVoid to actions that return `()` and we don't drop anything.
+aerSafeVoid :: (Monad m) => m () -> m (AppEventReturn b)
+aerSafeVoid = aerVoid
 
 -- * Error Handling
 

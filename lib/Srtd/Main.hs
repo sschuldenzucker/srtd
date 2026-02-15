@@ -97,9 +97,9 @@ main = do
 
   -- SOMEDAY it's unfortunate that this is bounded actually, could in principle lead to deadlock.
   appChan <- newBChan 100
-  subscribe modelServer $ writeBChan appChan . ModelUpdated
+  subscribe modelServer $ writeBChan appChan . AppComponentMsg . ModelUpdated
 
-  Async.link =<< startTicker 60 (writeBChan appChan Tick)
+  Async.link =<< startTicker 60 (writeBChan appChan $ AppComponentMsg Tick)
 
   ztime <- getZonedTime
   let actx = AppContext modelServer appChan ztime
@@ -195,7 +195,7 @@ myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
           then renderKeyHelp keymapName fullKeydescs
           else emptyWidget
 
-myHandleEvent :: BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
+myHandleEvent :: BrickEvent AppResourceName AppRootMsg -> EventM AppResourceName AppState ()
 myHandleEvent ev = wrappingActions $
   case ev of
     (VtyEvent (EvKey (KChar 'q') [MCtrl])) -> do
@@ -207,28 +207,35 @@ myHandleEvent ev = wrappingActions $
       asHelpAlwaysL %= not
     (VtyEvent (EvKey (KFun 10) [])) -> do
       asAttrMapRingL %= CList.rotR
-    (AppEvent (PushTab t)) -> modify $ pushTab t
-    (AppEvent NextTab) -> asTabsL %= lzCircRight
-    (AppEvent PrevTab) -> asTabsL %= lzCircLeft
-    (AppEvent SwapTabNext) -> asTabsL %= lzSwapRightCirc
-    (AppEvent SwapTabPrev) -> asTabsL %= lzSwapLeftCirc
+    (AppEvent aev) -> case aev of
+      PushTab t -> modify $ pushTab t
+      NextTab -> asTabsL %= lzCircRight
+      PrevTab -> asTabsL %= lzCircLeft
+      SwapTabNext -> asTabsL %= lzSwapRightCirc
+      SwapTabPrev -> asTabsL %= lzSwapLeftCirc
+      AppComponentMsg acev ->
+        case acev of
+          -- SOMEDAY alt, just push acev through every time, but let's stay a bit safe here for now.
+          ModelUpdated _ -> eachTabHandleEvent (AppEvent acev)
+          Tick -> eachTabHandleEvent (AppEvent acev)
     (MouseDown rname@(TabTitleFor _) Vty.BLeft [] _location) -> asTabsL %= lzFindBegin ((rname ==) . fst)
-    (AppEvent (ModelUpdated _)) -> do
-      eachTabHandleEvent ev
-    (AppEvent Tick) -> do
-      eachTabHandleEvent ev
-    _ -> do
-      -- NB we ignore events from child components here.
-      -- SOMEDAY information could travel up to us (but not with SomeAppComponent, that one eats events)
-      (res, events) <- zoom activeTabL $ runWriterT $ handleEvent ev
-      -- Attests that there are no (non-bottom) events
-      mapM_ absurd events
-      case res of
-        Continue -> return ()
-        -- See the AppComponent instance of MainTree
-        Confirmed () -> popTabOrQuitAction
-        Canceled -> popTabAction
+    -- some boilerplate to safely cast BrickEvent n AppRootMsg to BrickEvent n AppComponentMsg here.
+    -- SOMEDAY this can certainly be done in a more clever way. Maybe a dispatch function on BrickEvent.
+    VtyEvent k -> routeToCurrentTab (VtyEvent k)
+    MouseDown rname btn mods loc -> routeToCurrentTab (MouseDown rname btn mods loc)
+    MouseUp rname mbtn loc -> routeToCurrentTab (MouseUp rname mbtn loc)
  where
+  routeToCurrentTab ev' = do
+    -- NB we ignore events from child components here.
+    -- SOMEDAY information could travel up to us (but not with SomeAppComponent, that one eats events)
+    (res, events) <- zoom activeTabL $ runWriterT $ handleEvent ev'
+    -- Attests that there are no (non-bottom) events
+    mapM_ absurd events
+    case res of
+      Continue -> return ()
+      -- See the AppComponent instance of MainTree
+      Confirmed () -> popTabOrQuitAction
+      Canceled -> popTabAction
   -- NB explicit type required to bind the implicit parameter in the right place.
   wrappingActions ::
     ((?actx :: AppContext) => EventM AppResourceName AppState ()) -> EventM AppResourceName AppState ()
@@ -243,7 +250,8 @@ myHandleEvent ev = wrappingActions $
   updateCurrentTime = liftIO getZonedTime >>= assign (asContextL . acZonedTimeL)
 
 eachTabHandleEvent ::
-  (?actx :: AppContext) => BrickEvent AppResourceName AppMsg -> EventM AppResourceName AppState ()
+  (?actx :: AppContext) =>
+  BrickEvent AppResourceName AppComponentMsg -> EventM AppResourceName AppState ()
 eachTabHandleEvent ev = do
   tabs <- use asTabsL
   mtabs' <- lzForM tabs $ \(rname, tabCmp) -> do
@@ -340,7 +348,7 @@ myAppStartEvent = do
 
   setDefaultTab
 
-app :: App AppState AppMsg AppResourceName
+app :: App AppState AppRootMsg AppResourceName
 app =
   App
     { appDraw = myAppDraw

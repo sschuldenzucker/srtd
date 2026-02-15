@@ -10,6 +10,7 @@ import Data.Text qualified as T
 import Data.Void (Void)
 import Graphics.Vty (Event (..), Key (..))
 import Lens.Micro.Platform
+import Srtd.BrickHelpers (pattern SomeNonVtyKeyBrickEvent, pattern VtyKeyEvent)
 import Srtd.Component
 import Srtd.Components.EditorProactive
 import Srtd.Keymap (KeyDesc (..))
@@ -42,14 +43,20 @@ instance AppComponent NewNodeOverlay where
   renderComponent self = renderComponent (self ^. nnEditor)
 
   handleEvent ev = case ev of
-    (VtyEvent (EvKey KEsc [])) -> return Canceled
-    (VtyEvent (EvKey KEnter [])) -> do
+    VtyKeyEvent KEsc [] -> return Canceled
+    VtyKeyEvent KEnter [] -> do
       NewNodeOverlay {_nnEditor} <- get
       let res = getEditorText _nnEditor
       return $ Confirmed (T.unpack res)
-    _ -> do
-      _resIsAlwaysContinue <- callIntoEditor $ handleEvent ev
-      return Continue
+    VtyKeyEvent _key _mods -> handleFallback
+    SomeNonVtyKeyBrickEvent -> handleFallback
+    AppEvent (ModelUpdated _) -> handleFallback
+    AppEvent Tick -> handleFallback
+   where
+    handleFallback =
+      do
+        _resIsAlwaysContinue <- callIntoEditor $ handleEvent ev
+        return Continue
 
   componentKeyDesc self = KeyDesc (_nnTitle self) True [("esc", "cancel"), ("enter", "confirm")]
 

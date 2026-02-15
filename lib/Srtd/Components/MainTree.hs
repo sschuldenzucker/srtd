@@ -1157,8 +1157,9 @@ instance AppComponent MainTree where
       -- and would have us return Canceled.
       _returnIsAlwaysContinue <- tryRouteToOverlay
       routeToTreeView
-    -- TODO would be better to fully match
-    (AppEvent _) -> return Continue
+    -- TODO I think I should process Tick somehow. E.g. filters depending on time, or something.
+    -- though again, if anything actually depends on time, we should prob include it during keypress as well.
+    (AppEvent Tick) -> return Continue
     (VtyEvent _) -> routeToOverlayOr routeToSelf
     (MouseDown rname _k _mods _loc) -> case rname of
       OverlayFor _ _ -> tryRouteToOverlay
@@ -1168,7 +1169,7 @@ instance AppComponent MainTree where
           glogL WARNING $
             "MainTree received click on " ++ show rname ++ ", which we don't recognize. Ignoring."
         return Continue
-    (MouseUp _rname _mk _loc) -> return Continue
+    SomeMouseUp -> return Continue
    where
     routeToOverlayOr actNoOverlay = do
       mol <- use mtOverlayL

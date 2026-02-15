@@ -25,6 +25,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Zipper qualified as TZ
 import Graphics.Vty.Input.Events
+import Srtd.BrickHelpers (pattern SomeNonVtyKeyBrickEvent, pattern VtyKeyEvent)
 import Srtd.Component
 import Srtd.Components.EditorProactive
 import Srtd.Keymap
@@ -159,12 +160,14 @@ instance
 
   handleEvent ev =
     case ev of
-      (VtyEvent (EvKey key mods)) -> do
+      VtyKeyEvent key mods -> do
         case kmzLookup keymapZipper key mods of
           NotFound -> handleFallback ev
           LeafResult act _nxt -> runAppEventAction act
           SubmapResult _sm -> error "wtf submap?"
-      _ -> handleFallback ev
+      SomeNonVtyKeyBrickEvent -> handleFallback ev
+      AppEvent (ModelUpdated _) -> handleFallback ev
+      AppEvent Tick -> handleFallback ev
    where
     handleFallback ev' = do
       _resIsAlwaysContinue <- callIntoEditor $ handleEvent ev'

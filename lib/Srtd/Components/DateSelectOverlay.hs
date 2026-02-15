@@ -5,8 +5,9 @@ import Brick.Keybindings (binding, ctrl)
 import Control.Monad (forM_)
 import Data.Text (Text)
 import Data.Time (ZonedTime (zonedTimeZone))
-import Graphics.Vty (Event (..), Key (..))
+import Graphics.Vty (Key (..))
 import Lens.Micro.Platform
+import Srtd.BrickHelpers (pattern SomeNonVtyKeyBrickEvent, pattern VtyKeyEvent)
 import Srtd.Component
 import Srtd.Components.EditorProactive
 import Srtd.Dates
@@ -19,6 +20,8 @@ data DateSelectOverlay = DateSelectOverlay
   , dsValue :: Cell (Text, ZonedTime) (AppEventM DateSelectOverlay ()) (Maybe DateOrTime)
   -- ^ `Nothing` means invalid and `Just` means valid. Deletion is handled directly and not
   -- represented in the state.
+  -- NB this updates *only when* the user changes the text, not when the reference time changes.
+  -- This is intentional.
   , dsOrigValue :: Maybe DateOrTime
   , dsTitle :: Text
   }
@@ -91,12 +94,14 @@ instance AppComponent DateSelectOverlay where
   -- NB we don't have sub-keymaps here atm, so don't need to handle as much as MainTree, for instance.
   handleEvent ev =
     case ev of
-      (VtyEvent (EvKey key mods)) -> do
+      VtyKeyEvent key mods -> do
         case kmzLookup keymapZipper key mods of
           NotFound -> handleFallback ev
           LeafResult act _nxt -> runAppEventAction act
           SubmapResult _sm -> error "wtf submap?"
-      _ -> handleFallback ev
+      SomeNonVtyKeyBrickEvent -> handleFallback ev
+      AppEvent (ModelUpdated _) -> handleFallback ev
+      AppEvent Tick -> handleFallback ev
    where
     handleFallback ev' = do
       _returnIsAlwaysContinue <- callIntoEditor (handleEvent ev')

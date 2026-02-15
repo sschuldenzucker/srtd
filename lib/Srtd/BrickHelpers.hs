@@ -1,6 +1,7 @@
 module Srtd.BrickHelpers where
 
 import Brick
+import Graphics.Vty qualified as Vty
 
 -- | Like `str` but truncate when we don't have enough space. Does *not* insert a "..." ellipsis or so.
 --
@@ -21,3 +22,54 @@ setWidth w = hLimit w . padRight Max
 -- with `setWidth`, whereas `emptyWidget` won't. (is this a bug?)
 almostEmptyWidget :: Widget n
 almostEmptyWidget = str " "
+
+-- * BrickEvent patterns
+
+-- To simplify events handling when we want to ignore these.
+
+-- | For ignoring clicks
+pattern SomeMouseDown :: BrickEvent n e
+pattern SomeMouseDown <- MouseDown _ _ _ _
+
+pattern SomeMouseUp :: BrickEvent n e
+pattern SomeMouseUp <- MouseUp _ _ _
+
+isMouse :: BrickEvent n e -> Bool
+isMouse (MouseDown _ _ _ _) = True
+isMouse (MouseUp _ _ _) = True
+isMouse _ = False
+
+pattern SomeMouse :: BrickEvent n e
+pattern SomeMouse <- (isMouse -> True)
+
+pattern VtyKeyEvent :: Vty.Key -> [Vty.Modifier] -> BrickEvent n e
+pattern VtyKeyEvent key mods = VtyEvent (Vty.EvKey key mods)
+
+isSomeOtherVtyEvent :: BrickEvent n e -> Bool
+isSomeOtherVtyEvent = \case
+  VtyEvent (Vty.EvKey _ _) -> False
+  VtyEvent _ -> True
+  _ -> False
+
+pattern SomeVtyOtherEvent :: BrickEvent n e
+pattern SomeVtyOtherEvent <- (isSomeOtherVtyEvent -> True)
+
+isSomeNonVtyKeyBrickEvent :: BrickEvent n e -> Bool
+isSomeNonVtyKeyBrickEvent = \case
+  VtyEvent (Vty.EvKey _ _) -> False
+  AppEvent _ -> False
+  _ -> True
+
+pattern SomeNonVtyKeyBrickEvent :: BrickEvent n e
+pattern SomeNonVtyKeyBrickEvent <- (isSomeNonVtyKeyBrickEvent -> True)
+
+-- o/w the type checker wrongly still complains about incomplete cases. Seems kinda dumb.
+{-# COMPLETE VtyEvent, AppEvent, SomeMouseUp, SomeMouseDown #-}
+
+{-# COMPLETE VtyEvent, AppEvent, MouseDown, SomeMouseUp #-}
+
+{-# COMPLETE VtyEvent, AppEvent, SomeMouse #-}
+
+{-# COMPLETE VtyKeyEvent, SomeVtyOtherEvent, AppEvent, SomeMouse #-}
+
+{-# COMPLETE VtyKeyEvent, SomeNonVtyKeyBrickEvent, AppEvent #-}

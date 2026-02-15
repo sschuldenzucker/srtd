@@ -30,6 +30,7 @@ import Lens.Micro.Platform (use, (%=), (&), (.=), (.~), (<&>), (^.))
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
 import Srtd.BrickAttrHelpers (combineAttrs)
+import Srtd.BrickHelpers (pattern SomeMouse)
 import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
 import Srtd.Components.Attr (renderLastModified, renderMostUrgentDate, renderStatus)
@@ -246,11 +247,11 @@ instance AppComponent TreeView where
     now = acZonedTime ?actx
 
   -- TODO process the Tick event and update its filter b/c last-modified now depends on time (in a hacky way). - Or maybe explicitly don't and add a manual refresh??
-  -- TODO WIP make this not a dummy.
   handleEvent ev = do
     listRName <- gets (L.listName . tvList)
     case ev of
       AppEvent (ModelUpdated _) -> notFoundToAER_ reloadModel
+      AppEvent Tick -> return Continue
       (VtyEvent (EvKey KDown [])) -> aerVoid $ liftEventM $ moveBy 1
       (VtyEvent (EvKey KUp [])) -> aerVoid $ liftEventM $ moveBy (-1)
       (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
@@ -259,8 +260,8 @@ instance AppComponent TreeView where
         | rname' == listRName -> aerVoid $ scrollBy 3
       (MouseDown rname' BScrollUp [] _)
         | rname' == listRName -> aerVoid $ scrollBy (-3)
-      (VtyEvent e) -> aerVoid $ liftEventM $ zoom tvListL $ L.handleListEventVi L.handleListEvent e
-      _ -> aerContinue
+      (VtyEvent e) -> aerSafeVoid $ liftEventM $ zoom tvListL $ L.handleListEventVi L.handleListEvent e
+      SomeMouse -> return Continue
 
   -- TODO Dummy for now
   componentKeyDesc s = KeyDesc {kdName = componentTitle s, kdIsToplevel = True, kdPairs = []}
