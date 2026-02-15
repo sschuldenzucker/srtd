@@ -219,15 +219,15 @@ kmLeafA_ ::
   (Binding, KeymapItem (AppEventAction s b))
 -- NB this is one of the few cases where we can't make this point-free b/c the definition of
 -- 'aerVoid' doesn't include the `?actx` constraint.
-kmLeafA_ b n x = kmLeafA b n (aerSafeVoid x)
+kmLeafA_ b n x = kmLeafA b n (aerVoid x)
 
 -- | Return `Continue ()`.
 aerContinue :: (Monad m) => m (AppEventReturn b)
 aerContinue = return $ Continue
 
 -- | Execute action and return Continue
-aerSafeVoid :: (Monad m) => m () -> m (AppEventReturn b)
-aerSafeVoid act = act >> return Continue
+aerVoid :: (Monad m) => m () -> m (AppEventReturn b)
+aerVoid act = act >> return Continue
 
 -- * Error Handling
 
@@ -247,7 +247,7 @@ type AppEventMOrNotFound s a =
 
 -- | Convert exception handling.
 notFoundToAER_ :: (Monad m) => ExceptT IdNotFoundError m () -> m (AppEventReturn b)
-notFoundToAER_ = notFoundToAER . aerSafeVoid
+notFoundToAER_ = notFoundToAER . aerVoid
 
 -- | Merge exception handling.
 --

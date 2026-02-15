@@ -252,15 +252,15 @@ instance AppComponent TreeView where
     case ev of
       AppEvent (ModelUpdated _) -> notFoundToAER_ reloadModel
       AppEvent Tick -> return Continue
-      (VtyEvent (EvKey KDown [])) -> aerSafeVoid $ liftEventM $ moveBy 1
-      (VtyEvent (EvKey KUp [])) -> aerSafeVoid $ liftEventM $ moveBy (-1)
+      (VtyEvent (EvKey KDown [])) -> aerVoid $ liftEventM $ moveBy 1
+      (VtyEvent (EvKey KUp [])) -> aerVoid $ liftEventM $ moveBy (-1)
       (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
-        | rname' == listRName -> aerSafeVoid $ liftEventM $ moveToIndex rown
+        | rname' == listRName -> aerVoid $ liftEventM $ moveToIndex rown
       (MouseDown rname' BScrollDown [] _)
-        | rname' == listRName -> aerSafeVoid $ scrollBy 3
+        | rname' == listRName -> aerVoid $ scrollBy 3
       (MouseDown rname' BScrollUp [] _)
-        | rname' == listRName -> aerSafeVoid $ scrollBy (-3)
-      (VtyEvent e) -> aerSafeVoid $ liftEventM $ zoom tvListL $ L.handleListEventVi L.handleListEvent e
+        | rname' == listRName -> aerVoid $ scrollBy (-3)
+      (VtyEvent e) -> aerVoid $ liftEventM $ zoom tvListL $ L.handleListEventVi L.handleListEvent e
       SomeMouse -> return Continue
 
   -- TODO Dummy for now
