@@ -25,11 +25,12 @@ import Control.Monad.Writer.Strict
 import Data.Text (Text)
 import Data.Time (ZonedTime)
 import Data.Void (Void)
+import Graphics.Vty.Input (Key, Modifier)
 import Lens.Micro.Platform
-import Srtd.Keymap (KeyDesc, KeymapItem, kmLeaf)
+import Srtd.Keymap (KeyDesc, KeymapItem, KeymapResult (..), KeymapZipper, kmLeaf, kmzLookup)
 import Srtd.Model (FilterContext (..), IdNotFoundError)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
-import Srtd.Util (captureWriterT)
+import Srtd.Util (ALens' (..), captureWriterT)
 
 -- | Messages that reach the root of the app. They do not recur into individual components.
 --
@@ -224,6 +225,33 @@ kmLeafA_ b n x = kmLeafA b n (aerVoid x)
 -- | Execute action and return Continue
 aerVoid :: (Monad m) => m () -> m (AppEventReturn b)
 aerVoid act = act >> return Continue
+
+-- | Common dispatch routine for keymaps. Given a lens where we store a KeymapZipper, look up,
+-- execute, and update the keymap, or execute a fallback.
+kmzDispatch ::
+  (?actx :: AppContext) =>
+  -- | Lens where the KeymapZipper is stored
+  ALens' s (KeymapZipper (AppEventAction s a b)) ->
+  -- | Pressed key from VtyEvent
+  Key ->
+  -- | Pressed modifiers from VtyEvent
+  [Modifier] ->
+  -- | Default Continue-like action
+  EventM AppResourceName s (AppEventReturn a b) ->
+  -- | Fallback action if no key matches
+  EventM AppResourceName s (AppEventReturn a b) ->
+  EventM AppResourceName s (AppEventReturn a b)
+kmzDispatch al key mods cnt fallback = do
+  kmz <- use (runALens' al)
+  case kmzLookup kmz key mods of
+    NotFound -> fallback
+    LeafResult act nxt -> do
+      res <- runAppEventAction act
+      runALens' al .= nxt
+      return res
+    SubmapResult nxt -> do
+      runALens' al .= nxt
+      cnt
 
 -- * Error Handling
 

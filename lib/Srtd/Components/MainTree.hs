@@ -48,6 +48,7 @@ import Srtd.Components.Attr (
 import Srtd.Components.CompilingTextEntry
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
+import Srtd.Components.QuickFilter qualified as QF
 import Srtd.Components.TreeView qualified as TV
 import Srtd.Config qualified as Config
 import Srtd.Data.IdTree
@@ -649,6 +650,20 @@ spaceKeymap =
                   callIntoTreeView $ TV.moveToEID eid
                   return Continue
         pushOverlay (newNodeOverlay "" "New Item as Parent") cb (return Continue) absurd
+    , kmLeafA_ (bind 'j') "Quick jump" $ do
+        tv <- gets mtTreeView
+        let cb (mCompiledRegex, eid) = do
+              zoom mtTreeViewL $ do
+                TV.moveToEID eid
+                whenJust mCompiledRegex $ \rxs ->
+                  TV.tvSearchRxL .= Just rxs
+              aerContinue
+        s <- maybe "" cwsSource <$> gets (TV.tvSearchRx . mtTreeView)
+        pushOverlay
+          (QF.quickFilterFromTreeView QF.NodeSelection tv s "Quick jump")
+          overlayNoop
+          cb
+          aerContinue
     ]
 
 -- SOMEDAY these actions should be functions in MainTree

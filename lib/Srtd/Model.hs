@@ -13,6 +13,7 @@ import Data.Maybe (catMaybes, fromMaybe)
 import Data.Ord (Down (..), comparing)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Text qualified as T
 import Data.Time (TimeZone, ZonedTime (zonedTimeZone), addUTCTime, zonedTimeToUTC)
 import Data.Tree
 import Data.UUID (UUID)
@@ -22,6 +23,7 @@ import Srtd.Attr
 import Srtd.Data.IdTree
 import Srtd.Data.TreeZipper
 import Srtd.ModelJSON qualified as ModelJSON
+import Srtd.Query
 import Srtd.Todo
 import Srtd.Util (
   chooseMax,
@@ -37,6 +39,7 @@ import Srtd.Util (
   onForestChildren,
   transformForestTopDown,
  )
+import Text.Regex.TDFA (RegexLike (matchTest))
 
 -- import Data.UUID.V4 (nextRandom)
 
@@ -591,6 +594,26 @@ hideHierarchyFilter hhf =
           else
             -- Show
             Node lilabel cs
+
+singleItemQueryFlatFilter :: SingleItemQuery -> Filter
+singleItemQueryFlatFilter (QueryRegexParts rxs) =
+  Filter
+    { fiName = "single item query filter flat"
+    , fiDesc = "filter single item query flat"
+    , fiIncludeDone = True
+    , fiPostprocess = go
+    }
+ where
+  go =
+    fmap snd
+      . filterIdForest p
+      . fmap (\a -> (matchScore a, a))
+      . withIdForest forestFlatten
+  -- SOMEDAY this is a _very_ simple scoring. And very simple presentation.
+  p (score, _) = score > 0
+  matchScore llabel =
+    let theName = T.pack . gName $ llabel
+     in if all (`matchTest` theName) rxs then (1 :: Int) else 0
 
 -- * Model modifications
 

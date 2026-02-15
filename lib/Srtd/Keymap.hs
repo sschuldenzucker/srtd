@@ -103,6 +103,10 @@ kmzUp kz = kz
 kmzDown :: Keymap a -> KeymapZipper a -> KeymapZipper a
 kmzDown km (KeymapZipper ps cur) = KeymapZipper (cur : ps) km
 
+kmzTop :: KeymapZipper a -> KeymapZipper a
+kmzTop (KeymapZipper ps@(_ : _) _) = KeymapZipper [] (last ps)
+kmzTop kz = kz
+
 -- | Reset to root keymap
 kmzResetRoot :: KeymapZipper a -> KeymapZipper a
 kmzResetRoot kz@(KeymapZipper [] _) = kz

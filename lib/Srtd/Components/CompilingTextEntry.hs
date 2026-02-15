@@ -15,11 +15,18 @@ module Srtd.Components.CompilingTextEntry (
   compilingSingleItemQueryEntry,
   compilingQueryEntry,
   compilingRegexEntry,
+
+  -- * Helpers
+  MaybeEmpty (..),
+  maybeToMaybeEmpty,
+  maybeEmptyValue,
 ) where
 
 import Brick
 import Brick.Keybindings
+import Brick.Widgets.Edit
 import Control.Monad (forM_, when)
+import Data.Function qualified as Function
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -50,6 +57,12 @@ data CompiledWithSource c = CompiledWithSource
   , cwsSource :: Text
   }
 
+-- The Eq instances compares the _source_ not the compiled one. This creates a correct Eq instance
+-- but note that two different sources can give rise to the same (e.g.) regex.
+-- Where equality is used for reloading, this also means that there will be false positives when only unimportant details changed (e.g., spacing in a Query). This is not detected.
+instance Eq (CompiledWithSource c) where
+  (==) = (==) `Function.on` cwsSource
+
 compileWithSource :: (Text -> Maybe c) -> Text -> Maybe (CompiledWithSource c)
 compileWithSource f t = CompiledWithSource <$> (f t) <*> pure t
 
@@ -60,6 +73,24 @@ data CompilingTextEntry c = CompilingTextEntry
   }
 
 suffixLenses ''CompilingTextEntry
+
+-- | A tertiary value that can be valid, empty, or invalid. We sometimes use this for regexs. (the
+-- empty regex is invalid but should still receive some special treatment)
+--
+-- SOMEDAY we could make this the default return value type of CompilingTextEntry
+data MaybeEmpty a = Valid a | Empty | Invalid
+  deriving (Eq, Ord, Show)
+
+-- | Map a Maybe to MaybeEmpty. The result will never be Empty.
+maybeToMaybeEmpty :: Maybe a -> MaybeEmpty a
+maybeToMaybeEmpty = \case
+  Just x -> Valid x
+  Nothing -> Invalid
+
+maybeEmptyValue :: CompilingTextEntry a -> MaybeEmpty (CompiledWithSource a)
+maybeEmptyValue cte
+  | (T.intercalate "\n" . getEditContents . sEditor) cte == "" = Empty
+  | otherwise = maybeToMaybeEmpty . sValue $ cte
 
 type MyAppEventAction c =
   AppEventAction
