@@ -3,10 +3,49 @@
 {-| A view component for a 'Subtree'.
 
 To be imported qualified.
-
-TODO clean up exports
 -}
-module Srtd.Components.TreeView where
+module Srtd.Components.TreeView (
+  -- * Types
+
+  -- NB we do export 'TreeView's constructor & all fields as a matter of convenience but you
+  -- shouldn't use them to update state. Only use the exported lenses and the setter functions from
+  -- below.
+  TreeView (..),
+  SearchDirection (..),
+
+  -- ** Lenses
+
+  -- These are safe to use; unsafe lenses are not exposed.
+  tvSearchRxL,
+  tvDoFollowItemL,
+  tvScrolloffL,
+
+  -- * Construction
+  makeFromModel,
+  setResourceName,
+  moveRootToEID,
+
+  -- * Access
+  tvCur,
+  tvCurWithAttr,
+
+  -- * Modification
+
+  -- ** Modfying Position and Scrolling
+  moveBy,
+  moveToBeginning,
+  moveToEnd,
+  moveToIndex,
+  moveToEID,
+  moveGoWalkerFromCur,
+  searchForRxAction,
+  searchForRxSiblingAction,
+  scrollBy,
+
+  -- ** Updating Data
+  reloadModel,
+  replaceFilter,
+) where
 
 import Brick hiding (on)
 import Brick.Widgets.List qualified as L
@@ -202,6 +241,9 @@ setResourceName rname =
 moveRootToEID ::
   (?actx :: AppContext, MonadIO m, MonadState TreeView m) => EID -> ExceptT IdNotFoundError m ()
 moveRootToEID eid = do
+  -- NB this constructs a new TreeView, so we don't need to update any cells b/c they're gone
+  -- anyways.
+  -- SOMEDAY to be reconsidered depending on meaningful events we may emit.
   tv <- get
   model <- liftIO $ getModel (acModelServer ?actx)
   -- NB we can re-use the resource name b/c we're updating ourselves
