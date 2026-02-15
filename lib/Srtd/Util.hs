@@ -264,6 +264,8 @@ withLensValue l v act = do
 -- * Monad helpers
 
 -- | Lift an Either value into the monad computation of an 'ExceptT'.
+--
+-- TODO This is just `liftEither`, and that one is more general. Eliminate!
 pureET :: (Monad m) => Either e a -> ExceptT e m a
 pureET ev = (ExceptT $ return ev)
 
@@ -389,3 +391,11 @@ captureWriterT act = WriterT $ do
 -- | Tell a single value for a list writer
 tell1 :: (Monad m) => a -> WriterT [a] m ()
 tell1 x = tell [x]
+
+-- | Replace the inner monad of an ExceptT with something else. Useful with functions like
+-- `callIntoEditor`
+--
+-- SOMEDAY this is a pretty general pattern and works similarly with WriterT for instance.
+replaceExceptT ::
+  (Monad m, Monad n) => (forall b. m b -> n b) -> ExceptT e m a -> ExceptT e n a
+replaceExceptT f act = liftEither =<< lift (f $ runExceptT act)

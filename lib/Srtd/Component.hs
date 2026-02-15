@@ -32,6 +32,10 @@ import Srtd.Util (captureWriterT)
 
 -- | Global messages sent through Srtd at the app (top) level together with any brick events.
 -- Individual components can define their own message type.
+--
+-- SOMEDAY these could be events emitted by MainTree, not global events! Not sure they should be b/c right now, anyone can push tabs, which could come in handy later.
+--
+-- TODO restructure into RootMsg vs other messages so we can safely ignore messages meant for the root (which we don't receive anyways)
 data AppMsg
   = -- SOMEDAY the first couple ones are for MainTree to communicate with Main. May not be needed, could just be the message returned by MainTree.
     -- (but let's keep them for now in case I have some funky interaction pattern later)
@@ -186,16 +190,15 @@ instance AppComponent SomeAppComponent where
 
 -- * Keymap wrapper tools
 
--- | Helper type for keymaps. This must be a newtype (not type alias) so that we can avoid
+-- TODO should this be our monad of choice??
+
+-- | Helper type for keymaps and handles. This must be a newtype (not type alias) so that we can avoid
 -- ImpredicativeTypes, which can lead to ghc hangup (I've seen this with this particular code
 -- before!)
 --
 -- This isn't used in this module but you can use it with a keymap.
-newtype AppEventAction s a b = AppEventAction
-  { runAppEventAction ::
-      (?actx :: AppContext) =>
-      WriterT [Event s] (EventM AppResourceName s) (AppEventReturn b)
-  }
+newtype AppEventAction s b = AppEventAction
+  {runAppEventAction :: (?actx :: AppContext) => AppEventM s (AppEventReturn b)}
 
 -- | Like 'kmLeaf' but wrap the given action in 'AppEventAction'
 kmLeafA ::
@@ -203,7 +206,7 @@ kmLeafA ::
   Text ->
   -- NB For some reason, *this* use of the constraint inside the type doesn't need ImpredicativeTypes.
   ((?actx :: AppContext) => WriterT [Event s] (EventM AppResourceName s) (AppEventReturn b)) ->
-  (Binding, KeymapItem (AppEventAction s a b))
+  (Binding, KeymapItem (AppEventAction s b))
 kmLeafA b n x = kmLeaf b n (AppEventAction x)
 
 -- | Like 'kmLeafA' but also return 'Continue ()'. Useful to simplify code for components that don't
@@ -212,7 +215,7 @@ kmLeafA_ ::
   Binding ->
   Text ->
   ((?actx :: AppContext) => WriterT [Event s] (EventM AppResourceName s) ()) ->
-  (Binding, KeymapItem (AppEventAction s () b))
+  (Binding, KeymapItem (AppEventAction s b))
 -- NB this is one of the few cases where we can't make this point-free b/c the definition of
 -- 'aerVoid' doesn't include the `?actx` constraint.
 kmLeafA_ b n x = kmLeafA b n (aerVoid x)
@@ -232,10 +235,17 @@ aerVoid act = act >> aerContinue
 -- SOMEDAY we may wanna change the result type in AppComponent to be a transformer instead of a
 -- fixed return type. Could make it more ergonomic to write handlers. OTOH, the additional flexibility
 -- in the computation isn't really needed right now. (only in `wrappingActions` below, maybe)
+--
+-- TODO deprecate in favor of AppEventMOrNotFound
 type EventMOrNotFound n s a = ExceptT IdNotFoundError (EventM n s) a
 
+-- SOMEDAY maybe this or at least AppEventM should be a newtype, not an alias.
+-- Probably very easy b/c everything lifts anyways.
+type AppEventMOrNotFound s a =
+  ExceptT IdNotFoundError (WriterT [Event s] (EventM AppResourceName s)) a
+
 -- | Convert exception handling.
-notFoundToAER_ :: (Monad m) => ExceptT IdNotFoundError m b -> m (AppEventReturn b)
+notFoundToAER_ :: (Monad m) => ExceptT IdNotFoundError m a -> m (AppEventReturn b)
 notFoundToAER_ = notFoundToAER . aerVoid
 
 -- | Merge exception handling.

@@ -25,7 +25,7 @@ data DateSelectOverlay = DateSelectOverlay
 
 suffixLenses ''DateSelectOverlay
 
-type MyAppEventAction = AppEventAction DateSelectOverlay () (Maybe DateOrTime)
+type MyAppEventAction = AppEventAction DateSelectOverlay (Maybe DateOrTime)
 
 dateSelectOverlay ::
   Maybe DateOrTime -> Text -> AppResourceName -> DateSelectOverlay

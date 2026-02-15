@@ -13,11 +13,13 @@ import Brick.Keybindings (Binding, bind, ctrl, meta)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
-import Control.Monad (when)
+import Control.Monad (forM_, when)
 import Control.Monad.Except
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Writer.Strict (WriterT (runWriterT))
 import Data.CircularList qualified as CList
 import Data.Functor (void)
 import Data.List (intersperse)
@@ -55,6 +57,8 @@ import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
 import Srtd.ModelServer
+import Srtd.MonadBrick (MonadBrick (..), nestAppEventM)
+import Srtd.ProactiveBandana
 import Srtd.Util
 import System.Hclip (setClipboard)
 import Text.Regex.TDFA.Common (Regex)
@@ -72,14 +76,37 @@ import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 --
 -- Might also be related to that question of representation of having a data structure vs the list
 -- of filled fields in some priority order (e.g., for dates rendering).
+--
+-- SOMEDAY we can process events here as well by adding them to the functions, or just having a separate events processing function! This usually runs *before* the other callbacks. We can access `Event s` here!
 data Overlay = forall s. (AppComponent s) => Overlay
   { olState :: s
-  , olOnContinue :: (?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())
+  , olOnContinue :: (?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())
   , olOnConfirm ::
       (?actx :: AppContext) =>
-      Return s -> EventM AppResourceName MainTree (AppEventReturn ())
-  , olOnCanceled :: (?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())
+      Return s -> AppEventM MainTree (AppEventReturn ())
+  , olOnCanceled :: (?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())
   }
+
+-- see largely SomeAppComponent, it's very similar.
+-- TODO This is barely used, should prob be removed.
+instance AppComponent Overlay where
+  type Return Overlay = ()
+
+  -- NB Overlay EATS all events! That kinda sucks but it's a consequence of that existential!
+  type Event Overlay = ()
+
+  -- Overlays cannot have other overlays right now.
+  renderComponent (Overlay s _ _ _) = renderComponent s
+
+  handleEvent ev = do
+    (Overlay s onContinue onConfirm onCanceled) <- get
+    let theLens = lens (const s) (\_s s' -> Overlay s' onContinue onConfirm onCanceled)
+    (res, _events) <- zoom theLens $ captureWriterT $ handleEvent ev
+    return $ forgetAppEventReturnData res
+
+  componentKeyDesc (Overlay s _ _ _) = componentKeyDesc s
+
+  componentTitle (Overlay s _ _ _) = componentTitle s
 
 -- * Main Data Structure
 
@@ -88,7 +115,7 @@ data MainTree = MainTree
   , mtTreeView :: TV.TreeView
   , mtResourceName :: AppResourceName
   -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
-  , mtKeymap :: KeymapZipper (AppEventAction MainTree () ())
+  , mtKeymap :: KeymapZipper (AppEventAction MainTree ())
   , mtShowDetails :: Bool
   -- ^ Whether or not to show the details view. This is not implemented as a full overlay
   -- component for simplicity.
@@ -118,7 +145,7 @@ defaultFilters =
 -- ** Convenience Accessors
 
 mtSubtree :: MainTree -> Subtree
-mtSubtree = TV.tvSubtree . mtTreeView
+mtSubtree = cValue . TV.tvSubtree . mtTreeView
 
 mtRoot :: MainTree -> EID
 mtRoot = root . mtSubtree
@@ -136,24 +163,38 @@ mtCurWithAttr :: MainTree -> Maybe LocalIdLabel
 mtCurWithAttr = TV.tvCurWithAttr . mtTreeView
 
 withCurOrElse ::
-  EventM n MainTree a -> (EID -> EventM n MainTree a) -> EventM n MainTree a
+  (MonadState MainTree m) =>
+  m a -> (EID -> m a) -> m a
 withCurOrElse dflt go = maybe dflt go =<< gets mtCur
 
 withCur ::
-  (EID -> EventM n MainTree ()) -> EventM n MainTree ()
+  (MonadState MainTree m) =>
+  (EID -> m ()) -> m ()
 withCur = withCurOrElse (return ())
 
 withCurWithAttr ::
-  (LocalIdLabel -> EventM n MainTree ()) -> EventM n MainTree ()
+  (MonadState MainTree m) =>
+  (LocalIdLabel -> m ()) -> m ()
 withCurWithAttr = withCurWithAttrOrElse (return ())
 
 withCurWithAttrOrElse ::
-  EventM n MainTree a -> (LocalIdLabel -> EventM n MainTree a) -> EventM n MainTree a
+  (MonadState MainTree m) =>
+  m a -> (LocalIdLabel -> m a) -> m a
 withCurWithAttrOrElse dflt go = maybe dflt go =<< gets mtCurWithAttr
 
 withRoot ::
-  (EID -> EventM n MainTree ()) -> EventM n MainTree ()
+  (MonadState MainTree m) =>
+  (EID -> m ()) -> m ()
 withRoot go = go =<< gets mtRoot
+
+-- ** Internal calls
+
+callIntoTreeView :: (?actx :: AppContext) => AppEventM TV.TreeView a -> AppEventM MainTree a
+callIntoTreeView act = do
+  (ret, events) <- captureWriterT $ zoom mtTreeViewL act
+  forM_ events $ \case
+    () -> return ()
+  return ret
 
 -- * API
 
@@ -199,7 +240,7 @@ setResourceName rname = (mtResourceNameL .~ rname) . (mtTreeViewL %~ TV.setResou
 
 -- * Keymaps
 
-rootKeymap :: Keymap (AppEventAction MainTree () ())
+rootKeymap :: Keymap (AppEventAction MainTree ())
 rootKeymap =
   kmMake
     "Tree View"
@@ -215,7 +256,7 @@ rootKeymap =
                 let cb name' = aerVoid $ do
                       let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
                       modifyModelAsync $ modifyAttrByEID cur f
-                      zoom mtTreeViewL $ TV.moveToEID cur
+                      callIntoTreeView $ TV.moveToEID cur
                 pushOverlay (newNodeOverlay oldName "Edit Item") aerContinue cb aerContinue
               Nothing -> return ()
         )
@@ -313,7 +354,7 @@ rootKeymap =
 -- TODO unclean that we have a static keymap but the list of filters is dynamic from the perspective of MainTree.
 -- I don't think filters need to be dynamic.
 -- Maybe the layout of the filters needs reworking. Maybe the filter structure shouldn't store the name.
-viewKeymap :: Keymap (AppEventAction MainTree () ())
+viewKeymap :: Keymap (AppEventAction MainTree ())
 viewKeymap =
   kmMake
     "Filter"
@@ -336,14 +377,14 @@ viewKeymap =
  where
   mkMapping (k :: Char, s :: String) = kmLeafA (bind k) (T.pack s) $ notFoundToAER_ (selectFilterByName s)
 
-collapseLevelKeymap :: Keymap (AppEventAction MainTree () ())
+collapseLevelKeymap :: Keymap (AppEventAction MainTree ())
 collapseLevelKeymap =
   kmMake
     "Collapse level"
     (map (hide . collapseLevelKeymapItem) [1 .. 9])
     `kmAddAddlDesc` [("1-9", "Collapse to level")]
  where
-  collapseLevelKeymapItem :: Int -> (Binding, KeymapItem (AppEventAction MainTree () ()))
+  collapseLevelKeymapItem :: Int -> (Binding, KeymapItem (AppEventAction MainTree ()))
   collapseLevelKeymapItem i =
     kmLeafA
       (bind $ unsafeSingleDigitUIntToChar i)
@@ -359,7 +400,7 @@ collapseLevelKeymap =
       )
   subtreeLevelHHF i subtree = HideHierarchyFilter (Set.fromList $ forestIdsAtLevel i (stForest subtree))
 
-deleteKeymap :: Keymap (AppEventAction MainTree () ())
+deleteKeymap :: Keymap (AppEventAction MainTree ())
 deleteKeymap =
   kmMake
     "Delete"
@@ -368,7 +409,7 @@ deleteKeymap =
     , (kmLeafA_ (bind 'd') "Single & splice" $ withCur $ \cur -> modifyModelAsync (deleteSingleSplice cur))
     ]
 
-setStatusKeymap :: Keymap (AppEventAction MainTree () ())
+setStatusKeymap :: Keymap (AppEventAction MainTree ())
 setStatusKeymap =
   kmMake
     "Set status"
@@ -385,7 +426,7 @@ setStatusKeymap =
     , kmLeafA_ (bind 't') "Touch" touchLastStatusModified
     ]
 
-editDateKeymap :: Keymap (AppEventAction MainTree () ())
+editDateKeymap :: Keymap (AppEventAction MainTree ())
 editDateKeymap =
   kmMake
     "Edit date"
@@ -410,11 +451,11 @@ editDateKeymap =
     let cb date' = aerVoid $ do
           let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runALens' l0 .~ date')
           modifyModelAsync $ modifyAttrByEID cur f
-          zoom mtTreeViewL $ TV.moveToEID cur
+          callIntoTreeView $ TV.moveToEID cur
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
      in pushOverlay mkDateEdit aerContinue cb aerContinue
 
-moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree () ())
+moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree ())
 moveSubtreeModeKeymap =
   sticky $
     kmMake
@@ -433,7 +474,7 @@ moveSubtreeModeKeymap =
       -- SOMEDAY hierarchy-breaking '<' (dedent)
       ]
 
-openExternallyKeymap :: Keymap (AppEventAction MainTree () ())
+openExternallyKeymap :: Keymap (AppEventAction MainTree ())
 openExternallyKeymap =
   kmMake
     "Open externally"
@@ -451,10 +492,10 @@ openExternallyKeymap =
       )
     ]
 
-sortRootKeymap :: Keymap (AppEventAction MainTree () ())
+sortRootKeymap :: Keymap (AppEventAction MainTree ())
 sortRootKeymap = _mkSortKeymap withRoot "Sort root by"
 
-sortKeymap :: Keymap (AppEventAction MainTree () ())
+sortKeymap :: Keymap (AppEventAction MainTree ())
 sortKeymap =
   kmAddItems
     (_mkSortKeymap withCur "Sort by")
@@ -462,10 +503,10 @@ sortKeymap =
 
 -- | Either `withCur` or `withRoot`. Used to unify sorting.
 type WithFunc =
-  (EID -> EventM AppResourceName MainTree ()) ->
-  (EventM AppResourceName MainTree ())
+  (EID -> AppEventM MainTree ()) ->
+  (AppEventM MainTree ())
 
-_mkSortKeymap :: WithFunc -> Text -> Keymap (AppEventAction MainTree () ())
+_mkSortKeymap :: WithFunc -> Text -> Keymap (AppEventAction MainTree ())
 _mkSortKeymap withFunc name =
   kmMake
     name
@@ -482,7 +523,7 @@ _mkSortKeymap withFunc name =
   sortFuncBy ::
     ((?mue :: ModelUpdateEnv) => (Label -> Label -> Ordering) -> EID -> Model -> Model) ->
     (Label -> Label -> Ordering) ->
-    ((?actx :: AppContext) => EventM AppResourceName MainTree ())
+    ((?actx :: AppContext) => AppEventM MainTree ())
   sortFuncBy sorter ord =
     let run root = modifyModelAsync (sorter ord root)
      in withFunc $ \root -> run root
@@ -494,7 +535,7 @@ _mkSortKeymap withFunc name =
     _ -> compare (gGlobalActionability l1) (gGlobalActionability l2)
   isNote l = (status . fst $ l) == None && gGlobalActionability l == None
 
-goKeymap :: Keymap (AppEventAction MainTree () ())
+goKeymap :: Keymap (AppEventAction MainTree ())
 goKeymap =
   kmMake
     "Go to"
@@ -537,10 +578,10 @@ goKeymap =
     ]
  where
   withViewport go = do
-    mvp <- lookupViewport =<< gets (getName . TV.tvList . mtTreeView)
+    mvp <- liftEventM $ lookupViewport =<< gets (getName . TV.tvList . mtTreeView)
     maybe (return ()) go mvp
 
-searchKeymap :: Keymap (AppEventAction MainTree () b)
+searchKeymap :: Keymap (AppEventAction MainTree b)
 searchKeymap =
   sticky $
     kmMake
@@ -577,7 +618,7 @@ searchKeymap =
       ]
 
 -- | Catchall keymap for variants and stuff
-spaceKeymap :: Keymap (AppEventAction MainTree () ())
+spaceKeymap :: Keymap (AppEventAction MainTree ())
 spaceKeymap =
   kmMake
     "Space"
@@ -615,7 +656,8 @@ spaceKeymap =
         pushOverlay (newNodeOverlay "" "New Item as Parent") aerContinue cb aerContinue
     ]
 
-viewportKeymap :: Keymap (AppEventAction MainTree () ())
+-- SOMEDAY these actions should be functions in MainTree
+viewportKeymap :: Keymap (AppEventAction MainTree ())
 viewportKeymap =
   kmMake
     "Viewport"
@@ -633,18 +675,20 @@ viewportKeymap =
         let vpHeight = snd (vp ^. vpSize)
             topOff = max 0 (seli - vpHeight `div` 2)
         setTop (viewportScroll n) topOff
-    , kmLeafA_ (bind 'j') "Scroll down" $ zoom mtTreeViewL $ TV.scrollBy 3
-    , kmLeafA_ (bind 'k') "Scroll up" $ zoom mtTreeViewL $ TV.scrollBy (-3)
+    , kmLeafA_ (bind 'j') "Scroll down" $ callIntoTreeView $ TV.scrollBy 3
+    , kmLeafA_ (bind 'k') "Scroll up" $ callIntoTreeView $ TV.scrollBy (-3)
     ]
  where
+  withSelIxViewportName ::
+    (Int -> Viewport -> AppResourceName -> EventM AppResourceName MainTree ()) -> AppEventM MainTree ()
   withSelIxViewportName go = void $ runMaybeT $ do
     l <- gets (TV.tvList . mtTreeView)
     let n = getName l
     seli <- hoistMaybe (L.listSelected l)
-    vp <- MaybeT $ lookupViewport n
-    lift $ go seli vp n
+    vp <- MaybeT $ liftEventM $ lookupViewport n
+    lift $ liftEventM $ go seli vp n
 
-debugKeymap :: Keymap (AppEventAction MainTree () ())
+debugKeymap :: Keymap (AppEventAction MainTree ())
 debugKeymap =
   kmMake
     "Debug"
@@ -657,12 +701,12 @@ debugKeymap =
 -- ** Overlays
 
 pushOverlay ::
-  (AppComponent s) =>
+  (AppComponent s, MonadState MainTree m, MonadIO m) =>
   (AppResourceName -> s) ->
-  ((?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())) ->
-  ((?actx :: AppContext) => (Return s) -> EventM AppResourceName MainTree (AppEventReturn ())) ->
-  ((?actx :: AppContext) => EventM AppResourceName MainTree (AppEventReturn ())) ->
-  EventM AppResourceName MainTree ()
+  ((?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())) ->
+  ((?actx :: AppContext) => (Return s) -> AppEventM MainTree (AppEventReturn ())) ->
+  ((?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())) ->
+  m ()
 pushOverlay mk onContinue onConfirm onCanceled = do
   hasExisting <- isJust <$> use mtOverlayL
   when hasExisting $
@@ -678,7 +722,7 @@ pushOverlay mk onContinue onConfirm onCanceled = do
 -- ** Item manipulation
 
 pushInsertNewItemRelToCur ::
-  (?actx :: AppContext) => InsertWalker IdLabel -> EventM AppResourceName MainTree ()
+  (?actx :: AppContext) => InsertWalker IdLabel -> AppEventM MainTree ()
 pushInsertNewItemRelToCur go = do
   state <- get
   let (tgt', go') = case mtCur state of
@@ -703,13 +747,13 @@ pushInsertNewItemRelToCur go = do
             aerContinue
   pushOverlay (newNodeOverlay "" "New Item") aerContinue cb aerContinue
 
-setStatus :: (?actx :: AppContext) => Status -> EventM n MainTree ()
+setStatus :: (?actx :: AppContext, MonadState MainTree m, MonadIO m) => Status -> m ()
 setStatus status' = withCur $ \cur ->
   modifyModelAsync $
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx) . (statusL .~ status')
      in modifyAttrByEID cur f
 
-touchLastStatusModified :: (?actx :: AppContext) => EventM n MainTree ()
+touchLastStatusModified :: (?actx :: AppContext, MonadIO m, MonadState MainTree m) => m ()
 touchLastStatusModified = withCur $ \cur ->
   modifyModelAsync $
     let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx)
@@ -728,8 +772,10 @@ touchLastStatusModified = withCur $ \cur ->
 --
 -- SOMEDAY this can be generalized by replacing the first Label by whatever label type we ultimately use
 -- here. The forest just has to be labeled (EID, a) for some a. See `moveSubtreeRelFromForest`.
+--
+-- TODO why is this sync?
 moveCurRelative ::
-  (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> EventM n MainTree ()
+  (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> AppEventM MainTree ()
 moveCurRelative go ins = withCur $ \cur -> do
   forest <- gets (stForest . mtSubtree)
   -- The temporary follow setting makes sure we follow our item around. This is sync so that the temporary setting works. (:())
@@ -740,7 +786,7 @@ moveCurRelative go ins = withCur $ \cur -> do
 moveCurRelativeDynamic ::
   (?actx :: AppContext) =>
   DynamicMoveWalker LocalIdLabel IdLabel ->
-  EventM n MainTree ()
+  AppEventM MainTree ()
 moveCurRelativeDynamic dgo = withCur $ \cur -> do
   forest <- gets (stForest . mtSubtree)
   withLensValue mtDoFollowItemL True $
@@ -756,22 +802,19 @@ modifyModelSync ::
   (?actx :: AppContext) =>
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
   -- This is `ExceptT IdNotFoundError (EventM n MainTree) ()` but I'm not using it that much.
-  EventMOrNotFound n MainTree ()
+  AppEventMOrNotFound MainTree ()
 modifyModelSync f = do
   liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
     modifyModelOnServer (acModelServer ?actx) f
-  zoom mtTreeViewL TV.reloadModel
+  replaceExceptT callIntoTreeView TV.reloadModel
 
 modifyModelSync_ ::
   (?actx :: AppContext) =>
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
-  EventM n MainTree ()
+  AppEventM MainTree ()
 modifyModelSync_ f = void . notFoundToAER_ $ modifyModelSync f
-
-reloadModel :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
-reloadModel = zoom mtTreeViewL $ TV.reloadModel
 
 -- | Modify the model asynchronously, i.e., *without* pulling a new model immediately. We get a
 -- 'ModelUpdated' event and will pull a new model then. This is fine for most applications.
@@ -782,15 +825,15 @@ reloadModel = zoom mtTreeViewL $ TV.reloadModel
 -- NB: We currently *don't* change our focus based on the modified node. This is probably ok and
 -- what the user expects, but should then be reviewed, if we ever get async here.
 modifyModelAsync ::
-  (?actx :: AppContext) =>
+  (?actx :: AppContext, MonadIO m) =>
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
-  EventM n MainTree ()
+  m ()
 modifyModelAsync f = liftIO $ modifyModelOnServer (acModelServer ?actx) f
 
 -- ** Navigation
 
-moveRootToEID :: (?actx :: AppContext) => EID -> EventMOrNotFound AppResourceName MainTree ()
-moveRootToEID eid = zoom mtTreeViewL $ TV.moveRootToEID eid
+moveRootToEID :: (?actx :: AppContext) => EID -> AppEventMOrNotFound MainTree ()
+moveRootToEID eid = replaceExceptT callIntoTreeView $ TV.moveRootToEID eid
 
 -- TODO WIP
 --
@@ -802,10 +845,10 @@ moveRootToEID eid = zoom mtTreeViewL $ TV.moveRootToEID eid
 
 -- | Reset filter of the tree view to match our currently selected one here.
 -- SOMEDAY this shouldn't exist. But I don't wanna wrap the clist infra around everything.
-resetTreeViewFilter :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
+resetTreeViewFilter :: (?actx :: AppContext) => AppEventMOrNotFound MainTree ()
 resetTreeViewFilter = do
   fi <- gets mtFilter
-  zoom mtTreeViewL $ TV.replaceFilter fi
+  replaceExceptT callIntoTreeView $ TV.replaceFilter fi
  where
   mtFilter :: MainTree -> Filter
   mtFilter mt = chainFilters collapseFilter normalFilter
@@ -816,21 +859,21 @@ resetTreeViewFilter = do
 
 modifyHideHierarchyFilter ::
   (?actx :: AppContext) =>
-  (HideHierarchyFilter -> HideHierarchyFilter) -> EventMOrNotFound AppResourceName MainTree ()
+  (HideHierarchyFilter -> HideHierarchyFilter) -> AppEventMOrNotFound MainTree ()
 modifyHideHierarchyFilter f = mtHideHierarchyFilterL %= f >> resetTreeViewFilter
 
-cycleNextFilter :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
+cycleNextFilter :: (?actx :: AppContext) => AppEventMOrNotFound MainTree ()
 cycleNextFilter = do
   mtFiltersL %= CList.rotR
   resetTreeViewFilter
 
-cyclePrevFilter :: (?actx :: AppContext) => EventMOrNotFound AppResourceName MainTree ()
+cyclePrevFilter :: (?actx :: AppContext) => AppEventMOrNotFound MainTree ()
 cyclePrevFilter = do
   mtFiltersL %= CList.rotL
   resetTreeViewFilter
 
 selectFilterByName ::
-  (?actx :: AppContext) => String -> EventMOrNotFound AppResourceName MainTree ()
+  (?actx :: AppContext) => String -> AppEventMOrNotFound MainTree ()
 selectFilterByName s = do
   -- We don't use the following short form for updating to propagate the error right.
   -- mtFiltersL %= (fromMaybe <*> CList.findRotateTo ((== s) . fiName))
@@ -1054,10 +1097,13 @@ renderStatusActionabilityCounts sac =
 instance AppComponent MainTree where
   type Return MainTree = ()
 
+  -- TODO we want some events don't we?
+  type Event MainTree = ()
+
   renderComponentWithOverlays
     s@MainTree
       { mtTreeView =
-        mtTreeView@(TV.TreeView {tvSubtree = Subtree {rootLabel, breadcrumbs}, tvDoFollowItem})
+        mtTreeView@(TV.TreeView {tvSubtree = Cell {cValue = Subtree {rootLabel, breadcrumbs}}, tvDoFollowItem})
       , mtFilters
       , mtShowDetails
       , mtOverlay
@@ -1099,9 +1145,7 @@ instance AppComponent MainTree where
       detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
         (True, Just illabel) -> Just ("Item Details", renderItemDetails now illabel)
         _ -> Nothing
-      ovl = case mtOverlay of
-        Just (Overlay ol _ _ _) -> Just $ (componentTitle ol, renderComponent ol)
-        Nothing -> Nothing
+      ovl = mtOverlay <&> \ol -> (componentTitle ol, renderComponent ol)
       now = acZonedTime ?actx
 
   handleEvent ev =
@@ -1138,7 +1182,7 @@ instance AppComponent MainTree where
     wrappingActions actMain = notFoundToAER $ do
       -- <<Global updates that should happen even if there's an active overlay would go here.>>
       case ev of
-        (AppEvent (ModelUpdated _)) -> reloadModel
+        (AppEvent (ModelUpdated _)) -> void $ lift $ callIntoTreeView $ handleEvent ev
         _ -> return ()
 
       -- Now pass the event to either the overlay or to our main function.
@@ -1147,8 +1191,8 @@ instance AppComponent MainTree where
         mol <- use mtOverlayL
         case mol of
           Just (Overlay ol onContinue onConfirm onCanceled) -> do
-            -- SOMEDAY all of this wants some abstraction I think
-            (ol', res) <- nestEventM ol (handleEvent ev)
+            -- TODO add events processing, see Overlay definition
+            (ol', (res, _events)) <- nestAppEventM ol (handleEvent ev)
             mtOverlayL .= Just (Overlay ol' onContinue onConfirm onCanceled)
             case res of
               Continue -> onContinue

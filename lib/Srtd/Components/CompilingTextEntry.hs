@@ -62,7 +62,6 @@ suffixLenses ''CompilingTextEntry
 type MyAppEventAction c =
   AppEventAction
     (CompilingTextEntry c)
-    (Maybe (CompiledWithSource c))
     (CompiledWithSource c, ConfirmType)
 
 -- | General form with a specified compiler

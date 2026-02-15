@@ -3,6 +3,8 @@
 {-| A view component for a 'Subtree'.
 
 To be imported qualified.
+
+TODO clean up exports
 -}
 module Srtd.Components.TreeView where
 
@@ -11,23 +13,23 @@ import Brick.Widgets.List qualified as L
 import Control.Applicative (asum)
 import Control.Arrow (Arrow (second))
 import Control.Monad (void)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Except
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 import Data.List (maximumBy, minimumBy)
 import Data.Maybe (catMaybes, fromMaybe)
-import Data.Monoid (Endo (..))
 import Data.Ord (comparing)
 import Data.Text qualified as T
 import Data.Time (ZonedTime (..))
 import Data.Vector qualified as Vec
 import Graphics.Vty (Button (..), Event (..), Key (..))
 import Graphics.Vty.Attributes qualified as VtyAttr
-import Lens.Micro.Platform (use, (%=), (%~), (&), (.=), (.~), (<&>), (^.))
+import Lens.Micro.Platform (use, (%=), (&), (.=), (.~), (<&>), (^.))
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
 import Srtd.BrickAttrHelpers (combineAttrs)
-import Srtd.BrickHelpers (strTruncateAvailable)
 import Srtd.BrickListHelpers qualified as L
 import Srtd.Component
 import Srtd.Components.Attr (renderLastModified, renderMostUrgentDate, renderStatus)
@@ -47,12 +49,11 @@ import Srtd.Model (
  )
 import Srtd.ModelServer (getModel)
 import Srtd.MonadBrick
+import Srtd.ProactiveBandana
 import Srtd.Util (
   for,
   forestFlattenToList,
   pureET,
-  regexSplitWithMatches,
-  regexSplitsWithMatches,
   regexSplitsWithMatchesOverlap,
   urlRegex,
  )
@@ -134,10 +135,11 @@ withDefCSAttr (CSAttr anames) = updateAttrMap $ \amap ->
 --
 -- SOMEDAY and maybe the constructor should be private b/c of this.
 data TreeView = TreeView
-  { tvSubtree :: Subtree
+  { tvSubtree :: Cell Subtree (AppEventM TreeView ()) Subtree
   -- ^ NOT safe to edit directly
-  , tvFilter :: Filter
-  -- ^ NOT safe to edit directly
+  , tvFilter :: Cell (Filter, AppContext) (AppEventMOrNotFound TreeView ()) Filter
+  -- ^ NOT safe to edit directly. The type is a bit funky b/c changes to the filter have to reload the model b/c it's not stored anywhere here, which may fail.
+  -- SOMEDAY maybe just store the model. It's just a pointer!
   , tvList :: TreeViewList
   -- ^ Safe to edit directly to the same degree that 'L.List' is.
   , tvResourceName :: AppResourceName
@@ -171,8 +173,15 @@ makeFromModel root fi doFollowItem scrolloff model rname = do
   let list = forestToBrickList (MainListFor rname) $ stForest subtree
   return
     TreeView
-      { tvSubtree = subtree
-      , tvFilter = fi
+      { tvSubtree = simpleCell subtree $ replaceSubtree'
+      , tvFilter = simplePreMappingCell fi fst $ \(_fi', actx) ->
+          -- Enforce late binding of ?actx in reloadModel.
+          -- Without this contruction, ?actx would bind in 'makeFromModel', which is ok practically
+          -- but not in principle, and could be an issue elsewhere when we read, e.g., time.
+          -- SOMEDAY this is kinda unhinged, would be better to either use the correct type (needs a
+          -- warpper though) or just not use implicit parameters. They are really tricky.
+          let ?actx = actx
+           in reloadModel
       , tvList = list
       , tvResourceName = rname
       , tvSearchRx = Nothing
@@ -180,10 +189,8 @@ makeFromModel root fi doFollowItem scrolloff model rname = do
       , tvScrolloff = scrolloff
       }
 
-replaceFilter :: (?actx :: AppContext) => Filter -> EventMOrNotFound AppResourceName TreeView ()
-replaceFilter fi = do
-  tvFilterL .= fi
-  reloadModel
+replaceFilter :: (?actx :: AppContext) => Filter -> AppEventMOrNotFound TreeView ()
+replaceFilter fi = runUpdateLens tvFilterL (fi, ?actx)
 
 setResourceName :: AppResourceName -> TreeView -> TreeView
 setResourceName rname =
@@ -193,7 +200,7 @@ setResourceName rname =
 -- | Move the tree to any EID, preserving settings. Returns an error if that EID doesn't exist
 -- (presumably b/c it was deleted). Then nothing is updated.
 moveRootToEID ::
-  (?actx :: AppContext) => EID -> EventMOrNotFound n TreeView ()
+  (?actx :: AppContext, MonadIO m, MonadState TreeView m) => EID -> ExceptT IdNotFoundError m ()
 moveRootToEID eid = do
   tv <- get
   model <- liftIO $ getModel (acModelServer ?actx)
@@ -202,7 +209,7 @@ moveRootToEID eid = do
     pureET $
       makeFromModel
         eid
-        (tvFilter tv)
+        (cValue $ tvFilter tv)
         (tvDoFollowItem tv)
         (tvScrolloff tv)
         model
@@ -241,19 +248,21 @@ instance AppComponent TreeView where
 
   -- TODO process the Tick event and update its filter b/c last-modified now depends on time (in a hacky way). - Or maybe explicitly don't and add a manual refresh??
   -- TODO WIP make this not a dummy.
-  handleEvent ev = liftEventM $ do
+  handleEvent ev = do
     listRName <- gets (L.listName . tvList)
     case ev of
+      -- TODO WIP this fails to typecheck b/c I'm still in liftEventM. Drop that.
+      -- Gonna break everything else, which then needs to be fixed.
       AppEvent (ModelUpdated _) -> notFoundToAER_ reloadModel
-      (VtyEvent (EvKey KDown [])) -> aerVoid $ moveBy 1
-      (VtyEvent (EvKey KUp [])) -> aerVoid $ moveBy (-1)
+      (VtyEvent (EvKey KDown [])) -> aerVoid $ liftEventM $ moveBy 1
+      (VtyEvent (EvKey KUp [])) -> aerVoid $ liftEventM $ moveBy (-1)
       (MouseDown rname' BLeft [] (Location {loc = (_, rown)}))
-        | rname' == listRName -> aerVoid $ moveToIndex rown
+        | rname' == listRName -> aerVoid $ liftEventM $ moveToIndex rown
       (MouseDown rname' BScrollDown [] _)
         | rname' == listRName -> aerVoid $ scrollBy 3
       (MouseDown rname' BScrollUp [] _)
         | rname' == listRName -> aerVoid $ scrollBy (-3)
-      (VtyEvent e) -> aerVoid $ zoom tvListL $ L.handleListEventVi L.handleListEvent e
+      (VtyEvent e) -> aerVoid $ liftEventM $ zoom tvListL $ L.handleListEventVi L.handleListEvent e
       _ -> aerContinue
 
   -- TODO Dummy for now
@@ -363,37 +372,35 @@ maybePrefixSelAttr False a = a
 
 -- * Event Handling
 
-moveToIndex :: Int -> EventM n TreeView ()
+moveToIndex :: (MonadState TreeView m) => Int -> m ()
 moveToIndex i = tvListL %= L.listMoveTo i
 
-moveToBeginning :: EventM n TreeView ()
+moveToBeginning :: (MonadState TreeView m) => m ()
 moveToBeginning = tvListL %= L.listMoveToBeginning
 
-moveToEnd :: EventM n TreeView ()
+moveToEnd :: (MonadState TreeView m) => m ()
 moveToEnd = tvListL %= L.listMoveToEnd
 
-moveBy :: Int -> EventM n TreeView ()
+moveBy :: (MonadState TreeView m) => Int -> m ()
 moveBy n = tvListL %= L.listMoveBy n
 
--- TODO should be in TreeView
--- TODO shouldn't be pure for uniformity
-moveGoWalkerFromCur :: GoWalker LocalIdLabel -> EventM AppResourceName TreeView ()
+moveGoWalkerFromCur :: (MonadState TreeView m) => GoWalker LocalIdLabel -> m ()
 moveGoWalkerFromCur go = void . runMaybeT $ do
   cur <- MaybeT $ gets tvCur
-  par <- MaybeT $ forestGoFromToId cur go . stForest <$> gets tvSubtree
+  par <- MaybeT $ forestGoFromToId cur go . stForest <$> gets (cValue . tvSubtree)
   lift $ moveToEID par
 
 -- | Move to a specified EID. Does nothing if the EID is not found.
-moveToEID :: EID -> EventM AppResourceName TreeView ()
+moveToEID :: (MonadState TreeView m) => EID -> m ()
 moveToEID eid = tvListL %= moveListToEID eid
 
 moveListToEID :: EID -> TreeViewList -> TreeViewList
 moveListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
-scrollBy :: Int -> EventM AppResourceName TreeView ()
+scrollBy :: (MonadBrick m TreeView) => Int -> m ()
 scrollBy n = do
   scrolloff <- gets tvScrolloff
-  zoom tvListL $ listScrollMoveBy scrolloff n
+  liftEventM $ zoom tvListL $ listScrollMoveBy scrolloff n
 
 -- | Scroll a list by the specified amount, moving the selection when we reach the top/bottom.
 --
@@ -440,45 +447,49 @@ listScrollMoveBy scrolloffIn n = void . runMaybeT $ do
     put $ L.listMoveBy moveAmount li
     vScrollBy (viewportScroll name) n'
 
-reloadModel :: (?actx :: AppContext) => EventMOrNotFound n TreeView ()
+-- | (Try to) reload the model. This is almost never needed externally b/c we receive a ModelUpdated
+-- event anyways.
+--
+-- Only call this externally if for some reason you need to update the TreeView early, synchronously
+-- with something else.
+reloadModel :: (?actx :: AppContext) => AppEventMOrNotFound TreeView ()
 reloadModel = do
   s <- get
-  let filter_ = tvFilter s
-  let root_ = root . tvSubtree $ s
+  let filter_ = cValue $ tvFilter s
+  let root_ = root . cValue . tvSubtree $ s
   model' <- liftIO $ getModel (acModelServer ?actx)
-  subtree <- pureET $ translateAppFilterContext $ runFilter filter_ root_ model'
-  lift $ replaceSubtree subtree
+  subtree <- liftEither $ translateAppFilterContext $ runFilter filter_ root_ model'
+  lift $ runUpdateLens tvSubtreeL subtree
 
--- | Replace the current subtree by a new one, updating selected item and viewport position accordingly.
-replaceSubtree :: Subtree -> EventM n TreeView ()
-replaceSubtree subtree = do
+replaceSubtree' :: Subtree -> AppEventM TreeView ()
+replaceSubtree' subtree = do
   old <- get
   let list' = forestToBrickList (getName . tvList $ old) (stForest subtree)
-  put old {tvSubtree = subtree, tvList = list'}
-  resetListPosition (tvDoFollowItem old) old
+  tvListL .= list'
+  liftEventM $ resetListPosition (tvDoFollowItem old) old
 
 -- | Choose between follow or no-follow using a flag
-resetListPosition :: Bool -> TreeView -> EventM n TreeView ()
+resetListPosition :: (MonadState TreeView m) => Bool -> TreeView -> m ()
 resetListPosition True = resetListPositionFollow
 resetListPosition False = resetListPositionIndex
 
 -- | Tries preserve the list position by index  only.
 -- TODO needed?? This is the default behavior I think
-resetListPositionIndex :: TreeView -> EventM n TreeView ()
+resetListPositionIndex :: (MonadState TreeView m) => TreeView -> m ()
 resetListPositionIndex old = case L.listSelectedElement (tvList old) of
   Nothing -> return ()
   Just (ix_, _) -> moveToIndex ix_
 
 -- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the siblings or, then parents or, then the current position.
 -- EXPERIMENTAL. This may not always be desired actually.
-resetListPositionFollow :: TreeView -> EventM n TreeView ()
+resetListPositionFollow :: (MonadState TreeView m) => TreeView -> m ()
 resetListPositionFollow old =
   gets tvList >>= \new -> case L.listSelectedElement (tvList old) of
     Nothing -> return () -- `old` is empty
     Just (ix_, tgtItm) ->
       let
         selEID = gEID tgtItm
-        selz = zForestFindId selEID (stForest . tvSubtree $ old)
+        selz = zForestFindId selEID (stForest . cValue . tvSubtree $ old)
         tgtEIDs =
           catMaybes $
             (Just selEID)
@@ -505,7 +516,7 @@ forestToBrickList rname forest = L.list rname (Vec.fromList contents) 1
 
 data SearchDirection = Forward | Backward
 
-searchForRxAction :: SearchDirection -> Bool -> EventM n TreeView ()
+searchForRxAction :: (MonadState TreeView m) => SearchDirection -> Bool -> m ()
 searchForRxAction dir curOk = do
   mrx <- use tvSearchRxL
   case mrx of
@@ -513,11 +524,11 @@ searchForRxAction dir curOk = do
     Just rx -> tvListL %= searchForRx dir curOk (cwsCompiled rx)
 
 -- SOMEDAY if this is slow, we might instead go via the tree. Note that this has wrap-around, though.
-searchForRxSiblingAction :: SearchDirection -> EventM n TreeView ()
+searchForRxSiblingAction :: (MonadState TreeView m) => SearchDirection -> m ()
 searchForRxSiblingAction dir = do
   mrx <- use tvSearchRxL
   mCurAttr <- gets tvCurWithAttr
-  st <- gets tvSubtree
+  st <- gets (cValue . tvSubtree)
   case (mrx, mCurAttr) of
     (Just rx, Just (_i, curllabel)) ->
       let curpar = stParentEID st curllabel

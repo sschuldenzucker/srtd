@@ -8,11 +8,11 @@ import Srtd.Component
 import Srtd.Keymap
 import Srtd.Log
 
-data TestOverlay = TestOverlay (KeymapZipper (AppEventAction TestOverlay () ()))
+data TestOverlay = TestOverlay (KeymapZipper (AppEventAction TestOverlay ()))
 
 -- The following is more of a demonstration. Of course overkill here.
 
-keymap :: Keymap (AppEventAction TestOverlay () ())
+keymap :: Keymap (AppEventAction TestOverlay ())
 keymap =
   kmMake
     "Test Overlay"
@@ -20,7 +20,7 @@ keymap =
     , kmSub (bind 'a') stickySubmap
     ]
 
-stickySubmap :: Keymap (AppEventAction TestOverlay () ())
+stickySubmap :: Keymap (AppEventAction TestOverlay ())
 stickySubmap =
   sticky $
     kmMake

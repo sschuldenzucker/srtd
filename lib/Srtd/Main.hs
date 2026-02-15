@@ -13,6 +13,7 @@ import Control.Arrow (first, second)
 import Control.Concurrent.Async qualified as Async
 import Control.Monad (when)
 import Control.Monad.State (liftIO)
+import Control.Monad.Writer.Strict (WriterT (..))
 import Data.CircularList qualified as CList
 import Data.List (intersperse, sortBy)
 import Data.List.Zipper qualified as LZ
@@ -216,7 +217,9 @@ myHandleEvent ev = wrappingActions $
     (AppEvent Tick) -> do
       eachTabHandleEvent ev
     _ -> do
-      res <- zoom activeTabL $ handleEvent ev
+      -- NB we ignore events from child components here.
+      -- SOMEDAY information could travel up to us (but not with SomeAppComponent, that one eats events)
+      (res, _events) <- zoom activeTabL $ runWriterT $ handleEvent ev
       case res of
         Continue -> return ()
         -- See the AppComponent instance of MainTree
@@ -241,7 +244,9 @@ eachTabHandleEvent ::
 eachTabHandleEvent ev = do
   tabs <- use asTabsL
   mtabs' <- lzForM tabs $ \(rname, tabCmp) -> do
-    (tabCmp', res) <- nestEventM tabCmp $ handleEvent ev
+    -- NB we ignore events from child components here.
+    -- SOMEDAY information could travel up to us (but not with SomeAppComponent, that one eats events)
+    (tabCmp', (res, _events)) <- nestEventM tabCmp $ runWriterT $ handleEvent ev
     return $ case res of
       Continue -> Just (rname, tabCmp')
       _ -> Nothing
