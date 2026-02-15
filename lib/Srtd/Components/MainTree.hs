@@ -69,7 +69,7 @@ import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 -- SOMEDAY can we make this a more general thing? Then also review how specific types have to be.
 -- (probably not very specific.)
 
--- | A class for overlays. Two callbacks define interruptible computations. Note that this doesn't
+-- | A class for overlays living in parent state `t`. Two callbacks define interruptible computations. Note that this doesn't
 -- store state of the computation *itself*.
 --
 -- SOMEDAY are we over-generalizing here? Compare this to explicitly naming the overlays we might have open.
@@ -78,14 +78,15 @@ import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 -- of filled fields in some priority order (e.g., for dates rendering).
 --
 -- SOMEDAY we can process events here as well by adding them to the functions, or just having a separate events processing function! This usually runs *before* the other callbacks. We can access `Event s` here!
--- TODO generalize: Add parent state
-data Overlay = forall s. (AppComponent s) => Overlay
+--
+-- SOMEDAY move to Component, feels general.
+data Overlay t = forall s. (AppComponent s) => Overlay
   { olState :: s
   , olOnConfirm ::
       (?actx :: AppContext) =>
-      Return s -> AppEventM MainTree (AppEventReturn ())
-  , olOnCanceled :: (?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())
-  , olOnEvent :: (?actx :: AppContext) => Event s -> AppEventM MainTree ()
+      Return s -> AppEventM t (AppEventReturn ())
+  , olOnCanceled :: (?actx :: AppContext) => AppEventM t (AppEventReturn ())
+  , olOnEvent :: (?actx :: AppContext) => Event s -> AppEventM t ()
   }
 
 -- | `olOnEvent` handler to ignore events when they are irrelevant
@@ -107,7 +108,7 @@ data MainTree = MainTree
   , mtShowDetails :: Bool
   -- ^ Whether or not to show the details view. This is not implemented as a full overlay
   -- component for simplicity.
-  , mtOverlay :: Maybe Overlay
+  , mtOverlay :: Maybe (Overlay MainTree)
   -- ^ Active overlay, if any. If this is 'Just', events are forwarded to the overlay.
   --
   -- SOMEDAY do I want to make a wrapper for "things that have overlays" that *consistenly* handles everything?
