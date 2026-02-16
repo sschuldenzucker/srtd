@@ -1,4 +1,10 @@
-module Srtd.Components.TestOverlay where
+module Srtd.Components.TestOverlay (
+  -- * Types
+  TestOverlay (..),
+
+  -- * Construction
+  newTestOverlay,
+) where
 
 import Brick
 import Brick.Keybindings (bind)

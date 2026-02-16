@@ -1,4 +1,11 @@
-module Srtd.Components.DateSelectOverlay where
+module Srtd.Components.DateSelectOverlay (
+  -- * Types
+  DateSelectOverlay (..),
+  DateSelectOverlayEvent (..),
+
+  -- * Construction
+  dateSelectOverlay,
+) where
 
 import Brick
 import Brick.Keybindings (binding, ctrl)

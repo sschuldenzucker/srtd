@@ -2,7 +2,13 @@
 
 TODO Rename. It's more of a generic name editing component.
 -}
-module Srtd.Components.NewNodeOverlay where
+module Srtd.Components.NewNodeOverlay (
+  -- * Types
+  NewNodeOverlay (..),
+
+  -- * Construction
+  newNodeOverlay,
+) where
 
 import Brick
 import Data.Text (Text)

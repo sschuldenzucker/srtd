@@ -2,7 +2,21 @@
 
 Not intended to be used on its own. Always Continue's.
 -}
-module Srtd.Components.EditorProactive where
+module Srtd.Components.EditorProactive (
+  -- * Types
+  EditorProactive (..),
+  EditorProactiveEvent (..),
+
+  -- * Construction
+  editorProactiveText,
+
+  -- * Access
+  getEditorText,
+
+  -- * Modification
+  applyEdit,
+  setPostRender,
+) where
 
 import Brick
 import Brick.Widgets.Edit hiding (applyEdit)

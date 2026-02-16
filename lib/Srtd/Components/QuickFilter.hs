@@ -10,7 +10,21 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 -- | A component that lets users enter a query, filters for it, and lets them select a node
-module Srtd.Components.QuickFilter where
+module Srtd.Components.QuickFilter (
+  -- * Types
+  QuickFilter (..),
+
+  -- ** Variants
+
+  -- These variants affect the behavior, including return types, of the component and need to be
+  -- given as an argument on construction, and parameterize the query
+  QueryEntry (..),
+  NodeSelection (..),
+  NodeSelectionOrQueryEntry (..),
+
+  -- * Construction
+  quickFilterFromTreeView,
+) where
 
 import Brick
 import Brick.Keybindings
