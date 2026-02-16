@@ -25,12 +25,22 @@ import Control.Monad.Writer.Strict
 import Data.Text (Text)
 import Data.Time (ZonedTime)
 import Data.Void (Void)
-import Graphics.Vty.Input (Key, Modifier)
+import Graphics.Vty.Input (Key (KBS, KEsc), Modifier)
 import Lens.Micro.Platform
-import Srtd.Keymap (KeyDesc, KeymapItem, KeymapResult (..), KeymapZipper, kmLeaf, kmzLookup)
+import Srtd.Keymap (
+  KeyDesc,
+  KeymapItem,
+  KeymapResult (..),
+  KeymapZipper,
+  kmLeaf,
+  kmzIsToplevel,
+  kmzLookup,
+  kmzResetRoot,
+  kmzUp,
+ )
 import Srtd.Model (FilterContext (..), IdNotFoundError)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
-import Srtd.Util (ALens' (..), captureWriterT)
+import Srtd.Util (captureWriterT)
 
 -- | Messages that reach the root of the app. They do not recur into individual components.
 --
@@ -231,27 +241,29 @@ aerVoid act = act >> return Continue
 kmzDispatch ::
   (?actx :: AppContext) =>
   -- | Lens where the KeymapZipper is stored
-  ALens' s (KeymapZipper (AppEventAction s a b)) ->
+  Lens' s (KeymapZipper (AppEventAction s b)) ->
   -- | Pressed key from VtyEvent
   Key ->
   -- | Pressed modifiers from VtyEvent
   [Modifier] ->
-  -- | Default Continue-like action
-  EventM AppResourceName s (AppEventReturn a b) ->
   -- | Fallback action if no key matches
-  EventM AppResourceName s (AppEventReturn a b) ->
-  EventM AppResourceName s (AppEventReturn a b)
-kmzDispatch al key mods cnt fallback = do
-  kmz <- use (runALens' al)
+  AppEventM s (AppEventReturn b) ->
+  AppEventM s (AppEventReturn b)
+kmzDispatch l key mods fallback = do
+  kmz <- use l
   case kmzLookup kmz key mods of
-    NotFound -> fallback
+    NotFound ->
+      if
+        | key == KEsc && mods == [] && not (kmzIsToplevel kmz) -> aerVoid $ l %= kmzResetRoot
+        | key == KBS && mods == [] && not (kmzIsToplevel kmz) -> aerVoid $ l %= kmzUp
+        | otherwise -> fallback
     LeafResult act nxt -> do
       res <- runAppEventAction act
-      runALens' al .= nxt
+      l .= nxt
       return res
     SubmapResult nxt -> do
-      runALens' al .= nxt
-      cnt
+      l .= nxt
+      return Continue
 
 -- * Error Handling
 
