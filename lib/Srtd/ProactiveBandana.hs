@@ -261,14 +261,14 @@ mapCellHandlerInputM_ f g = mapCellHandlerInput f $ \j h -> h >> g j
 _11L :: Lens' ((a, b), (x, y)) (a, x)
 _11L =
   lens
-    (\((v1', v2'), (s1', s2')) -> (v1', s1'))
-    (\((v1', v2'), (s1', s2')) (v1'', s1'') -> ((v1'', v2'), (s1'', s2')))
+    (\((v1', _v2'), (s1', _s2')) -> (v1', s1'))
+    (\((_v1', v2'), (_s1', s2')) (v1'', s1'') -> ((v1'', v2'), (s1'', s2')))
 
 _22L :: Lens' ((a, b), (x, y)) (b, y)
 _22L =
   lens
-    (\((v1', v2'), (s1', s2')) -> (v2', s2'))
-    (\((v1', v2'), (s1', s2')) (v2'', s2'') -> ((v1', v2''), (s1', s2'')))
+    (\((_v1', v2'), (_s1', s2')) -> (v2', s2'))
+    (\((v1', _v2'), (s1', _s2')) (v2'', s2'') -> ((v1', v2''), (s1', s2'')))
 
 -- | Combine two cells along inputs, handlers, and value.
 pairCells :: Cell i1 h1 v1 -> Cell i2 h2 v2 -> Cell (i1, i2) (h1, h2) (v1, v2)
