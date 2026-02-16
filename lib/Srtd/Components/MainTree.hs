@@ -454,7 +454,7 @@ editDateKeymap =
 
 moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree)
 moveSubtreeModeKeymap =
-  sticky $
+  kmSetSticky $
     kmMake
       "Move subtree mode"
       -- SOMEDAY Can we reduce the number of different options? E.g., ("next based on preorder relative to self", "next based on siblings relative to parent") - Prob think about indicating the *target* relative to sth.
@@ -580,7 +580,7 @@ goKeymap =
 
 searchKeymap :: Keymap (AppEventAction MainTree)
 searchKeymap =
-  sticky $
+  kmSetSticky $
     kmMake
       "Find mode"
       [ ( kmLeafA_ (bind '/') "Search" $ do
@@ -607,8 +607,8 @@ searchKeymap =
             callIntoTreeView $
               TV.searchForRxSiblingAction TV.Backward
         )
-      , (kmLeafA_ (bind 'l') "Clear" $ mtSearchRxL .= Nothing)
-      , (kmLeafA_ (ctrl 'l') "Clear" $ mtSearchRxL .= Nothing)
+      , setSticky False (kmLeafA_ (bind 'l') "Clear" $ mtSearchRxL .= Nothing)
+      , setSticky False (kmLeafA_ (ctrl 'l') "Clear" $ mtSearchRxL .= Nothing)
       -- TODO WIP design interaction pattern for search filter (using singleItemQueryFlatFilter)
       -- I feel the _very_ general filter infra may have reached its limits.
       ]

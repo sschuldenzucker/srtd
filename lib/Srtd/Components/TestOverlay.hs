@@ -31,7 +31,7 @@ keymap =
 
 stickySubmap :: Keymap (AppEventAction TestOverlay)
 stickySubmap =
-  sticky $
+  kmSetSticky $
     kmMake
       "Sticky Submap"
       [ kmLeafA_ (bind 'a') "Noop" $ do

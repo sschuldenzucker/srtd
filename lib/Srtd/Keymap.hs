@@ -12,6 +12,7 @@ import Data.Map qualified as Map
 import Data.Ord (comparing)
 import Data.Text (Text)
 import Graphics.Vty (Key, Modifier)
+import Lens.Micro.Platform
 
 -- * Keymaps
 
@@ -19,8 +20,9 @@ import Graphics.Vty (Key, Modifier)
 data Keymap a = Keymap
   { kmName :: Text
   , kmSticky :: Bool
-  -- ^ If True, we don't go back to the toplevel when a leaf action in the submap was triggered.
+  -- ^ If True, we don't go back to the toplevel when an action in the submap was triggered.
   -- Only relevant for submaps.
+  -- This can be overridden by 'kmiSticky'
   , kmMap :: (Map Binding (KeymapItem a))
   , kmAddlDesc :: [(Text, Text)]
   -- ^ Additional descriptions for hidden items.
@@ -31,6 +33,9 @@ data KeymapItem a = KeymapItem
   , kmiHidden :: Bool
   -- ^ If True, this won't show up by default in `kmDesc`. Use `kmaAddlDesc` to describe these
   -- manually. Useful for pairs/groups of keys (e.g., hjkl or cursor keys.)
+  , kmiSticky :: Maybe Bool
+  -- ^ If given, this overrides the parent's sticky flag. I.e., you can make this item in particular
+  -- sticky/non-sticky.
   }
 
 data KeymapItemItem a
@@ -48,6 +53,11 @@ data KeymapZipper a = KeymapZipper
   , cur :: Keymap a
   }
 
+suffixLenses ''Keymap
+suffixLenses ''KeymapItem
+suffixLenses ''KeymapItemItem
+suffixLenses ''KeymapZipper
+
 -- | We only provide a trivial-ish show instance here b/c you usually don't care and `a` isn't showable.
 -- Could show more but prob not worth it.
 instance Show (KeymapZipper a) where
@@ -62,15 +72,19 @@ kmMake name kvs = Keymap name False (Map.fromList kvs) []
 
 -- | Leaf item, use with 'kmMake'.
 kmLeaf :: Binding -> Text -> a -> (Binding, KeymapItem a)
-kmLeaf b l i = (b, KeymapItem (LeafItem l i) False)
+kmLeaf b l i = (b, KeymapItem (LeafItem l i) False Nothing)
 
 -- | Submap, use with 'kmMake'.
 kmSub :: Binding -> Keymap a -> (Binding, KeymapItem a)
-kmSub b i = (b, KeymapItem (SubmapItem i) False)
+kmSub b i = (b, KeymapItem (SubmapItem i) False Nothing)
 
 -- | Flag binding as hidden when used with 'kmMake'
 hide :: (Binding, KeymapItem a) -> (Binding, KeymapItem a)
 hide (b, itm) = (b, itm {kmiHidden = True})
+
+-- | Flag binding as (not) sticky, overriding its parent keymap flag.
+setSticky :: Bool -> (Binding, KeymapItem a) -> (Binding, KeymapItem a)
+setSticky flag (b, itm) = (b, itm {kmiSticky = Just flag})
 
 -- | Add additional items to an existing keymap
 kmAddItems :: Keymap a -> [(Binding, KeymapItem a)] -> Keymap a
@@ -81,8 +95,8 @@ kmUnion :: Keymap a -> Keymap a -> Keymap a
 kmUnion km1 km2 = km1 {kmMap = Map.union (kmMap km1) (kmMap km2), kmAddlDesc = kmAddlDesc km1 ++ kmAddlDesc km2}
 
 -- | Make keymap sticky
-sticky :: Keymap a -> Keymap a
-sticky km = km {kmSticky = True}
+kmSetSticky :: Keymap a -> Keymap a
+kmSetSticky km = km {kmSticky = True}
 
 -- | Add a 'kmAddlDesc' to a keymap
 kmWithAddlDesc :: [(Text, Text)] -> Keymap a -> Keymap a
@@ -170,8 +184,13 @@ data KeymapResult a = NotFound | SubmapResult (KeymapZipper a) | LeafResult a (K
 kmzLookup :: KeymapZipper a -> Key -> [Modifier] -> KeymapResult a
 kmzLookup kz@(KeymapZipper {cur = Keymap {kmMap, kmSticky}}) key mods = case Map.lookup (binding key mods) kmMap of
   Nothing -> NotFound
-  Just KeymapItem {kmiItem = LeafItem _ x} -> LeafResult x (if kmSticky then kz else kmzResetSticky (kmzUp kz))
-  Just KeymapItem {kmiItem = SubmapItem sm} -> SubmapResult (kmzDown sm kz)
+  Just KeymapItem {kmiItem = LeafItem _ x, kmiSticky} -> LeafResult x (if isSticky kmSticky kmiSticky then kz else kmzResetSticky (kmzUp kz))
+  -- Sticky submap means that the *parent* of the item (i.e., cur) should be focused again when we have executed a child item.
+  -- This is consistent with leaf items.
+  Just KeymapItem {kmiItem = SubmapItem sm, kmiSticky} -> SubmapResult (kmzDown sm (kz & curL . kmStickyL .~ isSticky kmSticky kmiSticky))
+ where
+  isSticky b Nothing = b
+  isSticky _ (Just b) = b
 
 -- | Like 'kmzLookup' but for Keymap instead of KeymapZipper.
 kmLookup :: Keymap a -> Key -> [Modifier] -> KeymapResult a
