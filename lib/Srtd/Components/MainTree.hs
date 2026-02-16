@@ -653,17 +653,17 @@ spaceKeymap =
     , kmLeafA_ (bind 'j') "Quick jump" $ do
         tv <- gets mtTreeView
         let cb (mCompiledRegex, eid) = do
-              zoom mtTreeViewL $ do
+              callIntoTreeView $ do
                 TV.moveToEID eid
                 whenJust mCompiledRegex $ \rxs ->
                   TV.tvSearchRxL .= Just rxs
-              aerContinue
+              return Continue
         s <- maybe "" cwsSource <$> gets (TV.tvSearchRx . mtTreeView)
         pushOverlay
           (QF.quickFilterFromTreeView QF.NodeSelection tv s "Quick jump")
-          overlayNoop
           cb
-          aerContinue
+          (return Continue)
+          absurd
     ]
 
 -- SOMEDAY these actions should be functions in MainTree
