@@ -64,6 +64,7 @@ pattern SomeNonVtyKeyBrickEvent :: BrickEvent n e
 pattern SomeNonVtyKeyBrickEvent <- (isSomeNonVtyKeyBrickEvent -> True)
 
 -- o/w the type checker wrongly still complains about incomplete cases. Seems kinda dumb.
+-- SOMEDAY wtf I have to specify all combinations, really??
 {-# COMPLETE VtyEvent, AppEvent, SomeMouseUp, SomeMouseDown #-}
 
 {-# COMPLETE VtyEvent, AppEvent, MouseDown, SomeMouseUp #-}
@@ -73,3 +74,5 @@ pattern SomeNonVtyKeyBrickEvent <- (isSomeNonVtyKeyBrickEvent -> True)
 {-# COMPLETE VtyKeyEvent, SomeVtyOtherEvent, AppEvent, SomeMouse #-}
 
 {-# COMPLETE VtyKeyEvent, SomeNonVtyKeyBrickEvent, AppEvent #-}
+
+{-# COMPLETE VtyKeyEvent, SomeVtyOtherEvent, AppEvent, MouseDown, SomeMouseUp #-}
