@@ -19,15 +19,19 @@ module Srtd.Components.EditorProactive (
 ) where
 
 import Brick
+import Brick.Keybindings
 import Brick.Widgets.Edit hiding (applyEdit)
 import Brick.Widgets.Edit qualified as E
 import Data.List (intercalate)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Zipper (TextZipper)
+-- import Data.Text.Zipper qualified as TZ
+import Data.Text.Zipper.Generic.Words qualified as TZ
 import Lens.Micro.Platform
+import Srtd.BrickHelpers (pattern SomeNonVtyKeyBrickEvent, pattern VtyKeyEvent)
 import Srtd.Component
-import Srtd.Keymap (KeyDesc (..))
+import Srtd.Keymap
 import Srtd.MonadBrick
 import Srtd.ProactiveBandana
 import Srtd.Util (tell1)
@@ -75,6 +79,7 @@ instance RenderStringLike Text where
   renderStringLikes = txt . T.intercalate "\n"
 
 -- TODO generic version that also supports String. Had some issues there.
+-- ... or don't and get rid of RenderStringLike
 
 getEditorText :: EditorProactive -> Text
 getEditorText = cValue . epText
@@ -89,6 +94,12 @@ updateTextCellFromEditor = do
   t <- liftEventM $ (T.intercalate "\n" . getEditContents) <$> gets epEditor
   runUpdateLens epTextL t
 
+keymap :: Keymap (AppEventAction EditorProactive (Return EditorProactive))
+keymap =
+  kmMake
+    "Editor"
+    [kmLeafA_ (ctrl 'w') "Delete word" $ applyEdit TZ.deletePrevWord]
+
 instance AppComponent (EditorProactive) where
   type Return EditorProactive = ()
   type Event EditorProactive = EditorProactiveEvent Text
@@ -96,12 +107,17 @@ instance AppComponent (EditorProactive) where
   -- TODO take 'has focus' into account. (currently always yes; this is ok *here for now* but not generally) (prob warrants a param)
   renderComponent s = renderEditor renderStringLikes True (epEditor s)
 
-  handleEvent ev = do
-    t' <- liftEventM $ do
-      zoom epEditorL $ handleEditorEvent ev
-      (T.intercalate "\n" . getEditContents) <$> gets epEditor
-    runUpdateLens epTextL t'
-    return Continue
+  handleEvent ev = case ev of
+    VtyKeyEvent key mods -> kmDispatch keymap key mods handleFallback
+    SomeNonVtyKeyBrickEvent -> handleFallback
+    AppEvent _ -> return Continue
+   where
+    handleFallback = do
+      t' <- liftEventM $ do
+        zoom epEditorL $ handleEditorEvent ev
+        (T.intercalate "\n" . getEditContents) <$> gets epEditor
+      runUpdateLens epTextL t'
+      return Continue
 
   componentKeyDesc _s = KeyDesc "Editor" True []
   componentTitle _s = "Editor"
