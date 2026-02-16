@@ -103,7 +103,7 @@ data MainTree = MainTree
   , mtTreeView :: TV.TreeView
   , mtResourceName :: AppResourceName
   -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
-  , mtKeymap :: KeymapZipper (AppEventAction MainTree ())
+  , mtKeymap :: KeymapZipper (AppEventAction MainTree)
   , mtShowDetails :: Bool
   -- ^ Whether or not to show the details view. This is not implemented as a full overlay
   -- component for simplicity.
@@ -235,7 +235,7 @@ setResourceName rname = (mtResourceNameL .~ rname) . (mtTreeViewL %~ TV.setResou
 
 -- * Keymaps
 
-rootKeymap :: Keymap (AppEventAction MainTree ())
+rootKeymap :: Keymap (AppEventAction MainTree)
 rootKeymap =
   kmMake
     "Tree View"
@@ -350,7 +350,7 @@ rootKeymap =
 -- TODO unclean that we have a static keymap but the list of filters is dynamic from the perspective of MainTree.
 -- I don't think filters need to be dynamic.
 -- Maybe the layout of the filters needs reworking. Maybe the filter structure shouldn't store the name.
-viewKeymap :: Keymap (AppEventAction MainTree ())
+viewKeymap :: Keymap (AppEventAction MainTree)
 viewKeymap =
   kmMake
     "Filter"
@@ -373,14 +373,14 @@ viewKeymap =
  where
   mkMapping (k :: Char, s :: String) = kmLeafA (bind k) (T.pack s) $ notFoundToAER_ (selectFilterByName s)
 
-collapseLevelKeymap :: Keymap (AppEventAction MainTree ())
+collapseLevelKeymap :: Keymap (AppEventAction MainTree)
 collapseLevelKeymap =
   kmMake
     "Collapse level"
     (map (hide . collapseLevelKeymapItem) [1 .. 9])
     `kmAddAddlDesc` [("1-9", "Collapse to level")]
  where
-  collapseLevelKeymapItem :: Int -> (Binding, KeymapItem (AppEventAction MainTree ()))
+  collapseLevelKeymapItem :: Int -> (Binding, KeymapItem (AppEventAction MainTree))
   collapseLevelKeymapItem i =
     kmLeafA
       (bind $ unsafeSingleDigitUIntToChar i)
@@ -396,7 +396,7 @@ collapseLevelKeymap =
       )
   subtreeLevelHHF i subtree = HideHierarchyFilter (Set.fromList $ forestIdsAtLevel i (stForest subtree))
 
-deleteKeymap :: Keymap (AppEventAction MainTree ())
+deleteKeymap :: Keymap (AppEventAction MainTree)
 deleteKeymap =
   kmMake
     "Delete"
@@ -405,7 +405,7 @@ deleteKeymap =
     , (kmLeafA_ (bind 'd') "Single & splice" $ withCur $ \cur -> modifyModelAsync (deleteSingleSplice cur))
     ]
 
-setStatusKeymap :: Keymap (AppEventAction MainTree ())
+setStatusKeymap :: Keymap (AppEventAction MainTree)
 setStatusKeymap =
   kmMake
     "Set status"
@@ -422,7 +422,7 @@ setStatusKeymap =
     , kmLeafA_ (bind 't') "Touch" touchLastStatusModified
     ]
 
-editDateKeymap :: Keymap (AppEventAction MainTree ())
+editDateKeymap :: Keymap (AppEventAction MainTree)
 editDateKeymap =
   kmMake
     "Edit date"
@@ -452,7 +452,7 @@ editDateKeymap =
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
      in pushOverlay mkDateEdit cb (return Continue) ignoreEvent
 
-moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree ())
+moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree)
 moveSubtreeModeKeymap =
   sticky $
     kmMake
@@ -471,7 +471,7 @@ moveSubtreeModeKeymap =
       -- SOMEDAY hierarchy-breaking '<' (dedent)
       ]
 
-openExternallyKeymap :: Keymap (AppEventAction MainTree ())
+openExternallyKeymap :: Keymap (AppEventAction MainTree)
 openExternallyKeymap =
   kmMake
     "Open externally"
@@ -489,10 +489,10 @@ openExternallyKeymap =
       )
     ]
 
-sortRootKeymap :: Keymap (AppEventAction MainTree ())
+sortRootKeymap :: Keymap (AppEventAction MainTree)
 sortRootKeymap = _mkSortKeymap withRoot "Sort root by"
 
-sortKeymap :: Keymap (AppEventAction MainTree ())
+sortKeymap :: Keymap (AppEventAction MainTree)
 sortKeymap =
   kmAddItems
     (_mkSortKeymap withCur "Sort by")
@@ -503,7 +503,7 @@ type WithFunc =
   (EID -> AppEventM MainTree ()) ->
   (AppEventM MainTree ())
 
-_mkSortKeymap :: WithFunc -> Text -> Keymap (AppEventAction MainTree ())
+_mkSortKeymap :: WithFunc -> Text -> Keymap (AppEventAction MainTree)
 _mkSortKeymap withFunc name =
   kmMake
     name
@@ -532,7 +532,7 @@ _mkSortKeymap withFunc name =
     _ -> compare (gGlobalActionability l1) (gGlobalActionability l2)
   isNote l = (status . fst $ l) == None && gGlobalActionability l == None
 
-goKeymap :: Keymap (AppEventAction MainTree ())
+goKeymap :: Keymap (AppEventAction MainTree)
 goKeymap =
   kmMake
     "Go to"
@@ -578,7 +578,7 @@ goKeymap =
     mvp <- liftEventM $ lookupViewport =<< gets (getName . TV.tvList . mtTreeView)
     maybe (return ()) go mvp
 
-searchKeymap :: Keymap (AppEventAction MainTree b)
+searchKeymap :: Keymap (AppEventAction MainTree)
 searchKeymap =
   sticky $
     kmMake
@@ -614,7 +614,7 @@ searchKeymap =
       ]
 
 -- | Catchall keymap for variants and stuff
-spaceKeymap :: Keymap (AppEventAction MainTree ())
+spaceKeymap :: Keymap (AppEventAction MainTree)
 spaceKeymap =
   kmMake
     "Space"
@@ -667,7 +667,7 @@ spaceKeymap =
     ]
 
 -- SOMEDAY these actions should be functions in MainTree
-viewportKeymap :: Keymap (AppEventAction MainTree ())
+viewportKeymap :: Keymap (AppEventAction MainTree)
 viewportKeymap =
   kmMake
     "Viewport"
@@ -698,7 +698,7 @@ viewportKeymap =
     vp <- MaybeT $ liftEventM $ lookupViewport n
     lift $ liftEventM $ go seli vp n
 
-debugKeymap :: Keymap (AppEventAction MainTree ())
+debugKeymap :: Keymap (AppEventAction MainTree)
 debugKeymap =
   kmMake
     "Debug"

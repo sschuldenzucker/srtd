@@ -35,8 +35,6 @@ data DateSelectOverlay = DateSelectOverlay
 
 suffixLenses ''DateSelectOverlay
 
-type MyAppEventAction = AppEventAction DateSelectOverlay (Maybe DateOrTime)
-
 dateSelectOverlay ::
   Maybe DateOrTime -> Text -> AppResourceName -> DateSelectOverlay
 dateSelectOverlay origValue title rname =
@@ -49,7 +47,7 @@ dateSelectOverlay origValue title rname =
  where
   compile' = uncurry parseInterpretHumanDateOrTime
 
-keymap :: Keymap MyAppEventAction
+keymap :: Keymap (AppEventAction DateSelectOverlay)
 keymap =
   kmMake
     "Select Date"

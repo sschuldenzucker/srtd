@@ -94,7 +94,7 @@ updateTextCellFromEditor = do
   t <- liftEventM $ (T.intercalate "\n" . getEditContents) <$> gets epEditor
   runUpdateLens epTextL t
 
-keymap :: Keymap (AppEventAction EditorProactive (Return EditorProactive))
+keymap :: Keymap (AppEventAction EditorProactive)
 keymap =
   kmMake
     "Editor"

@@ -116,11 +116,6 @@ uniqueMaybeEmptyCell dflt mex0 onNewlyValid onNewlyEmpty = cell mex0 $ \mex' -> 
     | Empty <- mex', mex' /= mex -> return $ onNewlyEmpty
     | otherwise -> return $ dflt
 
-type MyAppEventAction c =
-  AppEventAction
-    (CompilingTextEntry c)
-    (CompiledWithSource c, ConfirmType)
-
 -- | General form with a specified compiler
 compilingTextEntry :: (Text -> Maybe c) -> Text -> AppResourceName -> CompilingTextEntry c
 compilingTextEntry f s rname =
@@ -154,7 +149,7 @@ compilingRegexEntry = compilingTextEntry (eitherToMaybe . TDFA.compile myCompOpt
   myCompOpt = defaultCompOpt {caseSensitive = False}
   myExecOpt = defaultExecOpt {captureGroups = False}
 
-keymap :: Keymap (MyAppEventAction c)
+keymap :: Keymap (AppEventAction (CompilingTextEntry c))
 keymap =
   kmMake
     "Search"

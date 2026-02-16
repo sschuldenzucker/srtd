@@ -79,9 +79,9 @@ data NodeSelectionOrQueryEntry = NodeSelectionOrQueryEntry
 class VariantBehavior v where
   type ConfirmType v
 
-  onTryConfirm :: MyAppEventAction v
+  onTryConfirm :: AppEventAction (QuickFilter v)
 
-  extraKeys :: [(Binding, KeymapItem (MyAppEventAction v))]
+  extraKeys :: [(Binding, KeymapItem (AppEventAction (QuickFilter v)))]
   extraKeys = []
 
 -- SOMEDAY instead of Regex use SingleItemQuery (or Query)
@@ -94,10 +94,8 @@ data QuickFilter v = QuickFilter
         (AppEventMOrNotFound (QuickFilter v) ())
         (MaybeEmpty (CompiledWithSource Regex))
   , sBaseFilter :: Filter
-  , sKMZ :: KeymapZipper (MyAppEventAction v)
+  , sKMZ :: KeymapZipper (AppEventAction (QuickFilter v))
   }
-
-type MyAppEventAction v = AppEventAction (QuickFilter v) (ConfirmType v)
 
 suffixLenses ''QuickFilter
 
@@ -126,7 +124,7 @@ quickFilterFromTreeView _v tv s name rname =
 
 -- * Behavior
 
-mkKeymap :: (VariantBehavior v) => Text -> Keymap (MyAppEventAction v)
+mkKeymap :: (VariantBehavior v) => Text -> Keymap (AppEventAction (QuickFilter v))
 mkKeymap name =
   kmMake name $
     [ kmLeafA (binding KEsc []) "Cancel" $ return Canceled

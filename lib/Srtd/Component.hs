@@ -213,16 +213,16 @@ instance AppComponent SomeAppComponent where
 -- before!)
 --
 -- This isn't used in this module but you can use it with a keymap.
-newtype AppEventAction s b = AppEventAction
-  {runAppEventAction :: (?actx :: AppContext) => AppEventM s (AppEventReturn b)}
+newtype AppEventAction s = AppEventAction
+  {runAppEventAction :: (?actx :: AppContext) => AppEventM s (AppEventReturn (Return s))}
 
 -- | Like 'kmLeaf' but wrap the given action in 'AppEventAction'
 kmLeafA ::
   Binding ->
   Text ->
   -- NB For some reason, *this* use of the constraint inside the type doesn't need ImpredicativeTypes.
-  ((?actx :: AppContext) => WriterT [Event s] (EventM AppResourceName s) (AppEventReturn b)) ->
-  (Binding, KeymapItem (AppEventAction s b))
+  ((?actx :: AppContext) => WriterT [Event s] (EventM AppResourceName s) (AppEventReturn (Return s))) ->
+  (Binding, KeymapItem (AppEventAction s))
 kmLeafA b n x = kmLeaf b n (AppEventAction x)
 
 -- | Like 'kmLeafA' but also return 'Continue'.
@@ -230,7 +230,7 @@ kmLeafA_ ::
   Binding ->
   Text ->
   ((?actx :: AppContext) => WriterT [Event s] (EventM AppResourceName s) ()) ->
-  (Binding, KeymapItem (AppEventAction s b))
+  (Binding, KeymapItem (AppEventAction s))
 -- NB this is one of the few cases where we can't make this point-free b/c the definition of
 -- 'aerVoid' doesn't include the `?actx` constraint.
 kmLeafA_ b n x = kmLeafA b n (aerVoid x)
@@ -244,14 +244,14 @@ aerVoid act = act >> return Continue
 kmzDispatch ::
   (?actx :: AppContext) =>
   -- | Lens where the KeymapZipper is stored
-  Lens' s (KeymapZipper (AppEventAction s b)) ->
+  Lens' s (KeymapZipper (AppEventAction s)) ->
   -- | Pressed key from VtyEvent
   Key ->
   -- | Pressed modifiers from VtyEvent
   [Modifier] ->
   -- | Fallback action if no key matches
-  AppEventM s (AppEventReturn b) ->
-  AppEventM s (AppEventReturn b)
+  AppEventM s (AppEventReturn (Return s)) ->
+  AppEventM s (AppEventReturn (Return s))
 kmzDispatch l key mods fallback = do
   kmz <- use l
   case kmzLookup kmz key mods of
@@ -274,14 +274,14 @@ kmzDispatch l key mods fallback = do
 kmDispatch ::
   (?actx :: AppContext) =>
   -- | Input keymap
-  Keymap (AppEventAction s b) ->
+  Keymap (AppEventAction s) ->
   -- | Pressed key from VtyEvent
   Key ->
   -- | Pressed modifiers from VtyEvent
   [Modifier] ->
   -- | Fallback action if no key matches
-  AppEventM s (AppEventReturn b) ->
-  AppEventM s (AppEventReturn b)
+  AppEventM s (AppEventReturn (Return s)) ->
+  AppEventM s (AppEventReturn (Return s))
 kmDispatch km key mods fallback = case kmLookup km key mods of
   NotFound -> fallback
   -- We ignore nxt, which tells us whether the keymap is sticky: without a zipper, it will always be.
