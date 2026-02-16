@@ -588,7 +588,7 @@ searchKeymap =
             let
               initText = maybe "" cwsSource oldSearchRx
               onEvent = \case
-                ValueChanged mv' -> mtSearchRxL .= mv'
+                ValueChanged mv' -> mtSearchRxL .= maybeEmptyToMaybe mv'
               onConfirm (rx, ctype) = do
                 assign mtSearchRxL (Just rx)
                 callIntoTreeView $ case ctype of

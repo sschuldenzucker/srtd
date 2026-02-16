@@ -16,15 +16,19 @@ module Srtd.Components.CompilingTextEntry (
   compilingQueryEntry,
   compilingRegexEntry,
 
+  -- * Access
+  valueMaybeEmpty,
+  valueMaybe,
+
   -- * Helpers
   MaybeEmpty (..),
   maybeToMaybeEmpty,
-  maybeEmptyValue,
+  maybeEmptyToMaybe,
+  uniqueMaybeEmptyCell,
 ) where
 
 import Brick
 import Brick.Keybindings
-import Brick.Widgets.Edit
 import Control.Monad (forM_, when)
 import Data.Function qualified as Function
 import Data.Maybe (isNothing)
@@ -66,14 +70,6 @@ instance Eq (CompiledWithSource c) where
 compileWithSource :: (Text -> Maybe c) -> Text -> Maybe (CompiledWithSource c)
 compileWithSource f t = CompiledWithSource <$> (f t) <*> pure t
 
-data CompilingTextEntry c = CompilingTextEntry
-  { sEditor :: EditorProactive
-  , sValue :: Cell Text (AppEventM (CompilingTextEntry c) ()) (Maybe (CompiledWithSource c))
-  , sInitialText :: Text
-  }
-
-suffixLenses ''CompilingTextEntry
-
 -- | A tertiary value that can be valid, empty, or invalid. We sometimes use this for regexs. (the
 -- empty regex is invalid but should still receive some special treatment)
 --
@@ -81,16 +77,43 @@ suffixLenses ''CompilingTextEntry
 data MaybeEmpty a = Valid a | Empty | Invalid
   deriving (Eq, Ord, Show)
 
+data CompilingTextEntry c = CompilingTextEntry
+  { sEditor :: EditorProactive
+  , sValue :: Cell Text (AppEventM (CompilingTextEntry c) ()) (MaybeEmpty (CompiledWithSource c))
+  , sInitialText :: Text
+  }
+
+suffixLenses ''CompilingTextEntry
+
 -- | Map a Maybe to MaybeEmpty. The result will never be Empty.
 maybeToMaybeEmpty :: Maybe a -> MaybeEmpty a
 maybeToMaybeEmpty = \case
   Just x -> Valid x
   Nothing -> Invalid
 
-maybeEmptyValue :: CompilingTextEntry a -> MaybeEmpty (CompiledWithSource a)
-maybeEmptyValue cte
-  | (T.intercalate "\n" . getEditContents . sEditor) cte == "" = Empty
-  | otherwise = maybeToMaybeEmpty . sValue $ cte
+maybeEmptyToMaybe :: MaybeEmpty a -> Maybe a
+maybeEmptyToMaybe = \case
+  Valid x -> Just x
+  Empty -> Nothing
+  Invalid -> Nothing
+
+valueMaybeEmpty :: CompilingTextEntry c -> MaybeEmpty (CompiledWithSource c)
+valueMaybeEmpty = cValue . sValue
+
+valueMaybe :: CompilingTextEntry c -> Maybe (CompiledWithSource c)
+valueMaybe = maybeEmptyToMaybe . valueMaybeEmpty
+
+-- | Like 'uniqueMaybeCell' but for 'MaybeEmpty'
+--
+-- SOMEDAY may not be needed, it's pretty simple
+uniqueMaybeEmptyCell ::
+  (Eq v) => h -> MaybeEmpty v -> (v -> h) -> h -> Cell' (MaybeEmpty v) h
+uniqueMaybeEmptyCell dflt mex0 onNewlyValid onNewlyEmpty = cell mex0 $ \mex' -> do
+  mex <- get
+  if
+    | (Valid x') <- mex', mex' /= mex -> return $ onNewlyValid x'
+    | Empty <- mex', mex' /= mex -> return $ onNewlyEmpty
+    | otherwise -> return $ dflt
 
 type MyAppEventAction c =
   AppEventAction
@@ -103,18 +126,18 @@ compilingTextEntry f s rname =
   -- SOMEDAY actual completion and highlight the previous pattern
   CompilingTextEntry
     { sEditor = editorProactiveText "" (EditorFor rname)
-    , sValue = simpleMappingCell Nothing compile' $ \mv' -> do
+    , sValue = simpleMappingCell Empty compile' $ \mev' -> do
         -- A bit hacky b/c our component interface doesn't let us pass parameters, so we store this
         -- in state
-        callIntoEditor $ setPostRender (postRenderFor mv')
-        tell1 (ValueChanged mv')
+        callIntoEditor $ setPostRender (postRenderFor $ maybeEmptyToMaybe mev')
+        tell1 (ValueChanged mev')
     , sInitialText = s
     }
  where
   -- Special case so that the empty string is _always_ Nothing.
   -- This wouldn't be all that necessary b/c empty regexs are invalid but let's be sure about it.
-  compile' "" = Nothing
-  compile' t = compileWithSource f $ t
+  compile' "" = Empty
+  compile' t = maybeToMaybeEmpty . compileWithSource f $ t
 
 compilingSingleItemQueryEntry :: Text -> AppResourceName -> CompilingTextEntry SingleItemQuery
 compilingSingleItemQueryEntry = compilingTextEntry parseAndCompileSingleItemQuery
@@ -135,13 +158,13 @@ keymap =
     [ kmLeafA (binding KEsc []) "Cancel" $ return Canceled
     , -- SOMEDAY more descriptive names for this: it's confirm-and-go and confirm-and-go-to-sibling.
       kmLeafA (binding KEnter []) "Confirm" $ do
-        mv <- gets (cValue . sValue)
+        mv <- gets valueMaybe
         case mv of
           -- NB the user can't confirm an invalid regex.
           Nothing -> return $ Continue
           Just v -> return $ Confirmed (v, RegularConfirm)
     , kmLeafA (binding KEnter [MMeta]) "Confirm (alt)" $ do
-        mv <- gets (cValue . sValue)
+        mv <- gets valueMaybe
         case mv of
           -- NB the user can't confirm an invalid regex.
           Nothing -> return $ Continue
@@ -177,7 +200,8 @@ postRenderFor :: Maybe a -> Widget n -> Widget n
 postRenderFor mv =
   withAttr $ attrName "search_entry" <> (if isNothing mv then attrName "error" else mempty)
 
-data CompilingTextEntryEvent c = ValueChanged (Maybe (CompiledWithSource c))
+-- SOMEDAY should this be MaybeEmpty?
+data CompilingTextEntryEvent c = ValueChanged (MaybeEmpty (CompiledWithSource c))
 
 instance
   AppComponent
