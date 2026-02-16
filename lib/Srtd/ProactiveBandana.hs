@@ -161,7 +161,7 @@ uniqueCell :: (Eq v) => h -> v -> (v -> h) -> Cell' v h
 uniqueCell dflt x0 f = cell x0 $ \x' -> do
   x <- get
   if
-    | x /= x' -> put x >> return (f x')
+    | x /= x' -> put x' >> return (f x')
     | otherwise -> return $ dflt
 
 -- | Monadic version of 'uniqueCell' that does nothing on no change.
