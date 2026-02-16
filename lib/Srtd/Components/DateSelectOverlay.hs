@@ -57,10 +57,6 @@ keymap =
     , kmLeafA (ctrl 'd') "Delete" (return $ Confirmed Nothing)
     ]
 
--- Trivial rn.
-keymapZipper :: KeymapZipper MyAppEventAction
-keymapZipper = keymapToZipper keymap
-
 callIntoEditor ::
   (?actx :: AppContext) => AppEventM EditorProactive a -> AppEventM DateSelectOverlay a
 callIntoEditor act = do
@@ -91,14 +87,9 @@ instance AppComponent DateSelectOverlay where
     renderDate date = maybe emptyWidget (str . prettyAbsolute tz) $ date
     tz = zonedTimeZone . acZonedTime $ ?actx
 
-  -- NB we don't have sub-keymaps here atm, so don't need to handle as much as MainTree, for instance.
   handleEvent ev =
     case ev of
-      VtyKeyEvent key mods -> do
-        case kmzLookup keymapZipper key mods of
-          NotFound -> handleFallback ev
-          LeafResult act _nxt -> runAppEventAction act
-          SubmapResult _sm -> error "wtf submap?"
+      VtyKeyEvent key mods -> kmDispatch keymap key mods (handleFallback ev)
       SomeNonVtyKeyBrickEvent -> handleFallback ev
       AppEvent (ModelUpdated _) -> handleFallback ev
       AppEvent Tick -> handleFallback ev
@@ -107,6 +98,6 @@ instance AppComponent DateSelectOverlay where
       _returnIsAlwaysContinue <- callIntoEditor (handleEvent ev')
       return Continue
 
-  componentKeyDesc self = kmzDesc keymapZipper & kdNameL .~ (dsTitle self)
+  componentKeyDesc self = kmDesc keymap & kdNameL .~ (dsTitle self)
 
   componentTitle = dsTitle

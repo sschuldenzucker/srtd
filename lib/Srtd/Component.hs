@@ -29,15 +29,18 @@ import Graphics.Vty.Input (Key (KBS, KEsc), Modifier)
 import Lens.Micro.Platform
 import Srtd.Keymap (
   KeyDesc,
+  Keymap,
   KeymapItem,
   KeymapResult (..),
   KeymapZipper,
   kmLeaf,
+  kmLookup,
   kmzIsToplevel,
   kmzLookup,
   kmzResetRoot,
   kmzUp,
  )
+import Srtd.Log (Priority (..), glogL)
 import Srtd.Model (FilterContext (..), IdNotFoundError)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
 import Srtd.Util (captureWriterT)
@@ -264,6 +267,30 @@ kmzDispatch l key mods fallback = do
     SubmapResult nxt -> do
       l .= nxt
       return Continue
+
+-- | 'kmzDispatch' when we don't have submaps and don't track state.
+--
+-- Errors and ignores if a submap is found.
+kmDispatch ::
+  (?actx :: AppContext) =>
+  -- | Input keymap
+  Keymap (AppEventAction s b) ->
+  -- | Pressed key from VtyEvent
+  Key ->
+  -- | Pressed modifiers from VtyEvent
+  [Modifier] ->
+  -- | Fallback action if no key matches
+  AppEventM s (AppEventReturn b) ->
+  AppEventM s (AppEventReturn b)
+kmDispatch km key mods fallback = case kmLookup km key mods of
+  NotFound -> fallback
+  -- We ignore nxt, which tells us whether the keymap is sticky: without a zipper, it will always be.
+  LeafResult act _nxt -> runAppEventAction act
+  SubmapResult _nxt -> do
+    liftIO $
+      glogL ERROR $
+        "kmDispatch found submap result at " ++ show (key, mods) ++ " but cannot handle it. Ignoring."
+    return Continue
 
 -- * Error Handling
 

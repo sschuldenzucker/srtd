@@ -9,7 +9,9 @@ import Srtd.Component
 import Srtd.Keymap
 import Srtd.Log
 
-data TestOverlay = TestOverlay (KeymapZipper (AppEventAction TestOverlay ()))
+data TestOverlay = TestOverlay {toKMZ :: KeymapZipper (AppEventAction TestOverlay ())}
+
+suffixLenses ''TestOverlay
 
 -- The following is more of a demonstration. Of course overkill here.
 
@@ -42,15 +44,7 @@ instance AppComponent TestOverlay where
   handleEvent (VtyEvent (EvKey KEsc [])) = do
     modify (\(TestOverlay kmz) -> TestOverlay (kmzResetRoot kmz))
     return $ Canceled
-  handleEvent (VtyEvent (EvKey key mods)) = do
-    (TestOverlay kmz) <- get
-    case kmzLookup kmz key mods of
-      NotFound -> return Continue
-      LeafResult act nxt -> do
-        res <- runAppEventAction act
-        put (TestOverlay nxt)
-        return res
-      SubmapResult nxt -> put (TestOverlay nxt) >> return Continue
+  handleEvent (VtyEvent (EvKey key mods)) = kmzDispatch toKMZL key mods (return Continue)
   handleEvent _ = return Continue
 
   componentKeyDesc (TestOverlay kmz) = kmzDesc kmz

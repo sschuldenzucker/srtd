@@ -36,6 +36,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Zipper qualified as TZ
 import Graphics.Vty.Input.Events
+import Lens.Micro.Platform
 import Srtd.BrickHelpers (pattern SomeNonVtyKeyBrickEvent, pattern VtyKeyEvent)
 import Srtd.Component
 import Srtd.Components.EditorProactive
@@ -186,9 +187,6 @@ keymap =
         return Continue
     ]
 
-keymapZipper :: KeymapZipper (MyAppEventAction c)
-keymapZipper = keymapToZipper keymap
-
 callIntoEditor :: AppEventM EditorProactive a -> AppEventM (CompilingTextEntry c) a
 callIntoEditor act = do
   (ret, events) <- captureWriterT $ zoom sEditorL act
@@ -215,11 +213,7 @@ instance
 
   handleEvent ev =
     case ev of
-      VtyKeyEvent key mods -> do
-        case kmzLookup keymapZipper key mods of
-          NotFound -> handleFallback ev
-          LeafResult act _nxt -> runAppEventAction act
-          SubmapResult _sm -> error "wtf submap?"
+      VtyKeyEvent key mods -> kmDispatch keymap key mods (handleFallback ev)
       SomeNonVtyKeyBrickEvent -> handleFallback ev
       AppEvent (ModelUpdated _) -> handleFallback ev
       AppEvent Tick -> handleFallback ev
@@ -228,6 +222,6 @@ instance
       _resIsAlwaysContinue <- callIntoEditor $ handleEvent ev'
       return Continue
 
-  componentKeyDesc _self = kmzDesc keymapZipper
+  componentKeyDesc _self = kmDesc keymap
 
   componentTitle _self = "Search"

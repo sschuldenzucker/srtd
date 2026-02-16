@@ -1202,32 +1202,8 @@ instance AppComponent MainTree where
     tryRouteToOverlay = routeToOverlayOr (return Continue)
 
     routeToSelf = case ev of
-      -- Keymap
-      (VtyEvent (Vty.EvKey key mods)) -> do
-        keymap <- use mtKeymapL
-        liftIO $ glogL DEBUG $ "handle a key from keymap"
-        case kmzLookup keymap key mods of
-          NotFound -> case ev of
-            -- Code for keymap. We handle this here so that we can bind Backspace in a submap
-            -- (and also Esc, though that's a bit too funky for my taste). NB this is a bit nasty,
-            -- having some abstraction here would be good if we need it again.
-            -- SOMEDAY slightly inconsistent: if the user should expect BS to always go up, we
-            -- shouldn't bind it to anything else.
-            (VtyEvent (Vty.EvKey KEsc [])) -> aerVoid $ mtKeymapL %= kmzResetRoot
-            (VtyEvent (Vty.EvKey KBS [])) -> aerVoid $ mtKeymapL %= kmzUp
-            _ -> do
-              liftIO $ glogL DEBUG "handle fallback"
-              routeToTreeView
-          LeafResult act nxt -> do
-            liftIO $ glogL DEBUG "handle leaf"
-            res <- runAppEventAction act
-            mtKeymapL .= nxt
-            return res
-          SubmapResult sm -> do
-            liftIO $ glogL DEBUG "handle submap"
-            mtKeymapL .= sm
-            return Continue
-      -- vvv never happens
+      VtyKeyEvent key mods -> kmzDispatch mtKeymapL key mods routeToTreeView
+      -- vvv never happens b/c caught above.
       _miscEvents -> routeToTreeView
 
     routeToTreeView = callIntoTreeView $ handleEvent ev

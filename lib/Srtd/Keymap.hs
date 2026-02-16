@@ -120,8 +120,8 @@ kmzIsToplevel :: KeymapZipper a -> Bool
 kmzIsToplevel (KeymapZipper ps _) = null ps
 
 -- | Make the list `[(key desc, action desc)]`
-kmDesc :: Keymap a -> [(Text, Text)]
-kmDesc (Keymap {kmMap, kmAddlDesc}) =
+kmKeysDesc :: Keymap a -> [(Text, Text)]
+kmKeysDesc (Keymap {kmMap, kmAddlDesc}) =
   Map.toList kmMap
     & filter (not . kmiHidden . snd)
     & fmap (\(k, item) -> (ppBinding k, describeItem item))
@@ -145,7 +145,16 @@ kmzDesc (KeymapZipper ps cur) =
   KeyDesc
     { kdName = kmName cur
     , kdIsToplevel = null ps
-    , kdPairs = kmDesc cur
+    , kdPairs = kmKeysDesc cur
+    }
+
+-- | Variant of kmzDesc for Keymap. Always at toplevel.
+kmDesc :: Keymap a -> KeyDesc
+kmDesc km =
+  KeyDesc
+    { kdName = kmName km
+    , kdIsToplevel = True
+    , kdPairs = kmKeysDesc km
     }
 
 data KeymapResult a = NotFound | SubmapResult (KeymapZipper a) | LeafResult a (KeymapZipper a)
@@ -163,3 +172,7 @@ kmzLookup kz@(KeymapZipper {cur = Keymap {kmMap, kmSticky}}) key mods = case Map
   Nothing -> NotFound
   Just KeymapItem {kmiItem = LeafItem _ x} -> LeafResult x (if kmSticky then kz else kmzResetSticky (kmzUp kz))
   Just KeymapItem {kmiItem = SubmapItem sm} -> SubmapResult (kmzDown sm kz)
+
+-- | Like 'kmzLookup' but for Keymap instead of KeymapZipper.
+kmLookup :: Keymap a -> Key -> [Modifier] -> KeymapResult a
+kmLookup km key mods = kmzLookup (keymapToZipper km) key mods
