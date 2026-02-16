@@ -52,7 +52,7 @@ library
     default-language:   GHC2024
     default-extensions:
         OverloadedStrings ImplicitParams TemplateHaskell DeriveGeneric
-        LambdaCase NumericUnderscores TypeFamilies ViewPatterns PatternSynonyms
+        LambdaCase NumericUnderscores TypeFamilies ViewPatterns PatternSynonyms MultiWayIf
 
     ghc-options:
         -Wall -Werror=missing-methods -Werror=missing-fields
