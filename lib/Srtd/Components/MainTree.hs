@@ -712,9 +712,13 @@ debugKeymap =
 
 pushOverlay ::
   (AppComponent s, MonadState MainTree m, MonadIO m) =>
+  -- | Component creator
   (AppResourceName -> s) ->
+  -- | onConfirm
   ((?actx :: AppContext) => Return s -> AppEventM MainTree (AppEventReturn ())) ->
+  -- | onCanceled
   ((?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())) ->
+  -- | onEvent
   ((?actx :: AppContext) => Event s -> AppEventM MainTree ()) ->
   m ()
 pushOverlay mk onConfirm onCanceled onEvent = do
