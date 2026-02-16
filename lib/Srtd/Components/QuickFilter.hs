@@ -184,36 +184,6 @@ instance (VariantBehavior v) => AppComponent (QuickFilter v) where
       Confirmed _ -> Continue -- doesn't happen
       Canceled -> Canceled -- load error
 
-  {- handleEvent ev = do
-    kmz <- gets sKMZ
-    case ev of
-      (VtyEvent (EvKey key mods)) ->
-        case kmzLookup kmz key mods of
-          NotFound -> handleFallback ev
-          LeafResult act nxt -> do
-            res <- runAppEventAction act
-            sKMZL .= nxt
-            return res
-          SubmapResult sm -> sKMZL .= sm >> return Continue
-      _ -> handleFallback ev -- not needed I think
-   where
-    handleFallback = case ev of
-      (AppEvent _aev) -> do
-        -- Route app events to both sub-components.
-        -- NB TextEntry won't return anything interesting here.
-        callIntoTextEntry $ handleEvent ev
-        callIntoTreeView $ handleEvent ev
-        myAERContinue
-      -- This weird case selection is required for routing b/c I have no way of knowing if an event
-      -- got actually supported/handled. That is quite sad.
-      (VtyEvent (EvKey KDown [])) -> routeToTreeView ev
-      (VtyEvent (EvKey KUp [])) -> routeToTreeView ev
-      (VtyEvent (EvKey _k _mods)) -> routeToEdit ev
-      (MouseDown rname _k _mods _loc)
-        | (MainListFor _) <- rname -> routeToTreeView ev
-        | (EditorFor _) <- rname -> routeToEdit ev
-      _ -> myAERContinue -}
-
   componentTitle = kmName . cur . kmzResetRoot . sKMZ
 
   componentKeyDesc s = (kmzDesc . sKMZ $ s) & kdPairsL %~ (++ extraPairs)
