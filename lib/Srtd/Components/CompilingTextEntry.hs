@@ -127,7 +127,9 @@ compilingTextEntry f s rname =
   -- SOMEDAY actual completion and highlight the previous pattern
   CompilingTextEntry
     { sEditor = editorProactiveText "" (EditorFor rname)
-    , sValue = simpleMappingCell Empty compile' $ \mev' -> do
+    , -- NB this is *not* a unique cell b/c EditorProactive already has unique semantics for its text,
+      -- and we wouldn't gain anything here.
+      sValue = simpleMappingCell Empty compile' $ \mev' -> do
         -- A bit hacky b/c our component interface doesn't let us pass parameters, so we store this
         -- in state
         callIntoEditor $ setPostRender (postRenderFor $ maybeEmptyToMaybe mev')
