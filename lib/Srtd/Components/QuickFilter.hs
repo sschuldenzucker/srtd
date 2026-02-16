@@ -1,13 +1,4 @@
--- TODO DataKinds not needed I think
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
--- TODO TypeApplications not needed I think
--- TODO review extensions, don't need most of them I think
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
--- This is needed to create the AppComponent instance below b/c we're mixing fundeps with associated types.
--- It's fine in this particular case. See below.
-{-# LANGUAGE UndecidableInstances #-}
 
 -- | A component that lets users enter a query, filters for it, and lets them select a node
 module Srtd.Components.QuickFilter (
@@ -148,15 +139,6 @@ callIntoTextEntry act = do
     CTE.ValueChanged mev -> runUpdateLens sValueL (mev, ?actx)
   return ret
 
--- This form, with UndecidableInstances, is required to mix associated types (used here) and
--- functional dependencies (used in AppComponent). It's a GHC limitation. It's fine logically.
--- See https://stackoverflow.com/questions/45360959/illegal-type-synonym-family-application-in-instance-with-functional-dependency
--- The injectivity constraint discussed there doesn't apply here.
---
--- SOMEDAY we can fix this by making a and b associated types of AppComponent, just like it's done
--- here. That'd be more ergonomic as well I think. We can recover the multi-param form using a type
--- synonym (which is really a constraint synonym):
--- `type Cla2 s a = (Cla s, a ~ A s)`
 instance (VariantBehavior v) => AppComponent (QuickFilter v) where
   type Return (QuickFilter v) = ConfirmType v
 
