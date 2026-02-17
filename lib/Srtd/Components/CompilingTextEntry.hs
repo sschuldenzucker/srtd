@@ -123,7 +123,7 @@ compilingTextEntry :: (Text -> Maybe c) -> Text -> AppResourceName -> CompilingT
 compilingTextEntry f s rname =
   -- SOMEDAY actual completion and highlight the previous pattern
   CompilingTextEntry
-    { sEditor = editorProactiveText "" (EditorFor rname)
+    { sEditor = editorProactiveText "" (rname <> "editor")
     , -- NB this is *not* a unique cell b/c EditorProactive already has unique semantics for its text,
       -- and we wouldn't gain anything here.
       sValue = simpleMappingCell Empty compile' $ \mev' -> do

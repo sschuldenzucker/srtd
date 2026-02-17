@@ -86,6 +86,7 @@ data QuickFilter v = QuickFilter
         (MaybeEmpty (CompiledWithSource Regex))
   , sBaseFilter :: Filter
   , sKMZ :: KeymapZipper (AppEventAction (QuickFilter v))
+  , sResourceName :: AppResourceName
   }
 
 suffixLenses ''QuickFilter
@@ -98,7 +99,7 @@ quickFilterFromTreeView ::
 quickFilterFromTreeView _v tv s name rname =
   QuickFilter
     { sTextEntry = textEntry
-    , sTreeView = TV.setResourceName (MainListFor rname) tv & TV.tvSearchRxL .~ Nothing
+    , sTreeView = TV.setResourceName (rname <> "treeview") tv & TV.tvSearchRxL .~ Nothing
     , sValue =
         let base = uniqueCell (const $ return ()) Empty $ \mev actx ->
               let ?actx = actx
@@ -107,11 +108,12 @@ quickFilterFromTreeView _v tv s name rname =
             mapCellHandlerInput fst (\(_, actx) hf -> hf actx) base
     , sBaseFilter = cValue . tvFilter $ tv
     , sKMZ = keymapToZipper $ mkKeymap name
+    , sResourceName = rname
     }
  where
   -- NB this relies on the CompilingTextEntry _not_ auto-applying the initial text.
   -- Otherwise this would needs a refresh already.
-  textEntry = compilingRegexEntry s (EditorFor rname)
+  textEntry = compilingRegexEntry s (rname <> "editor")
 
 -- * Behavior
 
@@ -158,14 +160,16 @@ instance (VariantBehavior v) => AppComponent (QuickFilter v) where
     VtyKeyEvent KDown [] -> routeToTreeView
     VtyKeyEvent KUp [] -> routeToTreeView
     VtyKeyEvent key mods -> kmzDispatch sKMZL key mods routeToEdit
-    MouseDown rname _k _mods _loc -> case rname of
-      MainListFor _ -> routeToTreeView
-      EditorFor _ -> routeToEdit
-      _ -> do
-        liftIO $
-          glogL WARNING $
-            "QuickFilter received click on " ++ show rname ++ ", which we don't recognize. Ignoring."
-        return Continue
+    MouseDown rname _k _mods _loc -> do
+      myRName <- gets sResourceName
+      if
+        | (myRName <> "treeview") `isPrefixOf` rname -> routeToTreeView
+        | (myRName <> "editor") `isPrefixOf` rname -> routeToEdit
+        | otherwise -> do
+            liftIO $
+              glogL WARNING $
+                "QuickFilter received click on " ++ show rname ++ ", which we don't recognize. Ignoring."
+            return Continue
     -- TODO not clear to me wat do here
     SomeVtyOtherEvent -> routeToBoth
     SomeMouseUp -> return Continue

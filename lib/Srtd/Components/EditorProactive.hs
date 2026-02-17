@@ -48,7 +48,7 @@ suffixLenses ''EditorProactive
 editorProactiveText :: Text -> AppResourceName -> EditorProactive
 editorProactiveText initText rname =
   EditorProactive
-    { epEditor = editor rname (Just 1) initText
+    { epEditor = editor (rname <> "brick editor") (Just 1) initText
     , epText = uniqueCellM initText $ \t' -> tell1 (TextChanged t')
     , epPostRender = id
     }

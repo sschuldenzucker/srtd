@@ -209,7 +209,7 @@ makeFromModel root fi doFollowItem scrolloff model rname = do
   subtree <-
     translateAppFilterContext $
       runFilter fi root model
-  let list = forestToBrickList (MainListFor rname) $ stForest subtree
+  let list = forestToBrickList (rname <> "brick list") $ stForest subtree
   return
     TreeView
       { tvSubtree = simpleCell subtree $ replaceSubtree'
@@ -233,8 +233,8 @@ replaceFilter fi = runUpdateLens tvFilterL (fi, ?actx)
 
 setResourceName :: AppResourceName -> TreeView -> TreeView
 setResourceName rname =
-  (tvResourceNameL .~ MainListFor rname)
-    . (tvListL . L.listNameL .~ MainListFor rname)
+  (tvResourceNameL .~ rname)
+    . (tvListL . L.listNameL .~ (rname <> "brick list"))
 
 -- | Move the tree to any EID, preserving settings. Returns an error if that EID doesn't exist
 -- (presumably b/c it was deleted). Then nothing is updated.

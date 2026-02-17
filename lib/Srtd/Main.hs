@@ -218,7 +218,7 @@ myHandleEvent ev = wrappingActions $
           -- SOMEDAY alt, just push acev through every time, but let's stay a bit safe here for now.
           ModelUpdated _ -> eachTabHandleEvent (AppEvent acev)
           Tick -> eachTabHandleEvent (AppEvent acev)
-    (MouseDown rname@(TabTitleFor _) Vty.BLeft [] _location) -> asTabsL %= lzFindBegin ((rname ==) . fst)
+    (MouseDown rname@(SingleTabTitleFor _) Vty.BLeft [] _location) -> asTabsL %= lzFindBegin ((rname ==) . fst)
     -- some boilerplate to safely cast BrickEvent n AppRootMsg to BrickEvent n AppComponentMsg here.
     -- SOMEDAY this can certainly be done in a more clever way. Maybe a dispatch function on BrickEvent.
     VtyEvent k -> routeToCurrentTab (VtyEvent k)
@@ -274,6 +274,9 @@ fixEmptyTabs = do
   tabs <- use asTabsL
   when (LZ.emptyp tabs) setDefaultTab
 
+pattern SingleTabTitleFor :: AppResourceName -> AppResourceName
+pattern SingleTabTitleFor rname = AppResourceName [TabTitleFor rname]
+
 -- | Only valid when there are no tabs. Then sets the default tabs (or exits if something is *really* wrong)
 setDefaultTab :: EventM AppResourceName AppState ()
 setDefaultTab = do
@@ -288,7 +291,7 @@ setDefaultTab = do
       asExitCodeL .= ExitFailure 1
       halt
     Right mt -> do
-      asTabsL .= (LZ.fromList [(TabTitleFor rname, SomeAppComponent mt)])
+      asTabsL .= (LZ.fromList [(SingleTabTitleFor rname, SomeAppComponent mt)])
 
 activeTabL :: Lens' AppState SomeAppComponent
 -- There's probably some clever way to do this but idk. It's also trivial rn.
@@ -300,15 +303,15 @@ activeTabL = lens getter setter
 pushTab :: (AppResourceName -> SomeAppComponent) -> AppState -> AppState
 pushTab mk state@(AppState {asTabs, asNextTabID}) = state {asTabs = asTabs', asNextTabID = asNextTabID + 1}
  where
-  rname = Tab asNextTabID
-  asTabs' = LZ.insert (TabTitleFor rname, mk rname) . LZ.right $ asTabs
+  rname = AppResourceName [NamedAppResource "tab" asNextTabID]
+  asTabs' = LZ.insert (SingleTabTitleFor rname, mk rname) . LZ.right $ asTabs
 
 -- | You prob wanna use 'pushTab' instead.
 getFreshTabRName :: EventM AppResourceName AppState AppResourceName
 getFreshTabRName = do
   tabID <- use asNextTabIDL
   asNextTabIDL += 1
-  return $ Tab tabID
+  return $ AppResourceName [NamedAppResource "tab" tabID]
 
 -- | Remove active tab and go to previous or else next. You must call 'fixEmptyTabs' afterwards!
 popTab :: AppState -> AppState
@@ -330,7 +333,9 @@ myChooseCursor ::
 myChooseCursor _ = listToMaybe . reverse . filter isEditLocation . filter cursorLocationVisible
  where
   isEditLocation cloc = case cursorLocationName cloc of
-    Just (EditorFor _) -> True
+    -- See EditorProactive.
+    Just (AppResourceName names@(_ : _))
+      | NamedAppResource "brick editor" _ <- last names -> True
     _ -> False
 
 myChooseAttrMap :: AppState -> AttrMap

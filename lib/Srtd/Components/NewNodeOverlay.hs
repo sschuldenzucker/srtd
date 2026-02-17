@@ -33,7 +33,7 @@ newNodeOverlay :: String -> Text -> AppResourceName -> NewNodeOverlay
 newNodeOverlay initName title rname =
   NewNodeOverlay (editorProactiveText (T.pack initName) editorRName) title
  where
-  editorRName = EditorFor rname
+  editorRName = rname <> "editor"
 
 callIntoEditor :: AppEventM EditorProactive a -> AppEventM NewNodeOverlay a
 callIntoEditor act = do

@@ -209,7 +209,7 @@ makeWithFilters root filters hhf doFollowItem model rname = do
       doFollowItem
       Config.scrolloff
       model
-      (TreeFor rname)
+      (rname <> "treeview")
   return $
     MainTree
       { mtFilters = simplePreMappingCell filters fst $ \(_fis', actx) ->
@@ -729,7 +729,7 @@ pushOverlay mk onConfirm onCanceled onEvent = do
             ++ "This is likely not intended."
      in liftIO $ glogL WARNING s
   rootRname <- use mtResourceNameL
-  let rname = Component.OverlayFor 0 rootRname
+  let rname = rootRname <> "overlay"
   let ol = Overlay (mk rname) onConfirm onCanceled onEvent
   mtOverlayL .= Just ol
 
@@ -1176,15 +1176,9 @@ instance AppComponent MainTree where
     -- though again, if anything actually depends on time, we should prob include it during keypress as well.
     (AppEvent Tick) -> return Continue
     (VtyEvent _) -> routeToOverlayOr routeToSelf
-    (MouseDown rname _k _mods _loc) -> case rname of
-      OverlayFor _ _ -> tryRouteToOverlay
-      TreeFor _ -> routeToTreeView
-      _ -> do
-        liftIO $
-          glogL WARNING $
-            "MainTree received click on " ++ show rname ++ ", which we don't recognize. Ignoring."
-        return Continue
-    SomeMouseUp -> return Continue
+    -- SOMEDAY if we have several active *visible/clickable* widgets, we may wanna route based on rname,
+    -- like in QuickFilter.
+    SomeMouse -> routeToOverlayOr routeToTreeView
    where
     routeToOverlayOr actNoOverlay = do
       mol <- use mtOverlayL
