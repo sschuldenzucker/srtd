@@ -2,6 +2,8 @@
 usually a query.
 
 Generalizes regex / single item query / query entry.
+
+SOMEDAY this could be just a Cell if we can reliably own our Editor. But then it's really basically an AppComponent.
 -}
 module Srtd.Components.CompilingTextEntry (
   -- * Types
