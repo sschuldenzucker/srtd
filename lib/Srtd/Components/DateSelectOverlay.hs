@@ -39,7 +39,7 @@ dateSelectOverlay ::
   Maybe DateOrTime -> Text -> AppResourceName -> DateSelectOverlay
 dateSelectOverlay origValue title rname =
   DateSelectOverlay
-    { dsEditor = editorProactiveText "" (EditorFor rname)
+    { dsEditor = editorProactiveText "" (rname <> "editor")
     , dsValue = simpleMappingCell Nothing compile' $ \mv -> tell1 (ValueChanged mv)
     , dsOrigValue = origValue
     , dsTitle = title

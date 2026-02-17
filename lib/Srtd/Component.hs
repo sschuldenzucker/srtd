@@ -22,7 +22,10 @@ import Brick.Keybindings (Binding)
 import Control.Arrow (second)
 import Control.Monad.Except
 import Control.Monad.Writer.Strict
+import Data.List qualified as L
+import Data.String (IsString (..))
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Time (ZonedTime)
 import Data.Void (Void)
 import Graphics.Vty.Input (Key (KBS, KEsc), Modifier)
@@ -76,20 +79,28 @@ instance Show AppRootMsg where
   show SwapTabPrev = "SwapTabPrev"
   show (AppComponentMsg msg) = "AppComponentMsg (" ++ show msg ++ ")"
 
--- | Global type for Brick "resource names", which are used to detect clicks (and also visibility/scroll, but I'm not using that right now). This can be anything but resource names need to be globally unique.
+-- | Global type for Brick "resource names", which are used to detect clicks (and also
+-- visibility/scroll, but I'm not using that right now). This (1) needs to be globally unique for brick
+-- widgets and (2) needs to follow the AppComponent hierarchy to tell them where to route.
 --
 -- NB tabs, overlays, etc. are _not_ numbered consecutively but the Int is to ensure uniqueness only.
 --
--- Not super clean but I don't think I'll need a lot here. These nest to be unique across different tabs / overlays.
--- SOMEDAY maybe our resource names should just be lists of strings, aka. Brick attr names.
-data AppResourceName
-  = MainListFor AppResourceName
-  | OverlayFor Int AppResourceName
-  | Tab Int
+-- The list is in hierarchical order with toplevel hierarchy *first*.
+--
+-- SOMEDAY this might be a bit slow for applications that need a lot of throughput, like scrolling. Not clear to me.
+newtype AppResourceName = AppResourceName {unAppResourceName :: [PrimitiveAppResourceName]}
+  deriving (Eq, Ord, Show, Semigroup)
+
+data PrimitiveAppResourceName
+  = NamedAppResource Text Int
   | TabTitleFor AppResourceName
-  | EditorFor AppResourceName
-  | TreeFor AppResourceName
   deriving (Eq, Ord, Show)
+
+instance IsString AppResourceName where
+  fromString s = AppResourceName [NamedAppResource (T.pack s) 0]
+
+isPrefixOf :: AppResourceName -> AppResourceName -> Bool
+(AppResourceName s) `isPrefixOf` (AppResourceName t) = s `L.isPrefixOf` t
 
 -- | App conext passed down from the app (top) level to components that need it.
 data AppContext = AppContext
