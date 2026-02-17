@@ -1177,6 +1177,12 @@ instance AppComponent MainTree where
     (AppEvent Tick) -> return Continue
     (VtyEvent _) -> routeToOverlayOr routeToSelf
     (MouseDown rname _k _mods _loc) -> case rname of
+      -- TODO I'm pretty sure these go the wrong way round! E.g., clicking into the list gives
+      -- `rname == MainListFor (TreeFor (Tab 1))`. Our TreeView has `TreeFor (Tab 1)` and then the
+      -- full rname is the List (`MainListFor`) of _that_.
+      -- In general, our rname structure is not reconcilable with proper routing like here. This problem
+      -- should exist for mouse clicks everywhere. This used to be fine when routing just wasn't a
+      -- thing and rnames just had to be unique but not it's not working anymore.
       OverlayFor _ _ -> tryRouteToOverlay
       TreeFor _ -> routeToTreeView
       _ -> do
