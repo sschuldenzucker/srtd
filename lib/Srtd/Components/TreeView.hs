@@ -437,7 +437,7 @@ moveToEID eid = tvListL %= moveListToEID eid
 moveListToEID :: EID -> TreeViewList -> TreeViewList
 moveListToEID eid = L.listFindBy $ \itm -> lilEID itm == eid
 
-scrollBy :: (MonadBrick m TreeView) => Int -> m ()
+scrollBy :: (AppMonadBrick TreeView m) => Int -> m ()
 scrollBy n = do
   scrolloff <- gets tvScrolloff
   liftEventM $ zoom tvListL $ listScrollMoveBy scrolloff n

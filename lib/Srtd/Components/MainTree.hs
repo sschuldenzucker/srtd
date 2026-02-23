@@ -59,7 +59,7 @@ import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
 import Srtd.ModelServer
-import Srtd.MonadBrick (MonadBrick (..), nestAppEventM)
+import Srtd.MonadBrick (MonadBrick (..))
 import Srtd.ProactiveBandana
 import Srtd.Util
 import System.Hclip (setClipboard)

@@ -46,6 +46,7 @@ import Srtd.Keymap (
 import Srtd.Log (Priority (..), glogL)
 import Srtd.Model (FilterContext (..), IdNotFoundError)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
+import Srtd.MonadBrick (MonadBrick (..))
 import Srtd.Util (captureWriterT)
 
 -- | Messages that reach the root of the app. They do not recur into individual components.
@@ -147,7 +148,17 @@ forgetAppEventReturnData = \case
 acZonedTimeL :: Lens' AppContext ZonedTime
 acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 
+-- | Shorthand for MonadBrick constraints in the app
+type AppMonadBrick s m = MonadBrick AppResourceName s m
+
 type AppEventM s a = WriterT [Event s] (EventM AppResourceName s) a
+
+-- | Run an AppEventM with explicitly provided state, returning explicit events. Like `nestEventM`
+-- but for AppEventM.
+--
+-- Unrelated helper,,, Shouldn't really go here.
+nestAppEventM :: (AppComponent s) => s -> AppEventM s a -> AppEventM t (s, (a, [Event s]))
+nestAppEventM s act = liftEventM $ nestEventM s (runWriterT act)
 
 -- | A class of components. All Brick components (hopefully,,,) satisfy this.
 --
