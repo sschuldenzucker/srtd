@@ -1,4 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
+-- For the MonadWriter instance of ComponentEventM. It's fine!!
+{-# LANGUAGE UndecidableInstances #-}
 
 {-| A model defining a unified component interface. I have no idea why Brick doesn't include this.
 
@@ -21,6 +23,9 @@ import Brick.BChan (BChan)
 import Brick.Keybindings (Binding)
 import Control.Arrow (second)
 import Control.Monad.Except
+import Control.Monad.Reader (MonadReader (..), ReaderT (runReaderT))
+import Control.Monad.State (MonadState)
+import Control.Monad.Trans.Reader (ReaderT)
 import Control.Monad.Writer.Strict
 import Data.List qualified as L
 import Data.String (IsString (..))
@@ -155,10 +160,58 @@ type AppEventM s a = WriterT [Event s] (EventM AppResourceName s) a
 
 -- | Run an AppEventM with explicitly provided state, returning explicit events. Like `nestEventM`
 -- but for AppEventM.
---
--- Unrelated helper,,, Shouldn't really go here.
 nestAppEventM :: (AppComponent s) => s -> AppEventM s a -> AppEventM t (s, (a, [Event s]))
 nestAppEventM s act = liftEventM $ nestEventM s (runWriterT act)
+
+-- | Monad for event handlers
+--
+-- This is Brick's 'EventM' + ability to write events + ability to read AppContext
+--
+-- TODO let this supersede AppEventM and remove ?actx
+newtype ComponentEventM s a = ComponentEventM
+  {runComponentEventM :: ReaderT AppContext (WriterT [Event s] (EventM AppResourceName s)) a}
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadState s
+    , -- , MonadWriter [Event s]
+      MonadReader AppContext
+    , MonadBrick AppResourceName s
+    )
+
+-- | Type of component event handlers
+type ComponentEventM' s = ComponentEventM s (AppEventReturn (Return s))
+
+-- Hack around limitations: type synonyms not allowed in instance heads (to ensure consistency). Fine here.
+-- Requires UndecidableInstances.
+-- Needs a manual instance.
+instance (e ~ [Event s]) => MonadWriter e (ComponentEventM s) where
+  tell x = ComponentEventM $ tell x
+  listen = ComponentEventM . listen . runComponentEventM
+  pass = ComponentEventM . pass . runComponentEventM
+
+-- | Run a 'ComponentEventM' with explicitly provided state, returning explicit events. Like
+-- `nestEventM` but for ComponentEventM.
+nestComponentEventM ::
+  s -> ComponentEventM s a -> ComponentEventM t (s, (a, [Event s]))
+nestComponentEventM s act = do
+  actx <- ask
+  let act' = runWriterT $ runReaderT (runComponentEventM act) actx
+  liftEventM $ nestEventM s $ act'
+
+-- | Given a lens and an event handler, run an action on a child component and handle events.
+--
+-- Use this instead of `zoom`.
+callIntoComponentEventM ::
+  Lens' t s -> (Event s -> ComponentEventM t ()) -> ComponentEventM s a -> ComponentEventM t a
+callIntoComponentEventM l h act = do
+  s <- use l
+  -- SOMEDAY should we use zoom here with an unwrapper? (or just declare the instance)
+  (s', (ret, events)) <- nestComponentEventM s act
+  l .= s'
+  mapM_ h events
+  return ret
 
 -- | A class of components. All Brick components (hopefully,,,) satisfy this.
 --
