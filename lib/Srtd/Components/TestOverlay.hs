@@ -15,26 +15,26 @@ import Srtd.Component
 import Srtd.Keymap
 import Srtd.Log
 
-data TestOverlay = TestOverlay {toKMZ :: KeymapZipper (AppEventAction TestOverlay)}
+data TestOverlay = TestOverlay {toKMZ :: KeymapZipper (ComponentEventM' TestOverlay)}
 
 suffixLenses ''TestOverlay
 
 -- The following is more of a demonstration. Of course overkill here.
 
-keymap :: Keymap (AppEventAction TestOverlay)
+keymap :: Keymap (ComponentEventM' TestOverlay)
 keymap =
   kmMake
     "Test Overlay"
-    [ kmLeafA (bind 'T') "Close" $ return (Confirmed ())
+    [ kmLeaf (bind 'T') "Close" $ return (Confirmed ())
     , kmSub (bind 'a') stickySubmap
     ]
 
-stickySubmap :: Keymap (AppEventAction TestOverlay)
+stickySubmap :: Keymap (ComponentEventM' TestOverlay)
 stickySubmap =
   kmSetSticky $
     kmMake
       "Sticky Submap"
-      [ kmLeafA_ (bind 'a') "Noop" $ do
+      [ kmLeaf_ (bind 'a') "Noop" $ do
           liftIO $ glogL INFO "TestOverlay Noop triggered"
       ]
 

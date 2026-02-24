@@ -14,13 +14,12 @@ import Brick
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void)
-import Graphics.Vty (Event (..), Key (..))
+import Graphics.Vty (Key (..))
 import Lens.Micro.Platform
 import Srtd.BrickHelpers (pattern SomeNonVtyKeyBrickEvent, pattern VtyKeyEvent)
 import Srtd.Component
 import Srtd.Components.EditorProactive
 import Srtd.Keymap (KeyDesc (..))
-import Srtd.Util (captureWriterT)
 
 data NewNodeOverlay = NewNodeOverlay
   { _nnEditor :: EditorProactive
@@ -35,11 +34,9 @@ newNodeOverlay initName title rname =
  where
   editorRName = rname <> "editor"
 
-callIntoEditor :: AppEventM EditorProactive a -> AppEventM NewNodeOverlay a
-callIntoEditor act = do
-  -- events are ignored b/c we don't need them for now.
-  (ret, _events) <- captureWriterT $ zoom nnEditor act
-  return ret
+callIntoEditor :: ComponentEventM EditorProactive a -> ComponentEventM NewNodeOverlay a
+-- events are ignored b/c we don't need them for now.
+callIntoEditor = callIntoComponentEventM nnEditor $ const (return ())
 
 instance AppComponent NewNodeOverlay where
   type Return NewNodeOverlay = String

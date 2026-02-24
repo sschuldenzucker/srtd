@@ -82,7 +82,7 @@ data MaybeEmpty a = Valid a | Empty | Invalid
 
 data CompilingTextEntry c = CompilingTextEntry
   { sEditor :: EditorProactive
-  , sValue :: Cell Text (AppEventM (CompilingTextEntry c) ()) (MaybeEmpty (CompiledWithSource c))
+  , sValue :: Cell Text (ComponentEventM (CompilingTextEntry c) ()) (MaybeEmpty (CompiledWithSource c))
   , sInitialText :: Text
   }
 
@@ -151,33 +151,33 @@ compilingRegexEntry = compilingTextEntry (eitherToMaybe . TDFA.compile myCompOpt
   myCompOpt = defaultCompOpt {caseSensitive = False}
   myExecOpt = defaultExecOpt {captureGroups = False}
 
-keymap :: Keymap (AppEventAction (CompilingTextEntry c))
+keymap :: Keymap (ComponentEventM' (CompilingTextEntry c))
 keymap =
   kmMake
     "Search"
-    [ kmLeafA (binding KEsc []) "Cancel" $ return Canceled
+    [ kmLeaf (binding KEsc []) "Cancel" $ return Canceled
     , -- SOMEDAY more descriptive names for this: it's confirm-and-go and confirm-and-go-to-sibling.
-      kmLeafA (binding KEnter []) "Confirm" $ do
+      kmLeaf (binding KEnter []) "Confirm" $ do
         mv <- gets valueMaybe
         case mv of
           -- NB the user can't confirm an invalid regex.
           Nothing -> return $ Continue
           Just v -> return $ Confirmed (v, RegularConfirm)
-    , kmLeafA (binding KEnter [MMeta]) "Confirm (alt)" $ do
+    , kmLeaf (binding KEnter [MMeta]) "Confirm (alt)" $ do
         mv <- gets valueMaybe
         case mv of
           -- NB the user can't confirm an invalid regex.
           Nothing -> return $ Continue
           Just v -> return $ Confirmed (v, AltConfirm)
-    , ( kmLeafA (ctrl 'd') "Clear" $ do
+    , ( kmLeaf (ctrl 'd') "Clear" $ do
           callIntoEditor $ applyEdit TZ.clearZipper
           return Continue
       )
-    , ( kmLeafA (ctrl 'l') "Clear" $ do
+    , ( kmLeaf (ctrl 'l') "Clear" $ do
           callIntoEditor $ applyEdit TZ.clearZipper
           return Continue
       )
-    , kmLeafA (bind '\t') "Complete" $ do
+    , kmLeaf (bind '\t') "Complete" $ do
         s <- gets (getEditorText . sEditor)
         -- SOMEDAY proper completion, also have a visual hint.
         init_ <- gets sInitialText
@@ -186,12 +186,9 @@ keymap =
         return Continue
     ]
 
-callIntoEditor :: AppEventM EditorProactive a -> AppEventM (CompilingTextEntry c) a
-callIntoEditor act = do
-  (ret, events) <- captureWriterT $ zoom sEditorL act
-  forM_ events $ \case
-    TextChanged t -> runUpdateLens sValueL t
-  return ret
+callIntoEditor :: ComponentEventM EditorProactive a -> ComponentEventM (CompilingTextEntry c) a
+callIntoEditor = callIntoComponentEventM sEditorL $ \case
+  TextChanged t -> runUpdateLens sValueL t
 
 postRenderFor :: Maybe a -> Widget n -> Widget n
 postRenderFor mv =

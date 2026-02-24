@@ -21,6 +21,7 @@ import Brick
 import Brick.Keybindings
 import Brick.Widgets.Border
 import Control.Monad (forM_)
+import Control.Monad.Reader (ask)
 import Control.Monad.Trans (lift, liftIO)
 import Data.Text (Text)
 import Data.Void (Void)
@@ -43,7 +44,7 @@ import Srtd.Log
 import Srtd.Model
 import Srtd.ProactiveBandana
 import Srtd.Query (SingleItemQuery (..))
-import Srtd.Util (captureWriterT, replaceExceptT)
+import Srtd.Util (replaceExceptT, safeConst)
 import Text.Regex.TDFA.Common (Regex)
 
 -- * Types
@@ -70,9 +71,9 @@ data NodeSelectionOrQueryEntry = NodeSelectionOrQueryEntry
 class VariantBehavior v where
   type ConfirmType v
 
-  onTryConfirm :: AppEventAction (QuickFilter v)
+  onTryConfirm :: ComponentEventM' (QuickFilter v)
 
-  extraKeys :: [(Binding, KeymapItem (AppEventAction (QuickFilter v)))]
+  extraKeys :: [(Binding, KeymapItem (ComponentEventM' (QuickFilter v)))]
   extraKeys = []
 
 -- SOMEDAY instead of Regex use SingleItemQuery (or Query)
@@ -82,10 +83,10 @@ data QuickFilter v = QuickFilter
   , sValue ::
       Cell
         (MaybeEmpty (CompiledWithSource Regex), AppContext)
-        (AppEventMOrNotFound (QuickFilter v) ())
+        (ComponentEventMOrNotFound (QuickFilter v) ())
         (MaybeEmpty (CompiledWithSource Regex))
   , sBaseFilter :: Filter
-  , sKMZ :: KeymapZipper (AppEventAction (QuickFilter v))
+  , sKMZ :: KeymapZipper (ComponentEventM' (QuickFilter v))
   , sResourceName :: AppResourceName
   }
 
@@ -117,28 +118,26 @@ quickFilterFromTreeView _v tv s name rname =
 
 -- * Behavior
 
-mkKeymap :: (VariantBehavior v) => Text -> Keymap (AppEventAction (QuickFilter v))
+mkKeymap :: (VariantBehavior v) => Text -> Keymap (ComponentEventM' (QuickFilter v))
 mkKeymap name =
   kmMake name $
-    [ kmLeafA (binding KEsc []) "Cancel" $ return Canceled
+    [ kmLeaf (binding KEsc []) "Cancel" $ return Canceled
     , kmLeaf (binding KEnter []) "Confirm" $ onTryConfirm
     ]
       ++ extraKeys
 
-callIntoTreeView :: (?actx :: AppContext) => AppEventM TV.TreeView a -> AppEventM (QuickFilter v) a
-callIntoTreeView act = do
-  (ret, events) <- captureWriterT $ zoom sTreeViewL act
-  forM_ events $ \case
-    () -> return ()
-  return ret
+callIntoTreeView :: ComponentEventM TV.TreeView a -> ComponentEventM (QuickFilter v) a
+callIntoTreeView = callIntoComponentEventM sTreeViewL $ safeConst (return ())
 
 callIntoTextEntry ::
-  (?actx :: AppContext) =>
-  AppEventM (CompilingTextEntry Regex) a -> AppEventMOrNotFound (QuickFilter v) a
+  ComponentEventM (CompilingTextEntry Regex) a -> ComponentEventMOrNotFound (QuickFilter v) a
 callIntoTextEntry act = do
-  (ret, events) <- lift $ captureWriterT $ zoom sTextEntryL act
+  -- SOMEDAY make a helper function for this.
+  (ret, events) <- lift $ zoomComponentEventM sTextEntryL act
   forM_ events $ \case
-    CTE.ValueChanged mev -> runUpdateLens sValueL (mev, ?actx)
+    CTE.ValueChanged mev -> do
+      actx <- ask
+      runUpdateLens sValueL (mev, actx)
   return ret
 
 instance (VariantBehavior v) => AppComponent (QuickFilter v) where
@@ -208,7 +207,7 @@ instance (VariantBehavior v) => AppComponent (QuickFilter v) where
 -- SOMEDAY this should be fixed.
 maybePushQueryIntoTreeView ::
   (?actx :: AppContext) =>
-  MaybeEmpty (CompiledWithSource Regex) -> AppEventMOrNotFound (QuickFilter v) ()
+  MaybeEmpty (CompiledWithSource Regex) -> ComponentEventMOrNotFound (QuickFilter v) ()
 maybePushQueryIntoTreeView mev = do
   baseFilter <- gets sBaseFilter
   case mev of
@@ -230,7 +229,7 @@ maybePushQueryIntoTreeView mev = do
 instance VariantBehavior QueryEntry where
   type ConfirmType QueryEntry = CompiledWithSource Regex
 
-  onTryConfirm = AppEventAction $ do
+  onTryConfirm = do
     -- NB we could also use cValue . sValue (i.e., our own cell) but doesn't matter.
     mv <- gets (CTE.valueMaybe . sTextEntry)
     mcur <- gets (TV.tvCur . sTreeView)
@@ -241,7 +240,7 @@ instance VariantBehavior QueryEntry where
 instance VariantBehavior NodeSelection where
   type ConfirmType NodeSelection = (Maybe (CompiledWithSource Regex), EID)
 
-  onTryConfirm = AppEventAction $ do
+  onTryConfirm = do
     mv <- gets (CTE.valueMaybe . sTextEntry)
     mcur <- gets (TV.tvCur . sTreeView)
     -- Filters with no results cannot be confirmed.
@@ -256,7 +255,7 @@ data NodeOrQueryConfirmed q
 instance VariantBehavior NodeSelectionOrQueryEntry where
   type ConfirmType NodeSelectionOrQueryEntry = NodeOrQueryConfirmed Regex
 
-  onTryConfirm = AppEventAction $ do
+  onTryConfirm = do
     mv <- gets (CTE.valueMaybe . sTextEntry)
     mcur <- gets (TV.tvCur . sTreeView)
     -- We don't let the user confirm anything if there are no results. (UX likely wants this)
@@ -266,7 +265,7 @@ instance VariantBehavior NodeSelectionOrQueryEntry where
 
   -- TODO I think we should save the most recently valid filter here.
   extraKeys =
-    [ kmLeafA (binding KEnter [MMeta]) "Confirm (filter)" $ do
+    [ kmLeaf (binding KEnter [MMeta]) "Confirm (filter)" $ do
         mv <- gets (CTE.valueMaybe . sTextEntry)
         mcur <- gets (TV.tvCur . sTreeView)
         case (mv, mcur) of

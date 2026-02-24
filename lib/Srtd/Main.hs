@@ -13,7 +13,6 @@ import Control.Arrow (first, second)
 import Control.Concurrent.Async qualified as Async
 import Control.Monad (when)
 import Control.Monad.State (liftIO)
-import Control.Monad.Writer.Strict (WriterT (..))
 import Data.CircularList qualified as CList
 import Data.List (intersperse, sortBy)
 import Data.List.Zipper qualified as LZ
@@ -228,7 +227,7 @@ myHandleEvent ev = wrappingActions $
   routeToCurrentTab ev' = do
     -- NB we ignore events from child components here.
     -- SOMEDAY information could travel up to us (but not with SomeAppComponent, that one eats events)
-    (res, events) <- zoom activeTabL $ runWriterT $ handleEvent ev'
+    (res, events) <- zoom activeTabL $ runComponentEventM' ?actx $ handleEvent ev'
     -- Attests that there are no (non-bottom) events
     mapM_ absurd events
     case res of
@@ -257,7 +256,7 @@ eachTabHandleEvent ev = do
   mtabs' <- lzForM tabs $ \(rname, tabCmp) -> do
     -- NB we ignore events from child components here.
     -- SOMEDAY information could travel up to us (but not with SomeAppComponent, that one eats events)
-    (tabCmp', (res, events)) <- nestEventM tabCmp $ runWriterT $ handleEvent ev
+    (tabCmp', (res, events)) <- nestEventM tabCmp $ runComponentEventM' ?actx $ handleEvent ev
     -- Attests that there are no (non-bottom) events
     mapM_ absurd events
     return $ case res of
@@ -284,7 +283,7 @@ setDefaultTab = do
   model <- liftIO $ getModel (acModelServer actx)
   let ?actx = actx
   rname <- getFreshTabRName
-  let emt = MainTree.make Vault model rname
+  let emt = MainTree.make ?actx Vault model rname
   case emt of
     Left _err -> do
       liftIO $ glogL ERROR "'Vault' node not found. Something is horribly wrong. Exiting."

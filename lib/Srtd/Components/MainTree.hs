@@ -16,6 +16,7 @@ import Brick.Widgets.Table
 import Control.Monad (forM_, when)
 import Control.Monad.Except
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
@@ -84,11 +85,9 @@ import Text.Wrap (WrapSettings (..), defaultWrapSettings)
 -- SOMEDAY move to Component, feels general.
 data Overlay t = forall s. (AppComponent s) => Overlay
   { olState :: s
-  , olOnConfirm ::
-      (?actx :: AppContext) =>
-      Return s -> AppEventM t (AppEventReturn ())
-  , olOnCanceled :: (?actx :: AppContext) => AppEventM t (AppEventReturn ())
-  , olOnEvent :: (?actx :: AppContext) => Event s -> AppEventM t ()
+  , olOnConfirm :: Return s -> ComponentEventM t (AppEventReturn ())
+  , olOnCanceled :: ComponentEventM t (AppEventReturn ())
+  , olOnEvent :: Event s -> ComponentEventM t ()
   }
 
 -- | `olOnEvent` handler that ignores events
@@ -99,11 +98,11 @@ ignoreEvent _ = return ()
 
 data MainTree = MainTree
   { mtFilters ::
-      Cell (CList.CList Filter, AppContext) (AppEventMOrNotFound MainTree ()) (CList.CList Filter)
+      Cell (CList.CList Filter, AppContext) (ComponentEventMOrNotFound MainTree ()) (CList.CList Filter)
   , mtTreeView :: TV.TreeView
   , mtResourceName :: AppResourceName
   -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
-  , mtKeymap :: KeymapZipper (AppEventAction MainTree)
+  , mtKeymap :: KeymapZipper (ComponentEventM' MainTree)
   , mtShowDetails :: Bool
   -- ^ Whether or not to show the details view. This is not implemented as a full overlay
   -- component for simplicity.
@@ -112,7 +111,7 @@ data MainTree = MainTree
   --
   -- SOMEDAY do I want to make a wrapper for "things that have overlays" that *consistenly* handles everything?
   , mtHideHierarchyFilter ::
-      Cell (HideHierarchyFilter, AppContext) (AppEventMOrNotFound MainTree ()) HideHierarchyFilter
+      Cell (HideHierarchyFilter, AppContext) (ComponentEventMOrNotFound MainTree ()) HideHierarchyFilter
   }
 
 suffixLenses ''MainTree
@@ -178,22 +177,18 @@ withRoot go = go =<< gets mtRoot
 
 -- ** Internal calls
 
-callIntoTreeView :: (?actx :: AppContext) => AppEventM TV.TreeView a -> AppEventM MainTree a
-callIntoTreeView act = do
-  (ret, events) <- captureWriterT $ zoom mtTreeViewL act
-  forM_ events $ \case
-    () -> return ()
-  return ret
+callIntoTreeView :: ComponentEventM TV.TreeView a -> ComponentEventM MainTree a
+callIntoTreeView = callIntoComponentEventM mtTreeViewL $ safeConst (return ())
 
 -- * API
 
 -- | Create new 'MainTree'
-make :: (?actx :: AppContext) => EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
-make root = makeWithFilters root (CList.fromList defaultFilters) emptyHideHierarchyFilter True
+make :: AppContext -> EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
+make actx root = makeWithFilters actx root (CList.fromList defaultFilters) emptyHideHierarchyFilter True
 
 -- | filters must not be empty.
 makeWithFilters ::
-  (?actx :: AppContext) =>
+  AppContext ->
   EID ->
   CList.CList Filter ->
   HideHierarchyFilter ->
@@ -201,9 +196,10 @@ makeWithFilters ::
   Model ->
   AppResourceName ->
   Either IdNotFoundError MainTree
-makeWithFilters root filters hhf doFollowItem model rname = do
+makeWithFilters actx root filters hhf doFollowItem model rname = do
   tv <-
     TV.makeFromModel
+      actx
       root
       (chainFilters (hideHierarchyFilter hhf) (fromJust $ CList.focus filters))
       doFollowItem
@@ -212,7 +208,8 @@ makeWithFilters root filters hhf doFollowItem model rname = do
       (rname <> "treeview")
   return $
     MainTree
-      { mtFilters = simplePreMappingCell filters fst $ \(_fis', actx) ->
+      { -- TODO get rid of these funky cells; not needed anymore
+        mtFilters = simplePreMappingCell filters fst $ \(_fis', actx) ->
           -- See TreeView tvFilter for why we're doing this.
           let ?actx = actx
            in resetTreeViewFilter
@@ -235,21 +232,22 @@ setResourceName rname = (mtResourceNameL .~ rname) . (mtTreeViewL %~ TV.setResou
 
 -- * Keymaps
 
-rootKeymap :: Keymap (AppEventAction MainTree)
+rootKeymap :: Keymap (ComponentEventM' MainTree)
 rootKeymap =
   kmMake
     "Tree View"
-    ( [ kmLeafA_ (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur insAfter
-      , kmLeafA_ (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore
-      , kmLeafA_ (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild
-      , kmLeafA_ (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild
-      , ( kmLeafA_ (bind 'e') "Edit name" $ do
+    ( [ kmLeaf_ (bind 'n') "New as next sibling" $ pushInsertNewItemRelToCur insAfter
+      , kmLeaf_ (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore
+      , kmLeaf_ (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild
+      , kmLeaf_ (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild
+      , ( kmLeaf_ (bind 'e') "Edit name" $ do
             state <- get
+            actx <- ask
             case mtCurWithAttr state of
               Just (cur, ((curAttr, _), _)) -> do
                 let oldName = name curAttr
                 let cb name' = do
-                      let f = setLastModified (zonedTimeToUTC . acZonedTime $ ?actx) . (nameL .~ name')
+                      let f = setLastModified (zonedTimeToUTC . acZonedTime $ actx) . (nameL .~ name')
                       modifyModelAsync $ modifyAttrByEID cur f
                       callIntoTreeView $ TV.moveToEID cur
                       return Continue
@@ -257,50 +255,55 @@ rootKeymap =
               Nothing -> return ()
         )
       , kmSub (ctrl 't') debugKeymap
-      , ( kmLeafA_ (bind 'T') "New tab" $ do
+      , ( kmLeaf_ (bind 'T') "New tab" $ do
             state <- get
+            actx <- ask
             liftIO $
-              writeBChan (acAppChan ?actx) $
+              writeBChan (acAppChan actx) $
                 PushTab (\rname -> SomeAppComponent $ setResourceName rname state)
         )
-      , (kmLeafA (bind 'q') "Close tab / quit" $ return $ Confirmed ())
-      , ( kmLeafA_ (bind ']') "Next tab" $
+      , (kmLeaf (bind 'q') "Close tab / quit" $ return $ Confirmed ())
+      , ( kmLeaf_ (bind ']') "Next tab" $ do
+            actx <- ask
             liftIO $
-              writeBChan (acAppChan ?actx) $
+              writeBChan (acAppChan actx) $
                 NextTab
         )
-      , ( kmLeafA_ (bind '[') "Prev tab" $
+      , ( kmLeaf_ (bind '[') "Prev tab" $ do
+            actx <- ask
             liftIO $
-              writeBChan (acAppChan ?actx) $
+              writeBChan (acAppChan actx) $
                 PrevTab
         )
-      , ( kmLeafA_ (bind '}') "Swap tab next" $
+      , ( kmLeaf_ (bind '}') "Swap tab next" $ do
+            actx <- ask
             liftIO $
-              writeBChan (acAppChan ?actx) $
+              writeBChan (acAppChan actx) $
                 SwapTabNext
         )
-      , ( kmLeafA_ (bind '{') "Swap tab prev" $
+      , ( kmLeaf_ (bind '{') "Swap tab prev" $ do
+            actx <- ask
             liftIO $
-              writeBChan (acAppChan ?actx) $
+              writeBChan (acAppChan actx) $
                 SwapTabPrev
         )
-      , ( kmLeafA_ (binding (KChar 'j') [MMeta]) "Move subtree down same level" $
+      , ( kmLeaf_ (binding (KChar 'j') [MMeta]) "Move subtree down same level" $
             moveCurRelative goNextSibling insAfter
         )
-      , ( kmLeafA_ (binding (KChar 'k') [MMeta]) "Move subtree up same level" $
+      , ( kmLeaf_ (binding (KChar 'k') [MMeta]) "Move subtree up same level" $
             moveCurRelative goPrevSibling insBefore
         )
-      , (kmLeafA_ (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter)
-      , ( kmLeafA_ (bind '>') "Move subtree last child of previous" $
+      , (kmLeaf_ (bind '<') "Move subtree after parent" $ moveCurRelative goParent insAfter)
+      , ( kmLeaf_ (bind '>') "Move subtree last child of previous" $
             moveCurRelative goPrevSibling insLastChild
         )
       , -- (kmSub (bind 'm') moveSingleModeKeymap),
         (kmSub (bind 'M') moveSubtreeModeKeymap)
       , (kmSub (bind 'D') deleteKeymap)
-      , ( kmLeafA (binding KEnter []) "Hoist" $ withCurOrElse (return Continue) $ \cur -> do
+      , ( kmLeaf (binding KEnter []) "Hoist" $ withCurOrElse (return Continue) $ \cur -> do
             notFoundToAER_ $ moveRootToEID cur
         )
-      , ( kmLeafA (binding KBS []) "De-hoist" $ do
+      , ( kmLeaf (binding KBS []) "De-hoist" $ do
             mt <- get
             case breadcrumbs . mtSubtree $ mt of
               [] -> return Continue
@@ -309,22 +312,22 @@ rootKeymap =
                 replaceExceptT callIntoTreeView $ TV.moveToEID (mtRoot mt)
         )
       , (kmSub (bind ';') sortKeymap)
-      , (kmLeafA_ (bind 'h') "Go to parent" (callIntoTreeView $ TV.moveGoWalkerFromCur goParent))
-      , (kmLeafA_ (bind 'J') "Go to next sibling" (callIntoTreeView $ TV.moveGoWalkerFromCur goNextSibling))
-      , (kmLeafA_ (bind 'K') "Go to prev sibling" (callIntoTreeView $ TV.moveGoWalkerFromCur goPrevSibling))
-      , (kmLeafA_ (bind 'H') "Go to next uncle" (callIntoTreeView $ TV.moveGoWalkerFromCur goNextAncestor))
+      , (kmLeaf_ (bind 'h') "Go to parent" (callIntoTreeView $ TV.moveGoWalkerFromCur goParent))
+      , (kmLeaf_ (bind 'J') "Go to next sibling" (callIntoTreeView $ TV.moveGoWalkerFromCur goNextSibling))
+      , (kmLeaf_ (bind 'K') "Go to prev sibling" (callIntoTreeView $ TV.moveGoWalkerFromCur goPrevSibling))
+      , (kmLeaf_ (bind 'H') "Go to next uncle" (callIntoTreeView $ TV.moveGoWalkerFromCur goNextAncestor))
       , (kmSub (bind 't') setStatusKeymap)
       , (kmSub (bind 'o') openExternallyKeymap)
-      , (kmLeafA (bind ',') "Prev filter" $ notFoundToAER_ $ modifyFilters CList.rotL)
-      , (kmLeafA (bind '.') "Next filter" $ notFoundToAER_ $ modifyFilters CList.rotR)
+      , (kmLeaf (bind ',') "Prev filter" $ notFoundToAER_ $ modifyFilters CList.rotL)
+      , (kmLeaf (bind '.') "Next filter" $ notFoundToAER_ $ modifyFilters CList.rotR)
       , (kmSub (bind 'd') editDateKeymap)
-      , (kmLeafA_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
+      , (kmLeaf_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
       , (kmSub (bind 'g') goKeymap)
       , (kmSub (bind 'f') searchKeymap)
       , -- SOMEDAY bind '/' to directly go to search. A bit of duplication b/c ESC should *not* go to
         -- the submenu in this case.
         (kmSub (bind 'v') viewKeymap)
-      , ( kmLeafA
+      , ( kmLeaf
             (bind '-')
             "Un/collapse"
             ( withCurOrElse (return Continue) $ \cur ->
@@ -332,7 +335,7 @@ rootKeymap =
                   modifyHideHierarchyFilter (hhfToggle cur)
             )
         )
-      , ( kmLeafA
+      , ( kmLeaf
             (bind '0')
             "Uncollapse all"
             ( notFoundToAER_ $
@@ -340,8 +343,8 @@ rootKeymap =
             )
         )
       , kmSub (bind ' ') spaceKeymap
-      , kmLeafA_ (bind 'j') "Move down" (callIntoTreeView $ TV.moveBy 1)
-      , kmLeafA_ (bind 'k') "Move up" (callIntoTreeView $ TV.moveBy (-1))
+      , kmLeaf_ (bind 'j') "Move down" (callIntoTreeView $ TV.moveBy 1)
+      , kmLeaf_ (bind 'k') "Move up" (callIntoTreeView $ TV.moveBy (-1))
       , kmSub (bind 'z') viewportKeymap
       ]
     )
@@ -350,7 +353,7 @@ rootKeymap =
 -- TODO unclean that we have a static keymap but the list of filters is dynamic from the perspective of MainTree.
 -- I don't think filters need to be dynamic.
 -- Maybe the layout of the filters needs reworking. Maybe the filter structure shouldn't store the name.
-viewKeymap :: Keymap (AppEventAction MainTree)
+viewKeymap :: Keymap (ComponentEventM' MainTree)
 viewKeymap =
   kmMake
     "Filter"
@@ -367,62 +370,63 @@ viewKeymap =
         , ('s', "stalled projects")
         , ('p', "projects by urgency")
         ]
-        ++ [ kmLeafA_ (ctrl 'f') "Toggle follow item" (mtDoFollowItemL %= not)
+        ++ [ kmLeaf_ (ctrl 'f') "Toggle follow item" (mtDoFollowItemL %= not)
            ]
     )
  where
-  mkMapping (k :: Char, s :: String) = kmLeafA (bind k) (T.pack s) $ notFoundToAER_ (selectFilterByName s)
+  mkMapping (k :: Char, s :: String) = kmLeaf (bind k) (T.pack s) $ notFoundToAER_ (selectFilterByName s)
 
-collapseLevelKeymap :: Keymap (AppEventAction MainTree)
+collapseLevelKeymap :: Keymap (ComponentEventM' MainTree)
 collapseLevelKeymap =
   kmMake
     "Collapse level"
     (map (hide . collapseLevelKeymapItem) [1 .. 9])
     `kmAddAddlDesc` [("1-9", "Collapse to level")]
  where
-  collapseLevelKeymapItem :: Int -> (Binding, KeymapItem (AppEventAction MainTree))
+  collapseLevelKeymapItem :: Int -> (Binding, KeymapItem (ComponentEventM' MainTree))
   collapseLevelKeymapItem i =
-    kmLeafA
+    kmLeaf
       (bind $ unsafeSingleDigitUIntToChar i)
       ("Collapse level " <> (T.show i))
       ( do
           -- NB there's some double work going on here but I think it's fine.
           normalFilter <- gets (fromJust . CList.focus . cValue . mtFilters)
-          model' <- liftIO $ getModel (acModelServer ?actx)
+          actx <- ask
+          model' <- liftIO $ getModel (acModelServer actx)
           root <- gets mtRoot
           notFoundToAER_ $ do
-            subtree <- liftEither $ translateAppFilterContext $ runFilter normalFilter root model'
+            subtree <- liftEither $ translateAppFilterContext actx $ runFilter normalFilter root model'
             modifyHideHierarchyFilter $ const $ subtreeLevelHHF i subtree
       )
   subtreeLevelHHF i subtree = HideHierarchyFilter (Set.fromList $ forestIdsAtLevel i (stForest subtree))
 
-deleteKeymap :: Keymap (AppEventAction MainTree)
+deleteKeymap :: Keymap (ComponentEventM' MainTree)
 deleteKeymap =
   kmMake
     "Delete"
     -- TOOD some undo would be nice, lol.
-    [ (kmLeafA_ (bind 'D') "Subtree" $ withCur $ \cur -> modifyModelAsync (deleteSubtree cur))
-    , (kmLeafA_ (bind 'd') "Single & splice" $ withCur $ \cur -> modifyModelAsync (deleteSingleSplice cur))
+    [ (kmLeaf_ (bind 'D') "Subtree" $ withCur $ \cur -> modifyModelAsync (deleteSubtree cur))
+    , (kmLeaf_ (bind 'd') "Single & splice" $ withCur $ \cur -> modifyModelAsync (deleteSingleSplice cur))
     ]
 
-setStatusKeymap :: Keymap (AppEventAction MainTree)
+setStatusKeymap :: Keymap (ComponentEventM' MainTree)
 setStatusKeymap =
   kmMake
     "Set status"
-    [ kmLeafA_ (bind ' ') "None" (setStatus None)
-    , kmLeafA_ (bind 'n') "Next" (setStatus $ Next)
-    , kmLeafA_ (bind 'w') "Waiting" (setStatus $ Waiting)
-    , kmLeafA_ (bind 'p') "Project" (setStatus $ Project)
-    , kmLeafA_ (bind 'l') "Later" (setStatus $ Later)
-    , kmLeafA_ (bind 'i') "WIP" (setStatus $ WIP)
-    , kmLeafA_ (binding KEnter []) "Done" (setStatus $ Done)
-    , kmLeafA_ (bind 'x') "Canceled" (setStatus $ Srtd.Attr.Canceled)
-    , kmLeafA_ (bind 's') "Someday" (setStatus $ Someday)
-    , kmLeafA_ (bind 'o') "Open" (setStatus $ Open)
-    , kmLeafA_ (bind 't') "Touch" touchLastStatusModified
+    [ kmLeaf_ (bind ' ') "None" (setStatus None)
+    , kmLeaf_ (bind 'n') "Next" (setStatus $ Next)
+    , kmLeaf_ (bind 'w') "Waiting" (setStatus $ Waiting)
+    , kmLeaf_ (bind 'p') "Project" (setStatus $ Project)
+    , kmLeaf_ (bind 'l') "Later" (setStatus $ Later)
+    , kmLeaf_ (bind 'i') "WIP" (setStatus $ WIP)
+    , kmLeaf_ (binding KEnter []) "Done" (setStatus $ Done)
+    , kmLeaf_ (bind 'x') "Canceled" (setStatus $ Srtd.Attr.Canceled)
+    , kmLeaf_ (bind 's') "Someday" (setStatus $ Someday)
+    , kmLeaf_ (bind 'o') "Open" (setStatus $ Open)
+    , kmLeaf_ (bind 't') "Touch" touchLastStatusModified
     ]
 
-editDateKeymap :: Keymap (AppEventAction MainTree)
+editDateKeymap :: Keymap (ComponentEventM' MainTree)
 editDateKeymap =
   kmMake
     "Edit date"
@@ -434,65 +438,67 @@ editDateKeymap =
           , (bind 'r', "Remind", ALens' $ datesL . remindL)
           ]
       )
-      ++ [ kmLeafA_
+      ++ [ kmLeaf_
              (ctrl 'd')
              "Delete all"
              ( withCur $ \cur -> do
-                 let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (datesL .~ noDates)
+                 actx <- ask
+                 let f = setLastModified (zonedTimeToUTC $ acZonedTime actx) . (datesL .~ noDates)
                  modifyModelAsync (modifyAttrByEID cur f)
              )
          ]
  where
-  mkDateEditShortcut (kb, label, l0) = kmLeafA_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
+  mkDateEditShortcut (kb, label, l0) = kmLeaf_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
     let cb date' = do
-          let f = setLastModified (zonedTimeToUTC $ acZonedTime ?actx) . (runALens' l0 .~ date')
+          actx <- ask
+          let f = setLastModified (zonedTimeToUTC $ acZonedTime actx) . (runALens' l0 .~ date')
           modifyModelAsync $ modifyAttrByEID cur f
           callIntoTreeView $ TV.moveToEID cur
           return Continue
         mkDateEdit = dateSelectOverlay (attr ^. runALens' l0) ("Edit " <> label)
      in pushOverlay mkDateEdit cb (return Continue) ignoreEvent
 
-moveSubtreeModeKeymap :: Keymap (AppEventAction MainTree)
+moveSubtreeModeKeymap :: Keymap (ComponentEventM' MainTree)
 moveSubtreeModeKeymap =
   kmSetSticky $
     kmMake
       "Move subtree mode"
       -- SOMEDAY Can we reduce the number of different options? E.g., ("next based on preorder relative to self", "next based on siblings relative to parent") - Prob think about indicating the *target* relative to sth.
-      [ (kmLeafA_ (bind 'j') "Down" $ moveCurRelativeDynamic dtoNextPreorder)
-      , (kmLeafA_ (bind 'k') "Up" $ moveCurRelativeDynamic dtoPrevPreorder)
-      , (kmLeafA_ (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter)
-      , (kmLeafA_ (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore)
-      , (kmLeafA_ (bind 'h') "Before parent" $ moveCurRelative goParent insBefore)
-      , (kmLeafA_ (bind '<') "After parent" $ moveCurRelative goParent insAfter)
-      , (kmLeafA_ (bind 'L') "Last child of next" $ moveCurRelative goNextSibling insLastChild)
-      , (kmLeafA_ (bind 'l') "First child of next" $ moveCurRelative goNextSibling insFirstChild)
-      , (kmLeafA_ (bind '>') "Last child of previous" $ moveCurRelative goPrevSibling insLastChild)
+      [ (kmLeaf_ (bind 'j') "Down" $ moveCurRelativeDynamic dtoNextPreorder)
+      , (kmLeaf_ (bind 'k') "Up" $ moveCurRelativeDynamic dtoPrevPreorder)
+      , (kmLeaf_ (bind 'J') "Down same level" $ moveCurRelative goNextSibling insAfter)
+      , (kmLeaf_ (bind 'K') "Up same level" $ moveCurRelative goPrevSibling insBefore)
+      , (kmLeaf_ (bind 'h') "Before parent" $ moveCurRelative goParent insBefore)
+      , (kmLeaf_ (bind '<') "After parent" $ moveCurRelative goParent insAfter)
+      , (kmLeaf_ (bind 'L') "Last child of next" $ moveCurRelative goNextSibling insLastChild)
+      , (kmLeaf_ (bind 'l') "First child of next" $ moveCurRelative goNextSibling insFirstChild)
+      , (kmLeaf_ (bind '>') "Last child of previous" $ moveCurRelative goPrevSibling insLastChild)
       -- NB 'H' is not used and that's fine IMHO. I'm not sure why but these bindings were the most intuitive.
       -- SOMEDAY hierarchy-breaking '<' (dedent)
       ]
 
-openExternallyKeymap :: Keymap (AppEventAction MainTree)
+openExternallyKeymap :: Keymap (ComponentEventM' MainTree)
 openExternallyKeymap =
   kmMake
     "Open externally"
-    [ ( kmLeafA_ (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
+    [ ( kmLeaf_ (bind 'l') "First link in name" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
           whenJust (findFirstMatch urlRegex name) $ \url -> liftIO (openURL url)
       )
-    , ( kmLeafA_ (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
+    , ( kmLeaf_ (bind 'y') "Copy to clipboard" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
           liftIO $ setClipboard name
       )
-    , ( kmLeafA_ (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
+    , ( kmLeaf_ (bind 'x') "Copy first hex code" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
           whenJust (findFirstMatch hexNumberRegex name) $ \code -> liftIO (setClipboard code)
       )
-    , ( kmLeafA_ (bind 'n') "Copy first non-negative integer" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
+    , ( kmLeaf_ (bind 'n') "Copy first non-negative integer" $ withCurWithAttr $ \(_eid, ((Attr {name}, _), _)) ->
           whenJust (findFirstMatch decimalNonNegIntegerRegex name) $ \code -> liftIO (setClipboard code)
       )
     ]
 
-sortRootKeymap :: Keymap (AppEventAction MainTree)
+sortRootKeymap :: Keymap (ComponentEventM' MainTree)
 sortRootKeymap = _mkSortKeymap withRoot "Sort root by"
 
-sortKeymap :: Keymap (AppEventAction MainTree)
+sortKeymap :: Keymap (ComponentEventM' MainTree)
 sortKeymap =
   kmAddItems
     (_mkSortKeymap withCur "Sort by")
@@ -500,10 +506,10 @@ sortKeymap =
 
 -- | Either `withCur` or `withRoot`. Used to unify sorting.
 type WithFunc =
-  (EID -> AppEventM MainTree ()) ->
-  (AppEventM MainTree ())
+  (EID -> ComponentEventM MainTree ()) ->
+  (ComponentEventM MainTree ())
 
-_mkSortKeymap :: WithFunc -> Text -> Keymap (AppEventAction MainTree)
+_mkSortKeymap :: WithFunc -> Text -> Keymap (ComponentEventM' MainTree)
 _mkSortKeymap withFunc name =
   kmMake
     name
@@ -513,14 +519,14 @@ _mkSortKeymap withFunc name =
   -- For some reason, I have to explicitly state that 'sorter' has a `?mue` context. Otherwise, it
   -- forgets about it and the code doesn't type check. Have to do this in both places.
   mkItems (sorter :: ((?mue :: ModelUpdateEnv) => a)) =
-    [kmLeafA_ (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
+    [kmLeaf_ (bind 't') "Actionability" $ sortFuncBy sorter compareActionabilityForSort]
   -- For some reason, I have to explicitly specify the type of this function to specify when all
   -- the implicit parameters are supposed to be bound. This is in GHC2024 and probably related to this:
   -- https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0287-simplify-subsumption.rst#motivation
   sortFuncBy ::
     ((?mue :: ModelUpdateEnv) => (Label -> Label -> Ordering) -> EID -> Model -> Model) ->
     (Label -> Label -> Ordering) ->
-    ((?actx :: AppContext) => AppEventM MainTree ())
+    ComponentEventM MainTree ()
   sortFuncBy sorter ord =
     let run root = modifyModelAsync (sorter ord root)
      in withFunc $ \root -> run root
@@ -532,15 +538,15 @@ _mkSortKeymap withFunc name =
     _ -> compare (gGlobalActionability l1) (gGlobalActionability l2)
   isNote l = (status . fst $ l) == None && gGlobalActionability l == None
 
-goKeymap :: Keymap (AppEventAction MainTree)
+goKeymap :: Keymap (ComponentEventM' MainTree)
 goKeymap =
   kmMake
     "Go to"
     -- We need to redefine 'g' b/c we just overwrote the default binding from list.
-    [ kmLeafA_ (bind 'g') "Top" $ callIntoTreeView $ TV.moveToBeginning
+    [ kmLeaf_ (bind 'g') "Top" $ callIntoTreeView $ TV.moveToBeginning
     , -- For completeness
-      kmLeafA_ (bind 'e') "End" $ callIntoTreeView $ TV.moveToEnd
-    , ( kmLeafA (binding KBS []) "De-hoist, keep pos" $ do
+      kmLeaf_ (bind 'e') "End" $ callIntoTreeView $ TV.moveToEnd
+    , ( kmLeaf (binding KBS []) "De-hoist, keep pos" $ do
           -- SOMEDAY some code duplication vs the other de-hoist.
           mt <- get
           case breadcrumbs . mtSubtree $ mt of
@@ -553,7 +559,7 @@ goKeymap =
               let tgt = fromMaybe (mtRoot mt) (mtCur mt)
               replaceExceptT callIntoTreeView $ TV.moveToEID tgt
       )
-    , ( kmLeafA (binding KEnter []) "Hoist 1 step, keep pos" $ withCurWithAttrOrElse (return Continue) $ \(cur, llabel) ->
+    , ( kmLeaf (binding KEnter []) "Hoist 1 step, keep pos" $ withCurWithAttrOrElse (return Continue) $ \(cur, llabel) ->
           case reverse (gLocalBreadcrumbs llabel) of
             [] ->
               -- toplevel element, behave like Hoist (this is prob intended)
@@ -563,13 +569,13 @@ goKeymap =
               replaceExceptT callIntoTreeView $ TV.moveToEID cur
       )
     , -- SOMEDAY I think some of this functionality should be in TreeView
-      kmLeafA_ (bind 't') "Window top" $ withViewport $ \vp -> do
+      kmLeaf_ (bind 't') "Window top" $ withViewport $ \vp -> do
         let tgtIx = (vp ^. vpTop) + Config.scrolloff
         callIntoTreeView $ TV.moveToIndex tgtIx
-    , kmLeafA_ (bind 'b') "Window bottom" $ withViewport $ \vp -> do
+    , kmLeaf_ (bind 'b') "Window bottom" $ withViewport $ \vp -> do
         let tgtIx = vp ^. vpTop + snd (vp ^. vpSize) - Config.scrolloff - 1
         callIntoTreeView $ TV.moveToIndex tgtIx
-    , kmLeafA_ (bind 'c') "Window center" $ withViewport $ \vp -> do
+    , kmLeaf_ (bind 'c') "Window center" $ withViewport $ \vp -> do
         let tgtIx = vp ^. vpTop + snd (vp ^. vpSize) `div` 2
         callIntoTreeView $ TV.moveToIndex tgtIx
     ]
@@ -578,12 +584,12 @@ goKeymap =
     mvp <- liftEventM $ lookupViewport =<< gets (getName . TV.tvList . mtTreeView)
     maybe (return ()) go mvp
 
-searchKeymap :: Keymap (AppEventAction MainTree)
+searchKeymap :: Keymap (ComponentEventM' MainTree)
 searchKeymap =
   kmSetSticky $
     kmMake
       "Find mode"
-      [ ( kmLeafA_ (bind '/') "Search" $ do
+      [ ( kmLeaf_ (bind '/') "Search" $ do
             oldSearchRx <- use mtSearchRxL
             let
               initText = maybe "" cwsSource oldSearchRx
@@ -599,36 +605,37 @@ searchKeymap =
              in
               pushOverlay (compilingRegexEntry initText) onConfirm onCanceled onEvent
         )
-      , (kmLeafA_ (bind 'n') "Next match" $ callIntoTreeView $ TV.searchForRxAction TV.Forward False)
-      , (kmLeafA_ (bind 'N') "Prev match" $ callIntoTreeView $ TV.searchForRxAction TV.Backward False)
-      , (kmLeafA_ (meta 'n') "Next sibling match" $ callIntoTreeView $ TV.searchForRxSiblingAction TV.Forward)
+      , (kmLeaf_ (bind 'n') "Next match" $ callIntoTreeView $ TV.searchForRxAction TV.Forward False)
+      , (kmLeaf_ (bind 'N') "Prev match" $ callIntoTreeView $ TV.searchForRxAction TV.Backward False)
+      , (kmLeaf_ (meta 'n') "Next sibling match" $ callIntoTreeView $ TV.searchForRxSiblingAction TV.Forward)
       , -- SOMEDAY it's pretty fucking annoying that we can't bind alt-shift (b/c it's occupied by aerospace)
-        ( kmLeafA_ (ctrl 'n') "Next sibling match" $
+        ( kmLeaf_ (ctrl 'n') "Next sibling match" $
             callIntoTreeView $
               TV.searchForRxSiblingAction TV.Backward
         )
-      , setSticky False (kmLeafA_ (bind 'l') "Clear" $ mtSearchRxL .= Nothing)
-      , setSticky False (kmLeafA_ (ctrl 'l') "Clear" $ mtSearchRxL .= Nothing)
+      , setSticky False (kmLeaf_ (bind 'l') "Clear" $ mtSearchRxL .= Nothing)
+      , setSticky False (kmLeaf_ (ctrl 'l') "Clear" $ mtSearchRxL .= Nothing)
       -- TODO WIP design interaction pattern for search filter (using singleItemQueryFlatFilter)
       -- I feel the _very_ general filter infra may have reached its limits.
       ]
 
 -- | Catchall keymap for variants and stuff
-spaceKeymap :: Keymap (AppEventAction MainTree)
+spaceKeymap :: Keymap (ComponentEventM' MainTree)
 spaceKeymap =
   kmMake
     "Space"
-    [ kmLeafA
+    [ kmLeaf
         (bind '-')
         "Toggle collapse children"
         ( withCurOrElse (return Continue) $ \cur -> do
             -- See also collapseLevelKeymap
             normalFilter <- gets (fromJust . CList.focus . cValue . mtFilters)
-            model' <- liftIO $ getModel (acModelServer ?actx)
+            actx <- ask
+            model' <- liftIO $ getModel (acModelServer actx)
             root <- gets mtRoot
             notFoundToAER_ $ do
               -- Fetch a new model here. This lets us do this even if this node is collapsed.
-              subtree <- liftEither $ translateAppFilterContext $ runFilter normalFilter root model'
+              subtree <- liftEither $ translateAppFilterContext actx $ runFilter normalFilter root model'
               (Node _ cs) <- liftEither $ maybeToEither IdNotFoundError $ forestFindTree cur (stForest subtree)
               let c_eids = [gEID c | (Node c _) <- cs]
               -- This allows to "undo" the child collapsing by child-collapsing again.
@@ -637,10 +644,11 @@ spaceKeymap =
                      in hhfSetCollapseds c_eids val hhf
               modifyHideHierarchyFilter (hhfSetCollapseds [cur] False . f)
         )
-    , kmLeafA_ (bind 'n') "New as parent" $ withCur $ \cur -> do
+    , kmLeaf_ (bind 'n') "New as parent" $ withCur $ \cur -> do
         -- Copied from 'pushInsertNewItemRelToCur' but that function can't handle "insert as parent".
         let cb name = do
-              let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ ?actx) name
+              actx <- ask
+              let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ actx) name
               uuid <- liftIO nextRandom
               eok <- runExceptT $ modifyModelSync $ insertNewNormalAsParentWithNewId uuid attr cur
               case eok of
@@ -650,7 +658,7 @@ spaceKeymap =
                   callIntoTreeView $ TV.moveToEID eid
                   return Continue
         pushOverlay (newNodeOverlay "" "New Item as Parent") cb (return Continue) absurd
-    , kmLeafA_ (bind 'j') "Quick jump" $ do
+    , kmLeaf_ (bind 'j') "Quick jump" $ do
         tv <- gets mtTreeView
         let cb (mCompiledRegex, eid) = do
               callIntoTreeView $ do
@@ -667,7 +675,7 @@ spaceKeymap =
     ]
 
 -- SOMEDAY these actions should be functions in MainTree
-viewportKeymap :: Keymap (AppEventAction MainTree)
+viewportKeymap :: Keymap (ComponentEventM' MainTree)
 viewportKeymap =
   kmMake
     "Viewport"
@@ -675,22 +683,23 @@ viewportKeymap =
     -- These all respect our scrolloff without doing this manually b/c they're dominated by our
     -- visibility requests in the rendering routine.
     -- SOMEDAY maybe these should be in MainTree
-    [ kmLeafA_ (bind 't') "Align to top" $ withSelIxViewportName $ \seli _vp n -> do
+    [ kmLeaf_ (bind 't') "Align to top" $ withSelIxViewportName $ \seli _vp n -> do
         setTop (viewportScroll n) seli
-    , kmLeafA_ (bind 'b') "Align to bottom" $ withSelIxViewportName $ \seli vp n -> do
+    , kmLeaf_ (bind 'b') "Align to bottom" $ withSelIxViewportName $ \seli vp n -> do
         let vpHeight = snd (vp ^. vpSize)
             topOff = max 0 (seli - vpHeight)
         setTop (viewportScroll n) topOff
-    , kmLeafA_ (bind 'z') "Align to center" $ withSelIxViewportName $ \seli vp n -> do
+    , kmLeaf_ (bind 'z') "Align to center" $ withSelIxViewportName $ \seli vp n -> do
         let vpHeight = snd (vp ^. vpSize)
             topOff = max 0 (seli - vpHeight `div` 2)
         setTop (viewportScroll n) topOff
-    , kmLeafA_ (bind 'j') "Scroll down" $ callIntoTreeView $ TV.scrollBy 3
-    , kmLeafA_ (bind 'k') "Scroll up" $ callIntoTreeView $ TV.scrollBy (-3)
+    , kmLeaf_ (bind 'j') "Scroll down" $ callIntoTreeView $ TV.scrollBy 3
+    , kmLeaf_ (bind 'k') "Scroll up" $ callIntoTreeView $ TV.scrollBy (-3)
     ]
  where
   withSelIxViewportName ::
-    (Int -> Viewport -> AppResourceName -> EventM AppResourceName MainTree ()) -> AppEventM MainTree ()
+    (Int -> Viewport -> AppResourceName -> EventM AppResourceName MainTree ()) ->
+    ComponentEventM MainTree ()
   withSelIxViewportName go = void $ runMaybeT $ do
     l <- gets (TV.tvList . mtTreeView)
     let n = getName l
@@ -698,11 +707,11 @@ viewportKeymap =
     vp <- MaybeT $ liftEventM $ lookupViewport n
     lift $ liftEventM $ go seli vp n
 
-debugKeymap :: Keymap (AppEventAction MainTree)
+debugKeymap :: Keymap (ComponentEventM' MainTree)
 debugKeymap =
   kmMake
     "Debug"
-    [ kmLeafA_ (bind 'n') "Log StatusActionabilityCounts for sel" $ withCurWithAttr $ \cura ->
+    [ kmLeaf_ (bind 'n') "Log StatusActionabilityCounts for sel" $ withCurWithAttr $ \cura ->
         liftIO $ glogL INFO (show $ daNDescendantsByActionability . getDerivedAttr $ cura)
     ]
 
@@ -715,11 +724,11 @@ pushOverlay ::
   -- | Component creator
   (AppResourceName -> s) ->
   -- | onConfirm
-  ((?actx :: AppContext) => Return s -> AppEventM MainTree (AppEventReturn ())) ->
+  (Return s -> ComponentEventM MainTree (AppEventReturn ())) ->
   -- | onCanceled
-  ((?actx :: AppContext) => AppEventM MainTree (AppEventReturn ())) ->
+  (ComponentEventM MainTree (AppEventReturn ())) ->
   -- | onEvent
-  ((?actx :: AppContext) => Event s -> AppEventM MainTree ()) ->
+  (Event s -> ComponentEventM MainTree ()) ->
   m ()
 pushOverlay mk onConfirm onCanceled onEvent = do
   hasExisting <- isJust <$> use mtOverlayL
@@ -736,14 +745,15 @@ pushOverlay mk onConfirm onCanceled onEvent = do
 -- ** Item manipulation
 
 pushInsertNewItemRelToCur ::
-  (?actx :: AppContext) => InsertWalker IdLabel -> AppEventM MainTree ()
+  InsertWalker IdLabel -> ComponentEventM MainTree ()
 pushInsertNewItemRelToCur go = do
   state <- get
+  actx <- ask
   let (tgt', go') = case mtCur state of
         Just cur -> (cur, go)
         Nothing -> (mtRoot state, insLastChild)
   let cb name = do
-        let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ ?actx) name
+        let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ actx) name
         uuid <- liftIO nextRandom
         -- NB we *have* to use 'modifyModelSync' here b/c that will reload the model synchronously so we
         -- find the new EID below.
@@ -761,16 +771,18 @@ pushInsertNewItemRelToCur go = do
             return Continue
   pushOverlay (newNodeOverlay "" "New Item") cb (return Continue) absurd
 
-setStatus :: (?actx :: AppContext, MonadState MainTree m, MonadIO m) => Status -> m ()
-setStatus status' = withCur $ \cur ->
+setStatus :: (MonadState MainTree m, MonadReader AppContext m, MonadIO m) => Status -> m ()
+setStatus status' = withCur $ \cur -> do
+  actx <- ask
   modifyModelAsync $
-    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx) . (statusL .~ status')
+    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime actx) . (statusL .~ status')
      in modifyAttrByEID cur f
 
-touchLastStatusModified :: (?actx :: AppContext, MonadIO m, MonadState MainTree m) => m ()
-touchLastStatusModified = withCur $ \cur ->
+touchLastStatusModified :: (MonadReader AppContext m, MonadIO m, MonadState MainTree m) => m ()
+touchLastStatusModified = withCur $ \cur -> do
+  actx <- ask
   modifyModelAsync $
-    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime ?actx)
+    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime actx)
      in modifyAttrByEID cur f
 
 -- ** Moving Nodes
@@ -789,7 +801,7 @@ touchLastStatusModified = withCur $ \cur ->
 --
 -- TODO why is this sync?
 moveCurRelative ::
-  (?actx :: AppContext) => GoWalker LocalIdLabel -> InsertWalker IdLabel -> AppEventM MainTree ()
+  GoWalker LocalIdLabel -> InsertWalker IdLabel -> ComponentEventM MainTree ()
 moveCurRelative go ins = withCur $ \cur -> do
   forest <- gets (stForest . mtSubtree)
   -- The temporary follow setting makes sure we follow our item around. This is sync so that the temporary setting works. (:())
@@ -798,9 +810,8 @@ moveCurRelative go ins = withCur $ \cur -> do
 
 -- SOMEDAY ^^ Same applies. Also, these could all be unified.
 moveCurRelativeDynamic ::
-  (?actx :: AppContext) =>
   DynamicMoveWalker LocalIdLabel IdLabel ->
-  AppEventM MainTree ()
+  ComponentEventM MainTree ()
 moveCurRelativeDynamic dgo = withCur $ \cur -> do
   forest <- gets (stForest . mtSubtree)
   withLensValue mtDoFollowItemL True $
@@ -813,21 +824,20 @@ moveCurRelativeDynamic dgo = withCur $ \cur -> do
 -- SOMEDAY Synchronicity is a design issue really. Also, we're gonna get another ModelUpdated event
 -- and then refresh a second time, which is bad.
 modifyModelSync ::
-  (?actx :: AppContext) =>
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
   -- This is `ExceptT IdNotFoundError (EventM n MainTree) ()` but I'm not using it that much.
-  AppEventMOrNotFound MainTree ()
+  ComponentEventMOrNotFound MainTree ()
 modifyModelSync f = do
+  actx <- ask
   liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
-    modifyModelOnServer (acModelServer ?actx) f
+    modifyModelOnServer (acModelServer actx) f
   replaceExceptT callIntoTreeView TV.reloadModel
 
 modifyModelSync_ ::
-  (?actx :: AppContext) =>
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
-  AppEventM MainTree ()
+  ComponentEventM MainTree ()
 modifyModelSync_ f = void . notFoundToAER_ $ modifyModelSync f
 
 -- | Modify the model asynchronously, i.e., *without* pulling a new model immediately. We get a
@@ -839,14 +849,16 @@ modifyModelSync_ f = void . notFoundToAER_ $ modifyModelSync f
 -- NB: We currently *don't* change our focus based on the modified node. This is probably ok and
 -- what the user expects, but should then be reviewed, if we ever get async here.
 modifyModelAsync ::
-  (?actx :: AppContext, MonadIO m) =>
+  (MonadIO m, MonadReader AppContext m) =>
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
   m ()
-modifyModelAsync f = liftIO $ modifyModelOnServer (acModelServer ?actx) f
+modifyModelAsync f = do
+  actx <- ask
+  liftIO $ modifyModelOnServer (acModelServer actx) f
 
 -- ** Navigation
 
-moveRootToEID :: (?actx :: AppContext) => EID -> AppEventMOrNotFound MainTree ()
+moveRootToEID :: EID -> ComponentEventMOrNotFound MainTree ()
 moveRootToEID eid = replaceExceptT callIntoTreeView $ TV.moveRootToEID eid
 
 -- TODO WIP
@@ -858,7 +870,7 @@ moveRootToEID eid = replaceExceptT callIntoTreeView $ TV.moveRootToEID eid
 -- ** Filters
 
 -- | Reset filter of the tree view to match our currently selected one here.
-resetTreeViewFilter :: (?actx :: AppContext) => AppEventMOrNotFound MainTree ()
+resetTreeViewFilter :: ComponentEventMOrNotFound MainTree ()
 resetTreeViewFilter = do
   fi <- gets mtFilter
   replaceExceptT callIntoTreeView $ TV.replaceFilter fi
@@ -871,26 +883,28 @@ resetTreeViewFilter = do
     normalFilter = fromJust . CList.focus . cValue . mtFilters $ mt
 
 modifyHideHierarchyFilter ::
-  (?actx :: AppContext) =>
-  (HideHierarchyFilter -> HideHierarchyFilter) -> AppEventMOrNotFound MainTree ()
-modifyHideHierarchyFilter f = runModifyLens mtHideHierarchyFilterL $ \hhf -> (f hhf, ?actx)
+  (HideHierarchyFilter -> HideHierarchyFilter) -> ComponentEventMOrNotFound MainTree ()
+modifyHideHierarchyFilter f = do
+  actx <- ask
+  runModifyLens mtHideHierarchyFilterL $ \hhf -> (f hhf, actx)
 
 modifyFilters ::
-  (?actx :: AppContext) =>
-  (CList.CList Filter -> CList.CList Filter) -> AppEventMOrNotFound MainTree ()
-modifyFilters f = runModifyLens mtFiltersL $ \fs -> (f fs, ?actx)
+  (CList.CList Filter -> CList.CList Filter) -> ComponentEventMOrNotFound MainTree ()
+modifyFilters f = do
+  actx <- ask
+  runModifyLens mtFiltersL $ \fs -> (f fs, actx)
 
-selectFilterByName ::
-  (?actx :: AppContext) => String -> AppEventMOrNotFound MainTree ()
+selectFilterByName :: String -> ComponentEventMOrNotFound MainTree ()
 selectFilterByName s = do
   -- We don't use the following short form for updating to propagate the error right.
   -- mtFiltersL %= (fromMaybe <*> CList.findRotateTo ((== s) . fiName))
   mnewFilters <- CList.findRotateTo ((== s) . fiName) <$> gets (cValue . mtFilters)
+  actx <- ask
   case mnewFilters of
     -- NB this isn't quite the right error but w/e
     Nothing -> throwError IdNotFoundError
     Just newFilters -> do
-      runUpdateLens mtFiltersL (newFilters, ?actx)
+      runUpdateLens mtFiltersL (newFilters, actx)
 
 -- * Rendering
 
@@ -1184,7 +1198,7 @@ instance AppComponent MainTree where
       mol <- use mtOverlayL
       case mol of
         Just (Overlay ols onConfirm onCanceled onEvent) -> do
-          (ols', (res, events)) <- nestAppEventM ols (handleEvent ev)
+          (ols', (res, events)) <- nestComponentEventM ols (handleEvent ev)
           mapM_ onEvent events
           mtOverlayL .= Just (Overlay ols' onConfirm onCanceled onEvent)
           case res of

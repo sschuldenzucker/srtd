@@ -9,7 +9,7 @@ module Srtd.Components.DateSelectOverlay (
 
 import Brick
 import Brick.Keybindings (binding, ctrl)
-import Control.Monad (forM_)
+import Control.Monad.Reader (asks)
 import Data.Text (Text)
 import Data.Time (ZonedTime (zonedTimeZone))
 import Graphics.Vty (Key (..))
@@ -20,11 +20,11 @@ import Srtd.Components.EditorProactive
 import Srtd.Dates
 import Srtd.Keymap
 import Srtd.ProactiveBandana
-import Srtd.Util (captureWriterT, tell1)
+import Srtd.Util (tell1)
 
 data DateSelectOverlay = DateSelectOverlay
   { dsEditor :: EditorProactive
-  , dsValue :: Cell (Text, ZonedTime) (AppEventM DateSelectOverlay ()) (Maybe DateOrTime)
+  , dsValue :: Cell (Text, ZonedTime) (ComponentEventM DateSelectOverlay ()) (Maybe DateOrTime)
   -- ^ `Nothing` means invalid and `Just` means valid. Deletion is handled directly and not
   -- represented in the state.
   -- NB this updates *only when* the user changes the text, not when the reference time changes.
@@ -47,28 +47,27 @@ dateSelectOverlay origValue title rname =
  where
   compile' = uncurry parseInterpretHumanDateOrTime
 
-keymap :: Keymap (AppEventAction DateSelectOverlay)
+keymap :: Keymap (ComponentEventM' DateSelectOverlay)
 keymap =
   kmMake
     "Select Date"
-    [ kmLeafA (binding KEsc []) "Cancel" $ return Canceled
-    , kmLeafA (binding KEnter []) "Confirm" $ do
+    [ kmLeaf (binding KEsc []) "Cancel" $ return Canceled
+    , kmLeaf (binding KEnter []) "Confirm" $ do
         mv <- gets (cValue . dsValue)
         case mv of
           -- We do *nothing* if we the current date is not valid! The user can't confirm then (I
           -- think this is the expected interaction).
           Nothing -> return $ Continue
           Just v -> return $ Confirmed (Just v)
-    , kmLeafA (ctrl 'd') "Delete" (return $ Confirmed Nothing)
+    , kmLeaf (ctrl 'd') "Delete" (return $ Confirmed Nothing)
     ]
 
 callIntoEditor ::
-  (?actx :: AppContext) => AppEventM EditorProactive a -> AppEventM DateSelectOverlay a
-callIntoEditor act = do
-  (ret, events) <- captureWriterT $ zoom dsEditorL act
-  forM_ events $ \case
-    TextChanged t -> runUpdateLens dsValueL (t, acZonedTime ?actx)
-  return ret
+  ComponentEventM EditorProactive a -> ComponentEventM DateSelectOverlay a
+callIntoEditor = callIntoComponentEventM dsEditorL $ \case
+  TextChanged t -> do
+    zt <- asks acZonedTime
+    runUpdateLens dsValueL (t, zt)
 
 data DateSelectOverlayEvent = ValueChanged (Maybe DateOrTime)
 

@@ -21,11 +21,9 @@ module Srtd.Component where
 import Brick
 import Brick.BChan (BChan)
 import Brick.Keybindings (Binding)
-import Control.Arrow (second)
 import Control.Monad.Except
 import Control.Monad.Reader (MonadReader (..), ReaderT (runReaderT))
 import Control.Monad.State (MonadState)
-import Control.Monad.Trans.Reader (ReaderT)
 import Control.Monad.Writer.Strict
 import Data.List qualified as L
 import Data.String (IsString (..))
@@ -52,7 +50,7 @@ import Srtd.Log (Priority (..), glogL)
 import Srtd.Model (FilterContext (..), IdNotFoundError)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
 import Srtd.MonadBrick (MonadBrick (..))
-import Srtd.Util (captureWriterT)
+import Srtd.Util (ALens' (..), captureWriterT)
 
 -- | Messages that reach the root of the app. They do not recur into individual components.
 --
@@ -117,9 +115,9 @@ data AppContext = AppContext
   -- interactions, NOT for internal process coordination!
   }
 
-translateAppFilterContext :: (?actx :: AppContext) => ((?fctx :: FilterContext) => a) -> a
-translateAppFilterContext x =
-  let ?fctx = FilterContext {fcZonedTime = acZonedTime $ ?actx}
+translateAppFilterContext :: AppContext -> ((?fctx :: FilterContext) => a) -> a
+translateAppFilterContext actx x =
+  let ?fctx = FilterContext {fcZonedTime = acZonedTime $ actx}
    in x
 
 -- | Return data returned by 'handleEvent' (see below) to tell the parent component if the child
@@ -156,27 +154,18 @@ acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 -- | Shorthand for MonadBrick constraints in the app
 type AppMonadBrick s m = MonadBrick AppResourceName s m
 
-type AppEventM s a = WriterT [Event s] (EventM AppResourceName s) a
-
--- | Run an AppEventM with explicitly provided state, returning explicit events. Like `nestEventM`
--- but for AppEventM.
-nestAppEventM :: (AppComponent s) => s -> AppEventM s a -> AppEventM t (s, (a, [Event s]))
-nestAppEventM s act = liftEventM $ nestEventM s (runWriterT act)
-
 -- | Monad for event handlers
 --
 -- This is Brick's 'EventM' + ability to write events + ability to read AppContext
---
--- TODO let this supersede AppEventM and remove ?actx
 newtype ComponentEventM s a = ComponentEventM
   {runComponentEventM :: ReaderT AppContext (WriterT [Event s] (EventM AppResourceName s)) a}
   deriving
     ( Functor
     , Applicative
     , Monad
+    , MonadIO
     , MonadState s
-    , -- , MonadWriter [Event s]
-      MonadReader AppContext
+    , MonadReader AppContext
     , MonadBrick AppResourceName s
     )
 
@@ -191,6 +180,15 @@ instance (e ~ [Event s]) => MonadWriter e (ComponentEventM s) where
   listen = ComponentEventM . listen . runComponentEventM
   pass = ComponentEventM . pass . runComponentEventM
 
+-- | Run a 'ComponentEventM' down to its inner 'EventM' action
+runComponentEventM' :: AppContext -> ComponentEventM s a -> EventM AppResourceName s (a, [Event s])
+runComponentEventM' actx = runWriterT . flip runReaderT actx . runComponentEventM
+
+-- NOTE: There is *no* instance for Zoom on ComponentEventM. This is b/c ComponentEventM
+-- ties together the event type and the state and this monad is generally not zoomable. Use
+-- callIntoComponentEventM or, if needed, nestComponentEventM, or walk into the stack itself (you
+-- probably won't need to do that though)
+
 -- | Run a 'ComponentEventM' with explicitly provided state, returning explicit events. Like
 -- `nestEventM` but for ComponentEventM.
 nestComponentEventM ::
@@ -200,16 +198,27 @@ nestComponentEventM s act = do
   let act' = runWriterT $ runReaderT (runComponentEventM act) actx
   liftEventM $ nestEventM s $ act'
 
+-- | Run a 'ComponentEventM' action in a child component, and return produced events.
+--
+-- Generally 'callIntoComponentEventM' is preferred for simple use cases, but you can use this to
+-- process events in another monad, for instance.
+--
+-- This is not like 'zoom' b/c the return type is different
+zoomComponentEventM :: Lens' t s -> ComponentEventM s a -> ComponentEventM t (a, [Event s])
+zoomComponentEventM l act = do
+  -- SOMEDAY should we use zoom here with an unwrapper?
+  s <- use l
+  (s', ret) <- nestComponentEventM s act
+  l .= s'
+  return ret
+
 -- | Given a lens and an event handler, run an action on a child component and handle events.
 --
--- Use this instead of `zoom`.
+-- Use this instead of `zoom` when calling into another component.
 callIntoComponentEventM ::
   Lens' t s -> (Event s -> ComponentEventM t ()) -> ComponentEventM s a -> ComponentEventM t a
 callIntoComponentEventM l h act = do
-  s <- use l
-  -- SOMEDAY should we use zoom here with an unwrapper? (or just declare the instance)
-  (s', (ret, events)) <- nestComponentEventM s act
-  l .= s'
+  (ret, events) <- zoomComponentEventM l act
   mapM_ h events
   return ret
 
@@ -244,9 +253,8 @@ class AppComponent s where
   -- The return value gives the caller final result (if Confirmed) and tells them what to do with
   -- the component.
   handleEvent ::
-    (?actx :: AppContext) =>
     BrickEvent AppResourceName AppComponentMsg ->
-    AppEventM s (AppEventReturn (Return s))
+    ComponentEventM' s
 
   -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
   componentKeyDesc :: s -> KeyDesc
@@ -270,9 +278,13 @@ instance AppComponent SomeAppComponent where
   handleEvent ev = do
     (SomeAppComponent s) <- get
     -- Alternatively, we could make the actual transform and use unsafeCoerce. But this seems to work fine.
-    let theLens = lens (const s) (const SomeAppComponent)
+    -- For some reason, I need ALens' if I wanna put this into a variable, else it complains about
+    -- an ambiguous functor thingy f0. When I just replace the `lens` expression below, I don't need
+    -- ALens'. Whatever...
+    let theLens = ALens' $ lens (const s) (const SomeAppComponent)
     -- This ignores events! And also the Confirmed value.
-    (res, _events) <- zoom theLens $ captureWriterT $ handleEvent ev
+    -- (res, _events) <- zoom theLens $ captureWriterT $ handleEvent ev
+    res <- callIntoComponentEventM (runALens' theLens) (const $ return ()) $ handleEvent ev
     return $ forgetAppEventReturnData res
 
   componentKeyDesc (SomeAppComponent s) = componentKeyDesc s
@@ -283,32 +295,9 @@ instance AppComponent SomeAppComponent where
 
 -- TODO should this be our monad of choice??
 
--- | Helper type for keymaps and handles. This must be a newtype (not type alias) so that we can avoid
--- ImpredicativeTypes, which can lead to ghc hangup (I've seen this with this particular code
--- before!)
---
--- This isn't used in this module but you can use it with a keymap.
-newtype AppEventAction s = AppEventAction
-  {runAppEventAction :: (?actx :: AppContext) => AppEventM s (AppEventReturn (Return s))}
-
--- | Like 'kmLeaf' but wrap the given action in 'AppEventAction'
-kmLeafA ::
-  Binding ->
-  Text ->
-  -- NB For some reason, *this* use of the constraint inside the type doesn't need ImpredicativeTypes.
-  ((?actx :: AppContext) => WriterT [Event s] (EventM AppResourceName s) (AppEventReturn (Return s))) ->
-  (Binding, KeymapItem (AppEventAction s))
-kmLeafA b n x = kmLeaf b n (AppEventAction x)
-
--- | Like 'kmLeafA' but also return 'Continue'.
-kmLeafA_ ::
-  Binding ->
-  Text ->
-  ((?actx :: AppContext) => WriterT [Event s] (EventM AppResourceName s) ()) ->
-  (Binding, KeymapItem (AppEventAction s))
--- NB this is one of the few cases where we can't make this point-free b/c the definition of
--- 'aerVoid' doesn't include the `?actx` constraint.
-kmLeafA_ b n x = kmLeafA b n (aerVoid x)
+-- | Like 'kmLeaf' but also return 'Continue'.
+kmLeaf_ :: (Monad m) => Binding -> Text -> m () -> (Binding, KeymapItem (m (AppEventReturn b)))
+kmLeaf_ b n x = kmLeaf b n (aerVoid x)
 
 -- | Execute action and return Continue
 aerVoid :: (Monad m) => m () -> m (AppEventReturn b)
@@ -317,16 +306,15 @@ aerVoid act = act >> return Continue
 -- | Common dispatch routine for keymaps. Given a lens where we store a KeymapZipper, look up,
 -- execute, and update the keymap, or execute a fallback.
 kmzDispatch ::
-  (?actx :: AppContext) =>
   -- | Lens where the KeymapZipper is stored
-  Lens' s (KeymapZipper (AppEventAction s)) ->
+  Lens' s (KeymapZipper (ComponentEventM' s)) ->
   -- | Pressed key from VtyEvent
   Key ->
   -- | Pressed modifiers from VtyEvent
   [Modifier] ->
   -- | Fallback action if no key matches
-  AppEventM s (AppEventReturn (Return s)) ->
-  AppEventM s (AppEventReturn (Return s))
+  ComponentEventM' s ->
+  ComponentEventM' s
 kmzDispatch l key mods fallback = do
   kmz <- use l
   case kmzLookup kmz key mods of
@@ -336,7 +324,7 @@ kmzDispatch l key mods fallback = do
         | key == KBS && mods == [] && not (kmzIsToplevel kmz) -> aerVoid $ l %= kmzUp
         | otherwise -> fallback
     LeafResult act nxt -> do
-      res <- runAppEventAction act
+      res <- act
       l .= nxt
       return res
     SubmapResult nxt -> do
@@ -347,20 +335,19 @@ kmzDispatch l key mods fallback = do
 --
 -- Errors and ignores if a submap is found.
 kmDispatch ::
-  (?actx :: AppContext) =>
   -- | Input keymap
-  Keymap (AppEventAction s) ->
+  Keymap (ComponentEventM' s) ->
   -- | Pressed key from VtyEvent
   Key ->
   -- | Pressed modifiers from VtyEvent
   [Modifier] ->
   -- | Fallback action if no key matches
-  AppEventM s (AppEventReturn (Return s)) ->
-  AppEventM s (AppEventReturn (Return s))
+  ComponentEventM' s ->
+  ComponentEventM' s
 kmDispatch km key mods fallback = case kmLookup km key mods of
   NotFound -> fallback
   -- We ignore nxt, which tells us whether the keymap is sticky: without a zipper, it will always be.
-  LeafResult act _nxt -> runAppEventAction act
+  LeafResult act _nxt -> act
   SubmapResult _nxt -> do
     liftIO $
       glogL ERROR $
@@ -369,19 +356,22 @@ kmDispatch km key mods fallback = case kmLookup km key mods of
 
 -- * Error Handling
 
--- | Type of computations that update the subtree synchronously (and may fail because of that).
---
--- SOMEDAY we may wanna change the result type in AppComponent to be a transformer instead of a
--- fixed return type. Could make it more ergonomic to write handlers. OTOH, the additional flexibility
--- in the computation isn't really needed right now. (only in `wrappingActions` below, maybe)
---
--- TODO deprecate in favor of AppEventMOrNotFound
-type EventMOrNotFound n s a = ExceptT IdNotFoundError (EventM n s) a
+type ComponentEventMOrNotFound s a =
+  ExceptT IdNotFoundError (ComponentEventM s) a
 
--- SOMEDAY maybe this or at least AppEventM should be a newtype, not an alias.
--- Probably very easy b/c everything lifts anyways.
-type AppEventMOrNotFound s a =
-  ExceptT IdNotFoundError (WriterT [Event s] (EventM AppResourceName s)) a
+-- | Like 'callIntoComponentEventM' but with actions and handlers that may fail.
+--
+-- Specific to IdNotFoundError for no reason.
+--
+callIntoComponentEventMOrNotFound ::
+  Lens' t s ->
+  (Event s -> ComponentEventMOrNotFound t ()) ->
+  ComponentEventMOrNotFound s a ->
+  ComponentEventMOrNotFound t a
+callIntoComponentEventMOrNotFound l h act = do
+  (ret, events) <- lift $ zoomComponentEventM l (runExceptT act)
+  mapM_ h events
+  liftEither ret
 
 -- | Convert exception handling.
 notFoundToAER_ :: (Monad m) => ExceptT IdNotFoundError m () -> m (AppEventReturn b)

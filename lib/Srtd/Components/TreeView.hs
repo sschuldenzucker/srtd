@@ -54,6 +54,7 @@ import Control.Arrow (Arrow (second))
 import Control.Monad (void)
 import Control.Monad.Except
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader (MonadReader, ask)
 import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
@@ -174,9 +175,9 @@ withDefCSAttr (CSAttr anames) = updateAttrMap $ \amap ->
 --
 -- SOMEDAY and maybe the constructor should be private b/c of this.
 data TreeView = TreeView
-  { tvSubtree :: Cell' Subtree (AppEventM TreeView ())
+  { tvSubtree :: Cell' Subtree (ComponentEventM TreeView ())
   -- ^ NOT safe to edit directly
-  , tvFilter :: Cell (Filter, AppContext) (AppEventMOrNotFound TreeView ()) Filter
+  , tvFilter :: Cell (Filter, AppContext) (ComponentEventMOrNotFound TreeView ()) Filter
   -- ^ NOT safe to edit directly. The type is a bit funky b/c changes to the filter have to reload the model b/c it's not stored anywhere here, which may fail.
   -- SOMEDAY maybe just store the model. It's just a pointer!
   , tvList :: TreeViewList
@@ -197,7 +198,7 @@ suffixLenses ''TreeView
 -- * API
 
 makeFromModel ::
-  (?actx :: AppContext) =>
+  AppContext ->
   EID ->
   Filter ->
   Bool ->
@@ -205,9 +206,9 @@ makeFromModel ::
   Model ->
   AppResourceName ->
   Either IdNotFoundError TreeView
-makeFromModel root fi doFollowItem scrolloff model rname = do
+makeFromModel actx root fi doFollowItem scrolloff model rname = do
   subtree <-
-    translateAppFilterContext $
+    translateAppFilterContext actx $
       runFilter fi root model
   let list = forestToBrickList (rname <> "brick list") $ stForest subtree
   return
@@ -228,8 +229,10 @@ makeFromModel root fi doFollowItem scrolloff model rname = do
       , tvScrolloff = scrolloff
       }
 
-replaceFilter :: (?actx :: AppContext) => Filter -> AppEventMOrNotFound TreeView ()
-replaceFilter fi = runUpdateLens tvFilterL (fi, ?actx)
+replaceFilter :: Filter -> ComponentEventMOrNotFound TreeView ()
+replaceFilter fi = do
+  actx <- ask
+  runUpdateLens tvFilterL (fi, actx)
 
 setResourceName :: AppResourceName -> TreeView -> TreeView
 setResourceName rname =
@@ -239,17 +242,19 @@ setResourceName rname =
 -- | Move the tree to any EID, preserving settings. Returns an error if that EID doesn't exist
 -- (presumably b/c it was deleted). Then nothing is updated.
 moveRootToEID ::
-  (?actx :: AppContext, MonadIO m, MonadState TreeView m) => EID -> ExceptT IdNotFoundError m ()
+  (MonadReader AppContext m, MonadIO m, MonadState TreeView m) => EID -> ExceptT IdNotFoundError m ()
 moveRootToEID eid = do
   -- NB this constructs a new TreeView, so we don't need to update any cells b/c they're gone
   -- anyways.
   -- SOMEDAY to be reconsidered depending on meaningful events we may emit.
   tv <- get
-  model <- liftIO $ getModel (acModelServer ?actx)
+  actx <- ask
+  model <- liftIO $ getModel (acModelServer actx)
   -- NB we can re-use the resource name b/c we're updating ourselves
   tv' <-
     liftEither $
       makeFromModel
+        actx
         eid
         (cValue $ tvFilter tv)
         (tvDoFollowItem tv)
@@ -492,16 +497,17 @@ listScrollMoveBy scrolloffIn n = void . runMaybeT $ do
 --
 -- Only call this externally if for some reason you need to update the TreeView early, synchronously
 -- with something else.
-reloadModel :: (?actx :: AppContext) => AppEventMOrNotFound TreeView ()
+reloadModel :: ComponentEventMOrNotFound TreeView ()
 reloadModel = do
   s <- get
   let filter_ = cValue $ tvFilter s
   let root_ = root . cValue . tvSubtree $ s
-  model' <- liftIO $ getModel (acModelServer ?actx)
-  subtree <- liftEither $ translateAppFilterContext $ runFilter filter_ root_ model'
+  actx <- ask
+  model' <- liftIO $ getModel (acModelServer actx)
+  subtree <- liftEither $ translateAppFilterContext actx $ runFilter filter_ root_ model'
   lift $ runUpdateLens tvSubtreeL subtree
 
-replaceSubtree' :: Subtree -> AppEventM TreeView ()
+replaceSubtree' :: Subtree -> ComponentEventM TreeView ()
 replaceSubtree' subtree = do
   old <- get
   let list' = forestToBrickList (getName . tvList $ old) (stForest subtree)

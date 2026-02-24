@@ -38,7 +38,7 @@ import Srtd.Util (tell1)
 
 data EditorProactive = EditorProactive
   { epEditor :: Editor Text AppResourceName
-  , epText :: Cell' Text (AppEventM EditorProactive ())
+  , epText :: Cell' Text (ComponentEventM EditorProactive ())
   , epPostRender :: Widget AppResourceName -> Widget AppResourceName
   -- ^ For applying attrs to rendering only. Could also just be an attr state but whatever
   }
@@ -60,7 +60,7 @@ editorProactiveString initString rname =
     } -}
 
 setPostRender ::
-  (Widget AppResourceName -> Widget AppResourceName) -> AppEventM EditorProactive ()
+  (Widget AppResourceName -> Widget AppResourceName) -> ComponentEventM EditorProactive ()
 setPostRender f = epPostRenderL .= f
 
 data EditorProactiveEvent t = TextChanged t
@@ -84,21 +84,21 @@ instance RenderStringLike Text where
 getEditorText :: EditorProactive -> Text
 getEditorText = cValue . epText
 
-applyEdit :: (TextZipper Text -> TextZipper Text) -> AppEventM EditorProactive ()
+applyEdit :: (TextZipper Text -> TextZipper Text) -> ComponentEventM EditorProactive ()
 applyEdit f = do
   liftEventM $ epEditorL %= E.applyEdit f
   updateTextCellFromEditor
 
-updateTextCellFromEditor :: AppEventM EditorProactive ()
+updateTextCellFromEditor :: ComponentEventM EditorProactive ()
 updateTextCellFromEditor = do
   t <- liftEventM $ (T.intercalate "\n" . getEditContents) <$> gets epEditor
   runUpdateLens epTextL t
 
-keymap :: Keymap (AppEventAction EditorProactive)
+keymap :: Keymap (ComponentEventM' EditorProactive)
 keymap =
   kmMake
     "Editor"
-    [kmLeafA_ (ctrl 'w') "Delete word" $ applyEdit TZ.deletePrevWord]
+    [kmLeaf_ (ctrl 'w') "Delete word" $ applyEdit TZ.deletePrevWord]
 
 instance AppComponent (EditorProactive) where
   type Return EditorProactive = ()
