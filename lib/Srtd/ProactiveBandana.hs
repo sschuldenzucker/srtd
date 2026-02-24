@@ -315,17 +315,16 @@ updateCellState x = do
 -- handler action.
 --
 -- This is how cells are most commonly used.
-runUpdateLens ::
-  (Zoom n m (Cell i (m b) v) t, Functor (Zoomed n (m b))) =>
-  Lens' t (Cell i (m b) v) -> i -> m b
-runUpdateLens l = join . zoom l . state . runState . updateCellState
+runUpdateLens :: (MonadState t m) => Lens' t (Cell i (m b) v) -> i -> m b
+runUpdateLens l = join . liftState . zoom l . updateCellState
+
+liftState :: (MonadState s m) => State s a -> m a
+liftState = state . runState
 
 -- | Apply a pure modification function to a cell inside a lens.
 --
--- You typically use this with i == v (i.e., a Lens') but this is not necessary.
-runModifyLens ::
-  (Zoom n m (Cell i (m b) v) t, Functor (Zoomed n (m b))) =>
-  Lens' t (Cell i (m b) v) -> (v -> i) -> m b
-runModifyLens l f = do
-  v <- gets (cValue . view l)
-  runUpdateLens l (f v)
+-- You typically use this with i == v (i.e., a Cell') but this is not necessary.
+runModifyLens :: (MonadState t m) => Lens' t (Cell i (m b) v) -> (v -> i) -> m b
+runModifyLens l f = join . liftState . zoom l $ do
+  s <- gets cValue
+  updateCellState (f s)
