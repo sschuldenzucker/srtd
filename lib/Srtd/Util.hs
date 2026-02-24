@@ -10,7 +10,8 @@ import Control.Arrow (Arrow (second))
 import Control.Monad ((<=<))
 import Control.Monad.Except
 import Control.Monad.State
-import Control.Monad.Trans.Writer.Strict (WriterT (WriterT, runWriterT), mapWriterT, tell)
+import Control.Monad.Trans.Writer.Strict (WriterT (WriterT, runWriterT), mapWriterT)
+import Control.Monad.Writer.Strict (MonadWriter (tell))
 import Data.Array qualified as Array
 import Data.Either (fromRight)
 import Data.List (isPrefixOf, sort, sortBy)
@@ -385,7 +386,7 @@ captureWriterT act = WriterT $ do
   return ((a, w), mempty)
 
 -- | Tell a single value for a list writer
-tell1 :: (Monad m) => a -> WriterT [a] m ()
+tell1 :: (MonadWriter [a] m) => a -> m ()
 tell1 x = tell [x]
 
 -- | Replace the inner monad of an ExceptT with something else. Useful with functions like
