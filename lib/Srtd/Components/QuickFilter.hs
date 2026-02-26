@@ -21,7 +21,6 @@ import Brick
 import Brick.Keybindings
 import Brick.Widgets.Border
 import Control.Monad (forM_)
-import Control.Monad.Reader (ask)
 import Control.Monad.Trans (lift, liftIO)
 import Data.Text (Text)
 import Data.Void (Void)
@@ -81,10 +80,9 @@ data QuickFilter v = QuickFilter
   { sTextEntry :: CompilingTextEntry Regex
   , sTreeView :: TreeView
   , sValue ::
-      Cell
-        (MaybeEmpty (CompiledWithSource Regex), AppContext)
-        (ComponentEventMOrNotFound (QuickFilter v) ())
+      Cell'
         (MaybeEmpty (CompiledWithSource Regex))
+        (ComponentEventMOrNotFound (QuickFilter v) ())
   , sBaseFilter :: Filter
   , sKMZ :: KeymapZipper (ComponentEventM' (QuickFilter v))
   , sResourceName :: AppResourceName
@@ -101,12 +99,7 @@ quickFilterFromTreeView _v tv s name rname =
   QuickFilter
     { sTextEntry = textEntry
     , sTreeView = TV.setResourceName (rname <> "treeview") tv & TV.tvSearchRxL .~ Nothing
-    , sValue =
-        let base = uniqueCell (const $ return ()) Empty $ \mev actx ->
-              let ?actx = actx
-               in maybePushQueryIntoTreeView mev
-         in -- SOMEDAY screams for a pattern. Does this recur for multiple arguments? I think no.
-            mapCellHandlerInput fst (\(_, actx) hf -> hf actx) base
+    , sValue = uniqueCell (return ()) Empty maybePushQueryIntoTreeView
     , sBaseFilter = cValue . tvFilter $ tv
     , sKMZ = keymapToZipper $ mkKeymap name
     , sResourceName = rname
@@ -131,14 +124,10 @@ callIntoTreeView = callIntoComponentEventM sTreeViewL $ safeConst (return ())
 
 callIntoTextEntry ::
   ComponentEventM (CompilingTextEntry Regex) a -> ComponentEventMOrNotFound (QuickFilter v) a
-callIntoTextEntry act = do
-  -- SOMEDAY make a helper function for this.
-  (ret, events) <- lift $ zoomComponentEventM sTextEntryL act
-  forM_ events $ \case
-    CTE.ValueChanged mev -> do
-      actx <- ask
-      runUpdateLens sValueL (mev, actx)
-  return ret
+callIntoTextEntry act = callIntoComponentEventMOrNotFound sTextEntryL h (lift act)
+ where
+  h = \case
+    CTE.ValueChanged mev -> runUpdateLens sValueL mev
 
 instance (VariantBehavior v) => AppComponent (QuickFilter v) where
   type Return (QuickFilter v) = ConfirmType v
@@ -206,7 +195,6 @@ instance (VariantBehavior v) => AppComponent (QuickFilter v) where
 --
 -- SOMEDAY this should be fixed.
 maybePushQueryIntoTreeView ::
-  (?actx :: AppContext) =>
   MaybeEmpty (CompiledWithSource Regex) -> ComponentEventMOrNotFound (QuickFilter v) ()
 maybePushQueryIntoTreeView mev = do
   baseFilter <- gets sBaseFilter
@@ -220,8 +208,7 @@ maybePushQueryIntoTreeView mev = do
        in setFilterAndSearchRx fullFilter (Just v)
  where
   setFilterAndSearchRx fi mv = do
-    replaceExceptT callIntoTreeView $ do
-      TV.replaceFilter fi
+    replaceExceptT callIntoTreeView $ TV.replaceFilter fi
     sTreeViewL . TV.tvSearchRxL .= mv
 
 -- * Variant instances

@@ -242,6 +242,10 @@ myHandleEvent ev = wrappingActions $
     dbgprint
     updateCurrentTime
     AppState {asContext = actx} <- get
+    -- NB we still use implicit params in this file b/c it's somewhat more convenient than moving
+    -- everything to Reader or passing params around, and we don't live in ComponentEventM.
+    -- At some point we may abstract the tabs logic into its own component, then this should all get
+    -- much more trivial.
     let ?actx = actx
      in act
   dbgprint = liftIO $ glogL DEBUG $ "Received: " ++ show ev

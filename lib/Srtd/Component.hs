@@ -238,6 +238,10 @@ class AppComponent s where
   type Event s
 
   -- | Render this component to a widget. Like `appRender` for apps, or the many render functions.
+  --
+  -- NB Different from 'handleEvent', this uses an implicit param b/c the app context (and really
+  -- just the current time) is sometimes but very rarely used for rendering. Implicit params are
+  -- convenient here.
   renderComponent :: (?actx :: AppContext) => s -> Widget AppResourceName
   renderComponent = fst . renderComponentWithOverlays
 
@@ -361,8 +365,10 @@ type ComponentEventMOrNotFound s a =
 
 -- | Like 'callIntoComponentEventM' but with actions and handlers that may fail.
 --
--- Specific to IdNotFoundError for no reason.
+-- Specific to IdNotFoundError over other error types for no reason.
 --
+-- NB you can also apply this to an input action that _cannot_ fail (of type `ComponentEventM`) by
+-- simply wrapping it in `lift`. The important bit here is that the _handler_ may fail.
 callIntoComponentEventMOrNotFound ::
   Lens' t s ->
   (Event s -> ComponentEventMOrNotFound t ()) ->

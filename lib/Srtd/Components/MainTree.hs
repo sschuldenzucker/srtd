@@ -97,8 +97,7 @@ ignoreEvent _ = return ()
 -- * Main Data Structure
 
 data MainTree = MainTree
-  { mtFilters ::
-      Cell (CList.CList Filter, AppContext) (ComponentEventMOrNotFound MainTree ()) (CList.CList Filter)
+  { mtFilters :: Cell' (CList.CList Filter) (ComponentEventMOrNotFound MainTree ())
   , mtTreeView :: TV.TreeView
   , mtResourceName :: AppResourceName
   -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
@@ -110,8 +109,7 @@ data MainTree = MainTree
   -- ^ Active overlay, if any. If this is 'Just', events are forwarded to the overlay.
   --
   -- SOMEDAY do I want to make a wrapper for "things that have overlays" that *consistenly* handles everything?
-  , mtHideHierarchyFilter ::
-      Cell (HideHierarchyFilter, AppContext) (ComponentEventMOrNotFound MainTree ()) HideHierarchyFilter
+  , mtHideHierarchyFilter :: Cell' HideHierarchyFilter (ComponentEventMOrNotFound MainTree ())
   }
 
 suffixLenses ''MainTree
@@ -208,15 +206,8 @@ makeWithFilters actx root filters hhf doFollowItem model rname = do
       (rname <> "treeview")
   return $
     MainTree
-      { -- TODO get rid of these funky cells; not needed anymore
-        mtFilters = simplePreMappingCell filters fst $ \(_fis', actx) ->
-          -- See TreeView tvFilter for why we're doing this.
-          let ?actx = actx
-           in resetTreeViewFilter
-      , mtHideHierarchyFilter = simplePreMappingCell hhf fst $ \(_fis', actx) ->
-          -- See TreeView tvFilter for why we're doing this.
-          let ?actx = actx
-           in resetTreeViewFilter
+      { mtFilters = simpleCell filters $ \_fis' -> resetTreeViewFilter
+      , mtHideHierarchyFilter = simpleCell hhf $ \_fis -> resetTreeViewFilter
       , mtTreeView = tv
       , mtResourceName = rname
       , mtKeymap = keymapToZipper rootKeymap
@@ -318,8 +309,8 @@ rootKeymap =
       , (kmLeaf_ (bind 'H') "Go to next uncle" (callIntoTreeView $ TV.moveGoWalkerFromCur goNextAncestor))
       , (kmSub (bind 't') setStatusKeymap)
       , (kmSub (bind 'o') openExternallyKeymap)
-      , (kmLeaf (bind ',') "Prev filter" $ notFoundToAER_ $ modifyFilters CList.rotL)
-      , (kmLeaf (bind '.') "Next filter" $ notFoundToAER_ $ modifyFilters CList.rotR)
+      , (kmLeaf (bind ',') "Prev filter" $ notFoundToAER_ $ runModifyLens mtFiltersL CList.rotL)
+      , (kmLeaf (bind '.') "Next filter" $ notFoundToAER_ $ runModifyLens mtFiltersL CList.rotR)
       , (kmSub (bind 'd') editDateKeymap)
       , (kmLeaf_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
       , (kmSub (bind 'g') goKeymap)
@@ -884,27 +875,17 @@ resetTreeViewFilter = do
 
 modifyHideHierarchyFilter ::
   (HideHierarchyFilter -> HideHierarchyFilter) -> ComponentEventMOrNotFound MainTree ()
-modifyHideHierarchyFilter f = do
-  actx <- ask
-  runModifyLens mtHideHierarchyFilterL $ \hhf -> (f hhf, actx)
-
-modifyFilters ::
-  (CList.CList Filter -> CList.CList Filter) -> ComponentEventMOrNotFound MainTree ()
-modifyFilters f = do
-  actx <- ask
-  runModifyLens mtFiltersL $ \fs -> (f fs, actx)
+modifyHideHierarchyFilter f = runModifyLens mtHideHierarchyFilterL f
 
 selectFilterByName :: String -> ComponentEventMOrNotFound MainTree ()
 selectFilterByName s = do
   -- We don't use the following short form for updating to propagate the error right.
-  -- mtFiltersL %= (fromMaybe <*> CList.findRotateTo ((== s) . fiName))
   mnewFilters <- CList.findRotateTo ((== s) . fiName) <$> gets (cValue . mtFilters)
-  actx <- ask
   case mnewFilters of
     -- NB this isn't quite the right error but w/e
     Nothing -> throwError IdNotFoundError
     Just newFilters -> do
-      runUpdateLens mtFiltersL (newFilters, actx)
+      runUpdateLens mtFiltersL newFilters
 
 -- * Rendering
 

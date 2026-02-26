@@ -177,7 +177,7 @@ withDefCSAttr (CSAttr anames) = updateAttrMap $ \amap ->
 data TreeView = TreeView
   { tvSubtree :: Cell' Subtree (ComponentEventM TreeView ())
   -- ^ NOT safe to edit directly
-  , tvFilter :: Cell (Filter, AppContext) (ComponentEventMOrNotFound TreeView ()) Filter
+  , tvFilter :: Cell' Filter (ComponentEventMOrNotFound TreeView ())
   -- ^ NOT safe to edit directly. The type is a bit funky b/c changes to the filter have to reload the model b/c it's not stored anywhere here, which may fail.
   -- SOMEDAY maybe just store the model. It's just a pointer!
   , tvList :: TreeViewList
@@ -214,14 +214,7 @@ makeFromModel actx root fi doFollowItem scrolloff model rname = do
   return
     TreeView
       { tvSubtree = simpleCell subtree $ replaceSubtree'
-      , tvFilter = simplePreMappingCell fi fst $ \(_fi', actx) ->
-          -- Enforce late binding of ?actx in reloadModel.
-          -- Without this contruction, ?actx would bind in 'makeFromModel', which is ok practically
-          -- but not in principle, and could be an issue elsewhere when we read, e.g., time.
-          -- SOMEDAY this is kinda unhinged, would be better to either use the correct type (needs a
-          -- warpper though) or just not use implicit parameters. They are really tricky.
-          let ?actx = actx
-           in reloadModel
+      , tvFilter = simpleCell fi $ \_fi' -> reloadModel
       , tvList = list
       , tvResourceName = rname
       , tvSearchRx = Nothing
@@ -230,9 +223,7 @@ makeFromModel actx root fi doFollowItem scrolloff model rname = do
       }
 
 replaceFilter :: Filter -> ComponentEventMOrNotFound TreeView ()
-replaceFilter fi = do
-  actx <- ask
-  runUpdateLens tvFilterL (fi, actx)
+replaceFilter = runUpdateLens tvFilterL
 
 setResourceName :: AppResourceName -> TreeView -> TreeView
 setResourceName rname =
