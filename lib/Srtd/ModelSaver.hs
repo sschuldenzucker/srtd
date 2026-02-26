@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
--- | A process that auto-saves the model. Import qualified.
+-- | A process that auto-saves the model, with throttling / debounce. Import qualified.
 module Srtd.ModelSaver (ModelSaver, startModelSaver, linkModelSaver, exitGracefully) where
 
 import Control.Concurrent (threadDelay)
