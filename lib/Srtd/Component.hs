@@ -106,7 +106,7 @@ instance IsString AppResourceName where
 isPrefixOf :: AppResourceName -> AppResourceName -> Bool
 (AppResourceName s) `isPrefixOf` (AppResourceName t) = s `L.isPrefixOf` t
 
--- | App conext passed down from the app (top) level to components that need it.
+-- | App context passed down from the app (top) level to components that need it.
 data AppContext = AppContext
   { acModelServer :: ModelServer
   , acAppChan :: BChan AppRootMsg
@@ -143,9 +143,7 @@ forgetAppEventReturnData = \case
   Confirmed _ -> Confirmed ()
   Canceled -> Canceled
 
--- Somehow TemplateHaskell breaks everything here. Perhaps b/c of the circularity.
--- suffixLenses ''AppContext
-
+-- had some issues with TemplateHaskell
 acZonedTimeL :: Lens' AppContext ZonedTime
 acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 
@@ -222,17 +220,16 @@ callIntoComponentEventM l h act = do
 
 -- | A class of components. All Brick components (hopefully,,,) satisfy this.
 --
--- Parameters:
---
--- - `s` The state type of the component
--- - `b` The type of final messages that is passed to the parent/caller when the component is
---   closed.
---
--- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented.
+-- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented, and all the other functions.
 class AppComponent s where
+  -- | Return type passed to the parent when the user confirms (and the component accepts that,
+  -- e.g., the input is valid) and a `Confirmed` value is returned. Can be `Void` if the component
+  -- doesn't confirm, or `()` if all info is passed via events, or the component doesn't have
+  -- anything useful to return.
   type Return s
 
-  -- TODO should this be data?
+  -- | Type of events sent back to the parent during operation. Can be `Void` if the component doesn't
+  -- have anything interesting to say (beyond potentially the return type).
   type Event s
 
   -- | Render this component to a widget. Like `appRender` for apps, or the many render functions.
@@ -295,15 +292,13 @@ instance AppComponent SomeAppComponent where
 
 -- * Keymap wrapper tools
 
--- TODO should this be our monad of choice??
+-- | Execute action and return Continue
+aerVoid :: (Monad m) => m () -> m (AppEventReturn b)
+aerVoid act = act >> return Continue
 
 -- | Like 'kmLeaf' but also return 'Continue'.
 kmLeaf_ :: (Monad m) => Binding -> Text -> m () -> (Binding, KeymapItem (m (AppEventReturn b)))
 kmLeaf_ b n x = kmLeaf b n (aerVoid x)
-
--- | Execute action and return Continue
-aerVoid :: (Monad m) => m () -> m (AppEventReturn b)
-aerVoid act = act >> return Continue
 
 -- | Common dispatch routine for keymaps. Given a lens where we store a KeymapZipper, look up,
 -- execute, and update the keymap, or execute a fallback.
@@ -335,7 +330,7 @@ kmzDispatch l key mods fallback = do
 
 -- | 'kmzDispatch' when we don't have submaps and don't track state.
 --
--- Errors and ignores if a submap is found.
+-- Reports an error and ignores if a submap is found.
 kmDispatch ::
   -- | Input keymap
   Keymap (ComponentEventM' s) ->
@@ -377,10 +372,6 @@ callIntoComponentEventMOrNotFound l h act = do
   mapM_ h events
   liftEither ret
 
--- | Convert exception handling.
-notFoundToAER_ :: (Monad m) => ExceptT IdNotFoundError m () -> m (AppEventReturn b)
-notFoundToAER_ = notFoundToAER . aerVoid
-
 -- | Merge exception handling.
 --
 -- An exception is treated equivalent to returning 'Canceled'.
@@ -390,3 +381,8 @@ notFoundToAER act = do
   case eres of
     Left _err -> return Canceled
     Right res -> return res
+
+-- | Convert exception handling. Like 'notFoundToAER' but for an action without an 'AppEventReturn'
+-- of its own.
+notFoundToAER_ :: (Monad m) => ExceptT IdNotFoundError m () -> m (AppEventReturn b)
+notFoundToAER_ = notFoundToAER . aerVoid
