@@ -81,6 +81,7 @@ import Srtd.Dates (DateOrTime (..), cropDate)
 import Srtd.Keymap (KeyDesc (..))
 import Srtd.Model (
   Filter,
+  FilterContext,
   IdNotFoundError,
   Model,
   STForest,
@@ -198,7 +199,7 @@ suffixLenses ''TreeView
 -- * API
 
 makeFromModel ::
-  AppContext ->
+  FilterContext ->
   EID ->
   Filter ->
   Bool ->
@@ -206,10 +207,8 @@ makeFromModel ::
   Model ->
   AppResourceName ->
   Either IdNotFoundError TreeView
-makeFromModel actx root fi doFollowItem scrolloff model rname = do
-  subtree <-
-    translateAppFilterContext actx $
-      runFilter fi root model
+makeFromModel fctx root fi doFollowItem scrolloff model rname = do
+  subtree <- runFilter fctx fi root model
   let list = forestToBrickList (rname <> "brick list") $ stForest subtree
   return
     TreeView
@@ -245,7 +244,7 @@ moveRootToEID eid = do
   tv' <-
     liftEither $
       makeFromModel
-        actx
+        (appContext2FilterContext actx)
         eid
         (cValue $ tvFilter tv)
         (tvDoFollowItem tv)
@@ -495,7 +494,7 @@ reloadModel = do
   let root_ = root . cValue . tvSubtree $ s
   actx <- ask
   model' <- liftIO $ getModel (acModelServer actx)
-  subtree <- liftEither $ translateAppFilterContext actx $ runFilter filter_ root_ model'
+  subtree <- liftEither $ runFilter (appContext2FilterContext actx) filter_ root_ model'
   lift $ runUpdateLens tvSubtreeL subtree
 
 replaceSubtree' :: Subtree -> ComponentEventM TreeView ()

@@ -197,7 +197,7 @@ makeWithFilters ::
 makeWithFilters actx root filters hhf doFollowItem model rname = do
   tv <-
     TV.makeFromModel
-      actx
+      (appContext2FilterContext actx)
       root
       (chainFilters (hideHierarchyFilter hhf) (fromJust $ CList.focus filters))
       doFollowItem
@@ -386,7 +386,7 @@ collapseLevelKeymap =
           model' <- liftIO $ getModel (acModelServer actx)
           root <- gets mtRoot
           notFoundToAER_ $ do
-            subtree <- liftEither $ translateAppFilterContext actx $ runFilter normalFilter root model'
+            subtree <- liftEither $ runFilter (appContext2FilterContext actx) normalFilter root model'
             modifyHideHierarchyFilter $ const $ subtreeLevelHHF i subtree
       )
   subtreeLevelHHF i subtree = HideHierarchyFilter (Set.fromList $ forestIdsAtLevel i (stForest subtree))
@@ -626,7 +626,7 @@ spaceKeymap =
             root <- gets mtRoot
             notFoundToAER_ $ do
               -- Fetch a new model here. This lets us do this even if this node is collapsed.
-              subtree <- liftEither $ translateAppFilterContext actx $ runFilter normalFilter root model'
+              subtree <- liftEither $ runFilter (appContext2FilterContext actx) normalFilter root model'
               (Node _ cs) <- liftEither $ maybeToEither IdNotFoundError $ forestFindTree cur (stForest subtree)
               let c_eids = [gEID c | (Node c _) <- cs]
               -- This allows to "undo" the child collapsing by child-collapsing again.

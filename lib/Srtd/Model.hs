@@ -302,14 +302,17 @@ chainFilters f1 f2 =
 instance Show Filter where
   show f = "<Filter " ++ fiName f ++ ">"
 
-runFilter :: (?fctx :: FilterContext) => Filter -> EID -> Model -> Either IdNotFoundError Subtree
-runFilter (Filter {fiIncludeDone, fiPostprocess}) i m = do
+runFilter :: FilterContext -> Filter -> EID -> Model -> Either IdNotFoundError Subtree
+runFilter fctx (Filter {fiIncludeDone, fiPostprocess}) i m = do
   st0 <- modelGetSubtreeBelow i m
-  let
-    -- TODO apply fiIncludeDone *before* deriving local attrs!
-    st1 = (if fiIncludeDone then id else filterSubtree pNotDone) st0
-    st2 = (stForestL %~ fiPostprocess) $ st1
-  return st2
+  -- SOMEDAY get rid of the ?fctx implicit param, we don't really benefit from it.
+  let ?fctx = fctx
+   in let
+        -- TODO apply fiIncludeDone *before* deriving local attrs!
+        st1 = (if fiIncludeDone then id else filterSubtree pNotDone) st0
+        st2 = (stForestL %~ fiPostprocess) $ st1
+       in
+        return st2
  where
   pNotDone = not . isDone . gStatus
 

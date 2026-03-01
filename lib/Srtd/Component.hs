@@ -115,10 +115,8 @@ data AppContext = AppContext
   -- interactions, NOT for internal process coordination!
   }
 
-translateAppFilterContext :: AppContext -> ((?fctx :: FilterContext) => a) -> a
-translateAppFilterContext actx x =
-  let ?fctx = FilterContext {fcZonedTime = acZonedTime $ actx}
-   in x
+appContext2FilterContext :: AppContext -> FilterContext
+appContext2FilterContext actx = FilterContext {fcZonedTime = acZonedTime $ actx}
 
 -- | Return data returned by 'handleEvent' (see below) to tell the parent component if the child
 -- component should be kept around.
