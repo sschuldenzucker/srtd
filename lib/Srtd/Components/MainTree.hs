@@ -16,7 +16,7 @@ import Brick.Widgets.Table
 import Control.Monad (forM_, when)
 import Control.Monad.Except
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader (MonadReader, ask)
+import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
@@ -233,12 +233,12 @@ rootKeymap =
       , kmLeaf_ (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild
       , ( kmLeaf_ (bind 'e') "Edit name" $ do
             state <- get
-            actx <- ask
             case mtCurWithAttr state of
               Just (cur, ((curAttr, _), _)) -> do
                 let oldName = name curAttr
                 let cb name' = do
-                      let f = setLastModified (zonedTimeToUTC . acZonedTime $ actx) . (nameL .~ name')
+                      ztime <- asks acZonedTime
+                      let f = setLastModified (zonedTimeToUTC ztime) . (nameL .~ name')
                       modifyModelAsync $ modifyAttrByEID cur f
                       callIntoTreeView $ TV.moveToEID cur
                       return Continue
@@ -248,35 +248,27 @@ rootKeymap =
       , kmSub (ctrl 't') debugKeymap
       , ( kmLeaf_ (bind 'T') "New tab" $ do
             state <- get
-            actx <- ask
+            achan <- asks acAppChan
             liftIO $
-              writeBChan (acAppChan actx) $
+              writeBChan achan $
                 PushTab (\rname -> SomeAppComponent $ setResourceName rname state)
         )
       , (kmLeaf (bind 'q') "Close tab / quit" $ return $ Confirmed ())
       , ( kmLeaf_ (bind ']') "Next tab" $ do
-            actx <- ask
-            liftIO $
-              writeBChan (acAppChan actx) $
-                NextTab
+            achan <- asks acAppChan
+            liftIO $ writeBChan achan NextTab
         )
       , ( kmLeaf_ (bind '[') "Prev tab" $ do
-            actx <- ask
-            liftIO $
-              writeBChan (acAppChan actx) $
-                PrevTab
+            achan <- asks acAppChan
+            liftIO $ writeBChan achan PrevTab
         )
       , ( kmLeaf_ (bind '}') "Swap tab next" $ do
-            actx <- ask
-            liftIO $
-              writeBChan (acAppChan actx) $
-                SwapTabNext
+            achan <- asks acAppChan
+            liftIO $ writeBChan achan SwapTabNext
         )
       , ( kmLeaf_ (bind '{') "Swap tab prev" $ do
-            actx <- ask
-            liftIO $
-              writeBChan (acAppChan actx) $
-                SwapTabPrev
+            achan <- asks acAppChan
+            liftIO $ writeBChan achan SwapTabPrev
         )
       , ( kmLeaf_ (binding (KChar 'j') [MMeta]) "Move subtree down same level" $
             moveCurRelative goNextSibling insAfter
@@ -433,16 +425,16 @@ editDateKeymap =
              (ctrl 'd')
              "Delete all"
              ( withCur $ \cur -> do
-                 actx <- ask
-                 let f = setLastModified (zonedTimeToUTC $ acZonedTime actx) . (datesL .~ noDates)
+                 ztime <- asks acZonedTime
+                 let f = setLastModified (zonedTimeToUTC ztime) . (datesL .~ noDates)
                  modifyModelAsync (modifyAttrByEID cur f)
              )
          ]
  where
   mkDateEditShortcut (kb, label, l0) = kmLeaf_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
     let cb date' = do
-          actx <- ask
-          let f = setLastModified (zonedTimeToUTC $ acZonedTime actx) . (runALens' l0 .~ date')
+          ztime <- asks acZonedTime
+          let f = setLastModified (zonedTimeToUTC ztime) . (runALens' l0 .~ date')
           modifyModelAsync $ modifyAttrByEID cur f
           callIntoTreeView $ TV.moveToEID cur
           return Continue
@@ -638,8 +630,8 @@ spaceKeymap =
     , kmLeaf_ (bind 'n') "New as parent" $ withCur $ \cur -> do
         -- Copied from 'pushInsertNewItemRelToCur' but that function can't handle "insert as parent".
         let cb name = do
-              actx <- ask
-              let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ actx) name
+              ztime <- asks acZonedTime
+              let attr = attrMinimal (zonedTimeToUTC ztime) name
               uuid <- liftIO nextRandom
               eok <- runExceptT $ modifyModelSync $ insertNewNormalAsParentWithNewId uuid attr cur
               case eok of
@@ -739,12 +731,12 @@ pushInsertNewItemRelToCur ::
   InsertWalker IdLabel -> ComponentEventM MainTree ()
 pushInsertNewItemRelToCur go = do
   state <- get
-  actx <- ask
+  ztime <- asks acZonedTime
   let (tgt', go') = case mtCur state of
         Just cur -> (cur, go)
         Nothing -> (mtRoot state, insLastChild)
   let cb name = do
-        let attr = attrMinimal (zonedTimeToUTC . acZonedTime $ actx) name
+        let attr = attrMinimal (zonedTimeToUTC ztime) name
         uuid <- liftIO nextRandom
         -- NB we *have* to use 'modifyModelSync' here b/c that will reload the model synchronously so we
         -- find the new EID below.
@@ -764,16 +756,16 @@ pushInsertNewItemRelToCur go = do
 
 setStatus :: (MonadState MainTree m, MonadReader AppContext m, MonadIO m) => Status -> m ()
 setStatus status' = withCur $ \cur -> do
-  actx <- ask
+  ztime <- asks acZonedTime
   modifyModelAsync $
-    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime actx) . (statusL .~ status')
+    let f = setLastStatusModified (zonedTimeToUTC ztime) . (statusL .~ status')
      in modifyAttrByEID cur f
 
 touchLastStatusModified :: (MonadReader AppContext m, MonadIO m, MonadState MainTree m) => m ()
 touchLastStatusModified = withCur $ \cur -> do
-  actx <- ask
+  ztime <- asks acZonedTime
   modifyModelAsync $
-    let f = setLastStatusModified (zonedTimeToUTC $ acZonedTime actx)
+    let f = setLastStatusModified (zonedTimeToUTC ztime)
      in modifyAttrByEID cur f
 
 -- ** Moving Nodes
@@ -819,11 +811,11 @@ modifyModelSync ::
   -- This is `ExceptT IdNotFoundError (EventM n MainTree) ()` but I'm not using it that much.
   ComponentEventMOrNotFound MainTree ()
 modifyModelSync f = do
-  actx <- ask
+  mserver <- asks acModelServer
   liftIO $ do
     -- needs to be re-written when we go more async. Assumes that the model update is performed *synchronously*!
     -- SOMEDAY should we just not pull here (and thus remove everything after this) and instead rely on the ModelUpdated event?
-    modifyModelOnServer (acModelServer actx) f
+    modifyModelOnServer mserver f
   replaceExceptT callIntoTreeView TV.reloadModel
 
 modifyModelSync_ ::
@@ -844,8 +836,8 @@ modifyModelAsync ::
   ((?mue :: ModelUpdateEnv) => Model -> Model) ->
   m ()
 modifyModelAsync f = do
-  actx <- ask
-  liftIO $ modifyModelOnServer (acModelServer actx) f
+  mserver <- asks acModelServer
+  liftIO $ modifyModelOnServer mserver f
 
 -- ** Navigation
 
