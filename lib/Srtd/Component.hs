@@ -97,7 +97,8 @@ newtype AppResourceName = AppResourceName {unAppResourceName :: [PrimitiveAppRes
 
 data PrimitiveAppResourceName
   = NamedAppResource Text Int
-  | TabTitleFor AppResourceName
+  | -- A bit of a hack, only used in Tabs.
+    TabTitleFor AppResourceName
   deriving (Eq, Ord, Show)
 
 instance IsString AppResourceName where
@@ -105,6 +106,31 @@ instance IsString AppResourceName where
 
 isPrefixOf :: AppResourceName -> AppResourceName -> Bool
 (AppResourceName s) `isPrefixOf` (AppResourceName t) = s `L.isPrefixOf` t
+
+stripPrefix :: AppResourceName -> AppResourceName -> Maybe [PrimitiveAppResourceName]
+stripPrefix (AppResourceName pns) (AppResourceName pns') = L.stripPrefix pns pns'
+
+-- | Common pattern for dispatching on MouseDown etc. for child components
+dispatchChildRName ::
+  (MonadIO m, MonadState s m) =>
+  -- | Component name, for error messages
+  String ->
+  -- | Getter for this component's resource name. We respond to children below it.
+  (s -> AppResourceName) ->
+  -- | Resource name from an event that we want to process
+  AppResourceName ->
+  -- | Handler if the resource name is an ancestor of ours. Receive an error message for no-match
+  -- and the tail of the resource name.
+  (String -> [PrimitiveAppResourceName] -> m (AppEventReturn a)) ->
+  m (AppEventReturn a)
+dispatchChildRName cname getter rname go = do
+  myRName <- gets getter
+  let errmsg = cname ++ " received click on " ++ show rname ++ ", which we don't recognize. Ignoring."
+  case stripPrefix myRName rname of
+    Nothing -> do
+      liftIO $ glogL WARNING errmsg
+      return Continue
+    Just res -> go res errmsg
 
 -- | App context passed down from the app (top) level to components that need it.
 data AppContext = AppContext

@@ -26,7 +26,7 @@ import System.Process (callProcess)
 import Text.Regex.TDFA
 import Text.Regex.TDFA.Text (compile)
 
--- SOMEDAY most of these helpers shouldn't exist and instead we should be using MissingH or some similar library.
+-- SOMEDAY most of these helpers shouldn't exist and instead we should be using MissingH or some similar library. Or `composition-extra` or something. Or `utility-ht`. Or `extra`. Choose one.
 
 -- | if-then-else as a function.
 --
@@ -43,6 +43,10 @@ select xElse ((False, _) : cs) = select xElse cs
 -- | Opposite of 'const'
 ignore :: a -> b -> b
 ignore = flip const
+
+-- From composition-extra
+slipl :: (a -> b -> c -> d) -> b -> c -> a -> d
+slipl f y z x = f x y z
 
 safeHead :: [a] -> Maybe a
 safeHead (x : _) = Just x

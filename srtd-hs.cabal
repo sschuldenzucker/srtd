@@ -27,6 +27,7 @@ library
         Srtd.Components.MainTree
         Srtd.Components.NewNodeOverlay
         Srtd.Components.QuickFilter
+        Srtd.Components.Tabs
         Srtd.Components.TestOverlay
         Srtd.Components.TreeView
         Srtd.Config
@@ -47,12 +48,14 @@ library
         Srtd.Ticker
         Srtd.Todo
         Srtd.Util
+        Srtd.Util.ListZipper
 
     hs-source-dirs:     lib
     default-language:   GHC2024
     default-extensions:
         OverloadedStrings ImplicitParams TemplateHaskell DeriveGeneric
-        LambdaCase NumericUnderscores TypeFamilies ViewPatterns PatternSynonyms MultiWayIf
+        LambdaCase NumericUnderscores TypeFamilies ViewPatterns
+        PatternSynonyms MultiWayIf
 
     ghc-options:
         -Wall -Werror=missing-methods -Werror=missing-fields
