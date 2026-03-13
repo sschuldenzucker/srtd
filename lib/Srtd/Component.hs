@@ -118,16 +118,15 @@ dispatchChildRName ::
   AppResourceName ->
   -- | Handler if the resource name is an ancestor of ours. Receive an error message for no-match
   -- and the tail of the resource name.
-  (String -> [PrimitiveAppResourceName] -> m (AppEventReturn a)) ->
+  (m (AppEventReturn a) -> [PrimitiveAppResourceName] -> m (AppEventReturn a)) ->
   m (AppEventReturn a)
 dispatchChildRName cname getter rname go = do
   myRName <- gets getter
   let errmsg = cname ++ " received click on " ++ show rname ++ ", which we don't recognize. Ignoring."
+      warnact = liftIO (glogL WARNING errmsg) >> return Continue
   case stripPrefix myRName rname of
-    Nothing -> do
-      liftIO $ glogL WARNING errmsg
-      return Continue
-    Just res -> go errmsg res
+    Nothing -> warnact
+    Just res -> go warnact res
 
 -- | App context passed down from the app (top) level to components that need it.
 data AppContext = AppContext

@@ -148,16 +148,10 @@ instance (VariantBehavior v) => AppComponent (QuickFilter v) where
     VtyKeyEvent KDown [] -> routeToTreeView
     VtyKeyEvent KUp [] -> routeToTreeView
     VtyKeyEvent key mods -> kmzDispatch sKMZL key mods routeToEdit
-    MouseDown rname _k _mods _loc -> do
-      myRName <- gets sResourceName
-      if
-        | (myRName <> "treeview") `isPrefixOf` rname -> routeToTreeView
-        | (myRName <> "editor") `isPrefixOf` rname -> routeToEdit
-        | otherwise -> do
-            liftIO $
-              glogL WARNING $
-                "QuickFilter received click on " ++ show rname ++ ", which we don't recognize. Ignoring."
-            return Continue
+    MouseDown rname _k _mods _loc -> dispatchChildRName "QuickFilter" sResourceName rname $ \warnact rntail -> case rntail of
+      NamedAppResource "treeview" 0 : _ -> routeToTreeView
+      NamedAppResource "editor" 0 : _ -> routeToEdit
+      _ -> warnact
     -- TODO not clear to me wat do here
     SomeVtyOtherEvent -> routeToBoth
     SomeMouseUp -> return Continue

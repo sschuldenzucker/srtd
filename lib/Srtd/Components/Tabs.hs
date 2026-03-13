@@ -229,13 +229,11 @@ instance (AppComponent s) => AppComponent (Tabs s) where
     MouseDown rname _button _mods _loc -> routeMouse rname
     MouseUp rname _mbtn _loc -> routeMouse rname
    where
-    routeMouse rname = dispatchChildRName "Tabs" tRname rname $ \errmsg rntail -> case rntail of
+    routeMouse rname = dispatchChildRName "Tabs" tRname rname $ \warnact rntail -> case rntail of
       -- We don't check which tab was clicked into b/c it only _can_ be the active one, b/c no other one is visible.
       NamedAppResource "tab" _i : _ -> handleActiveTab $ handleEvent ev
       NamedAppResource "tab_title" i : _ -> aerVoid $ switchToTabID i
-      _ -> do
-        liftIO $ glogL WARNING errmsg
-        return Continue
+      _ -> warnact
 
   componentTitle = tTitle
 
