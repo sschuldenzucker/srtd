@@ -70,6 +70,10 @@ Haddock docs are generated to `docs/build_haddock/` using `just docs`, and there
 
 - [Architecture Overview](docs/architecture.md)
 
+### Branches
+
+I'm eating my own dogfood so much, I use an oldschool staging setup. `main` is stable, `staging` is staging, and everything else is hopefully obvious or a feature branch.
+
 ## Themes
 
 A theme is a toml file. Every theme defines three toplevel keys (all of which are required):
