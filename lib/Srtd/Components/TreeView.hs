@@ -22,6 +22,7 @@ module Srtd.Components.TreeView (
 
   -- * Construction
   makeFromModel,
+  makeFromModel',
   setResourceName,
   moveRootToEID,
 
@@ -208,18 +209,35 @@ makeFromModel ::
   AppResourceName ->
   Either IdNotFoundError TreeView
 makeFromModel fctx root fi doFollowItem scrolloff model rname = do
+  go <- makeFromModel' fctx root fi model
+  return $ go doFollowItem scrolloff rname
+
+-- | A version of 'makeFromModel' that's stricter in based on what it can fail.
+makeFromModel' ::
+  FilterContext ->
+  EID ->
+  Filter ->
+  Model ->
+  Either
+    IdNotFoundError
+    ( Bool ->
+      Int ->
+      AppResourceName ->
+      TreeView
+    )
+makeFromModel' fctx root fi model = do
   subtree <- runFilter fctx fi root model
-  let list = forestToBrickList (rname <> "brick list") $ stForest subtree
-  return
-    TreeView
-      { tvSubtree = simpleCell subtree $ replaceSubtree'
-      , tvFilter = simpleCell fi $ \_fi' -> reloadModel
-      , tvList = list
-      , tvResourceName = rname
-      , tvSearchRx = Nothing
-      , tvDoFollowItem = doFollowItem
-      , tvScrolloff = scrolloff
-      }
+  let go doFollowItem scrolloff rname =
+        TreeView
+          { tvSubtree = simpleCell subtree $ replaceSubtree'
+          , tvFilter = simpleCell fi $ \_fi' -> reloadModel
+          , tvList = forestToBrickList (rname <> "brick list") $ stForest subtree
+          , tvResourceName = rname
+          , tvSearchRx = Nothing
+          , tvDoFollowItem = doFollowItem
+          , tvScrolloff = scrolloff
+          }
+  return go
 
 replaceFilter :: Filter -> ComponentEventMOrNotFound TreeView ()
 replaceFilter = runUpdateLens tvFilterL

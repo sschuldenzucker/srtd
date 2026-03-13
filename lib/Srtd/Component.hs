@@ -95,10 +95,7 @@ instance Show AppRootMsg where
 newtype AppResourceName = AppResourceName {unAppResourceName :: [PrimitiveAppResourceName]}
   deriving (Eq, Ord, Show, Semigroup)
 
-data PrimitiveAppResourceName
-  = NamedAppResource Text Int
-  | -- A bit of a hack, only used in Tabs.
-    TabTitleFor AppResourceName
+data PrimitiveAppResourceName = NamedAppResource Text Int
   deriving (Eq, Ord, Show)
 
 instance IsString AppResourceName where
@@ -130,7 +127,7 @@ dispatchChildRName cname getter rname go = do
     Nothing -> do
       liftIO $ glogL WARNING errmsg
       return Continue
-    Just res -> go res errmsg
+    Just res -> go errmsg res
 
 -- | App context passed down from the app (top) level to components that need it.
 data AppContext = AppContext

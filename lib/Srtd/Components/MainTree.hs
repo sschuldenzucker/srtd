@@ -3,7 +3,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module Srtd.Components.MainTree (MainTree (..), make) where
+module Srtd.Components.MainTree (MainTree (..), make, make') where
 
 import Brick hiding (on)
 import Brick.BChan (writeBChan)
@@ -184,6 +184,11 @@ callIntoTreeView = callIntoComponentEventM mtTreeViewL $ safeConst (return ())
 make :: AppContext -> EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
 make actx root = makeWithFilters actx root (CList.fromList defaultFilters) emptyHideHierarchyFilter True
 
+make' :: AppContext -> EID -> Model -> Either IdNotFoundError (AppResourceName -> MainTree)
+make' actx root model = do
+  go <- makeWithFilters' actx root (CList.fromList defaultFilters) emptyHideHierarchyFilter model
+  return $ \rname -> go True rname
+
 -- | filters must not be empty.
 makeWithFilters ::
   AppContext ->
@@ -214,6 +219,35 @@ makeWithFilters actx root filters hhf doFollowItem model rname = do
       , mtShowDetails = False
       , mtOverlay = Nothing
       }
+
+-- | A version of 'makeWithFilters' that's stricter based on what can fail
+makeWithFilters' ::
+  AppContext ->
+  EID ->
+  CList.CList Filter ->
+  HideHierarchyFilter ->
+  Model ->
+  Either
+    IdNotFoundError
+    (Bool -> AppResourceName -> MainTree)
+makeWithFilters' actx root filters hhf model = do
+  mkTV <-
+    TV.makeFromModel'
+      (appContext2FilterContext actx)
+      root
+      (chainFilters (hideHierarchyFilter hhf) (fromJust $ CList.focus filters))
+      model
+  let go doFollowItem rname =
+        MainTree
+          { mtFilters = simpleCell filters $ \_fis' -> resetTreeViewFilter
+          , mtHideHierarchyFilter = simpleCell hhf $ \_fis -> resetTreeViewFilter
+          , mtTreeView = mkTV doFollowItem Config.scrolloff rname
+          , mtResourceName = rname
+          , mtKeymap = keymapToZipper rootKeymap
+          , mtShowDetails = False
+          , mtOverlay = Nothing
+          }
+  return go
 
 -- | Toplevel app resource name, including all contained resources. This is a "cloning" routine.
 --

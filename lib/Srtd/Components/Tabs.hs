@@ -12,7 +12,7 @@ module Srtd.Components.Tabs (
 
   -- * Access
   isEmpty,
-  activeRname,
+  activeTabID,
   activeTabL,
 
   -- * Modification
@@ -45,7 +45,7 @@ import Srtd.Util.ListZipper
 -- We don't technically _require_ tabs to be nonempty, but you probably want this. This is why we
 -- return Confirmed or Canceled if an event closed the last tab.
 data Tabs s = Tabs
-  { tTabs :: LZ.Zipper (AppResourceName, s)
+  { tTabs :: LZ.Zipper (Int, s)
   , tNextTabID :: Int
   , tRname :: AppResourceName
   , tTitle :: Text
@@ -56,25 +56,27 @@ suffixLenses ''Tabs
 make :: Int -> Text -> [AppResourceName -> s] -> AppResourceName -> Tabs s
 make initTabID title initMks rname =
   Tabs
-    { tTabs = LZ.fromList initTabsWithRnames
+    { tTabs = LZ.fromList initTabsWithIDs
     , tNextTabID = nextTabID
     , tRname = rname
     , tTitle = title
     }
  where
-  (initTabsWithRnames, nextTabID) = slipl foldr ([], initTabID) initMks $ \mk (rss, i) ->
-    let tabRname = mkTabRname rname i
-     in ((tabRname, mk tabRname) : rss, i + 1)
+  (initTabsWithIDs, nextTabID) = slipl foldr ([], initTabID) initMks $ \mk (rss, i) ->
+    ((i, mk (mkTabRname rname i)) : rss, i + 1)
 
 mkTabRname :: AppResourceName -> Int -> AppResourceName
 mkTabRname rname i = rname <> AppResourceName [NamedAppResource "tab" i]
+
+mkTabTitleRname :: AppResourceName -> Int -> AppResourceName
+mkTabTitleRname rname i = rname <> AppResourceName [NamedAppResource "tab_title" i]
 
 isEmpty :: Tabs s -> Bool
 isEmpty = LZ.emptyp . tTabs
 
 -- | Focused resource name, or Nothing if empty.
-activeRname :: Tabs s -> Maybe AppResourceName
-activeRname ts =
+activeTabID :: Tabs s -> Maybe Int
+activeTabID ts =
   let tabs = tTabs ts
    in if
         | LZ.emptyp tabs -> Nothing
@@ -90,18 +92,18 @@ activeTabL = lens getter setter
   getter Tabs {tTabs} = snd $ LZ.cursor tTabs
   setter state@(Tabs {tTabs}) t' = state {tTabs = lzModify (second $ const t') tTabs}
 
-newTabRname :: (MonadState (Tabs s) m) => m AppResourceName
-newTabRname = do
-  ret <- mkTabRname <$> (gets tRname) <*> (gets tNextTabID)
+newTabID :: (MonadState (Tabs s) m) => m Int
+newTabID = do
+  ret <- gets tNextTabID
   tNextTabIDL += 1
   return ret
 
-pushTab :: (AppResourceName -> s) -> ComponentEventM (Tabs s) AppResourceName
+pushTab :: (AppResourceName -> s) -> ComponentEventM (Tabs s) ()
 pushTab mk = do
-  tabRname <- newTabRname
-  tTabsL %= LZ.insert (tabRname, mk tabRname) . LZ.right
-  tell1 (TabPushed tabRname)
-  return tabRname
+  i <- newTabID
+  rname <- gets tRname
+  tTabsL %= LZ.insert (i, mk (mkTabRname rname i)) . LZ.right
+  tell1 (TabPushed i)
 
 -- | Pop a tab and return whether the tabs list is now empty.
 -- We do it like this b/c this usually needs to be handled by the caller.
@@ -116,6 +118,9 @@ nextTab = tTabsL %= lzCircRight
 prevTab = tTabsL %= lzCircLeft
 swapTabNext = tTabsL %= lzSwapRightCirc
 swapTabPrev = tTabsL %= lzSwapRightCirc
+
+switchToTabID :: Int -> ComponentEventM (Tabs s) ()
+switchToTabID i = tTabsL %= lzFindBegin ((i ==) . fst)
 
 -- | Execute an action in each tab and collect results.
 callIntoEachTab :: ComponentEventM s a -> ComponentEventM (Tabs s) (LZ.Zipper a)
@@ -157,9 +162,9 @@ handleEachTab act = do
 
 -- | Call into the active tab, if any, or return Nothing.
 callIntoActiveTabMaybe ::
-  ComponentEventM s a -> ComponentEventM (Tabs s) (Maybe (AppResourceName, a))
+  ComponentEventM s a -> ComponentEventM (Tabs s) (Maybe (Int, a))
 callIntoActiveTabMaybe act = do
-  mtrname <- gets activeRname
+  mtrname <- gets activeTabID
   case mtrname of
     Nothing -> return Nothing
     Just trname ->
@@ -184,8 +189,8 @@ handleActiveTab act =
       ise <- popTab
       return $ if ise then Confirmed () else Continue
 
-renderTabBar :: (AppComponent s) => LZ.Zipper (AppResourceName, s) -> Widget AppResourceName
-renderTabBar tabs =
+renderTabBar :: (AppComponent s) => AppResourceName -> LZ.Zipper (Int, s) -> Widget AppResourceName
+renderTabBar rname tabs =
   withDefAttr AppAttr.tab_bar $
     let (front, cur, back) = lzSplit3 tabs
      in hBox $
@@ -195,19 +200,19 @@ renderTabBar tabs =
               ++ map (uncurry (renderTabTitle False)) back
               ++ [padLeft Max (str " ")]
  where
-  renderTabTitle :: (AppComponent c) => Bool -> AppResourceName -> c -> Widget AppResourceName
-  renderTabTitle sel rname c =
+  renderTabTitle :: (AppComponent c) => Bool -> Int -> c -> Widget AppResourceName
+  renderTabTitle sel i c =
     let theAttrName =
           (if sel then AppAttr.tab_bar <> attrName "selected" else AppAttr.tab_bar)
             <> attrName "tab_title"
-     in -- TODO WIP nope gotta flag that it's the tab title, not the component itself.
-        clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 25 $ txt (componentTitle c)
+        tabTitleRname = mkTabTitleRname rname i
+     in clickable tabTitleRname . withAttr theAttrName . padLeftRight 1 . hLimit 25 $ txt (componentTitle c)
 
 data TabsEvent s
-  = TabPushed AppResourceName
+  = TabPushed Int
   | TabPopped
-  | TabEvent AppResourceName (Event s)
-  | TabConfirmed AppResourceName (Return s)
+  | TabEvent Int (Event s)
+  | TabConfirmed Int (Return s)
 
 instance (AppComponent s) => AppComponent (Tabs s) where
   type Return (Tabs s) = ()
@@ -216,7 +221,7 @@ instance (AppComponent s) => AppComponent (Tabs s) where
   renderComponentWithOverlays s =
     let curTab = snd . LZ.cursor . tTabs $ s
         (curTabW, ovls) = renderComponentWithOverlays curTab
-     in (hBox [renderTabBar (tTabs s), curTabW], ovls)
+     in (vBox [renderTabBar (tRname s) (tTabs s), curTabW], ovls)
 
   handleEvent ev = case ev of
     AppEvent _ -> handleEachTab $ handleEvent ev
@@ -227,7 +232,7 @@ instance (AppComponent s) => AppComponent (Tabs s) where
     routeMouse rname = dispatchChildRName "Tabs" tRname rname $ \errmsg rntail -> case rntail of
       -- We don't check which tab was clicked into b/c it only _can_ be the active one, b/c no other one is visible.
       NamedAppResource "tab" _i : _ -> handleActiveTab $ handleEvent ev
-      -- TODO tab title
+      NamedAppResource "tab_title" i : _ -> aerVoid $ switchToTabID i
       _ -> do
         liftIO $ glogL WARNING errmsg
         return Continue
