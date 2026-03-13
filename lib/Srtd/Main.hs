@@ -2,7 +2,7 @@ module Srtd.Main (main) where
 
 import Brick
 import Brick.BChan (newBChan, writeBChan)
-import Brick.Keybindings (ToBinding (bind), ctrl)
+import Brick.Keybindings (ctrl)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Keybindings.Pretty (ppBinding)
 import Brick.Themes (Theme, themeToAttrMap)
@@ -11,27 +11,25 @@ import Brick.Widgets.Center
 import Brick.Widgets.Table (columnBorders, renderTable, rowBorders, surroundingBorder, table)
 import Control.Arrow (first, second)
 import Control.Concurrent.Async qualified as Async
-import Control.Monad (when)
 import Control.Monad.State (liftIO)
 import Data.CircularList qualified as CList
-import Data.List (intersperse, sortBy)
-import Data.List.Zipper qualified as LZ
-import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
+import Data.Foldable (forM_)
+import Data.List (sortBy)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Ord (comparing)
 import Data.Text qualified as T
 import Data.Time (getZonedTime)
-import Data.Void
-import GHC.Stack (HasCallStack)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Graphics.Vty qualified as Vty
 import Lens.Micro.Platform
 import Srtd.Alignment
-import Srtd.AppAttr qualified as AppAttr
 import Srtd.AppTheme qualified as AppTheme
 import Srtd.Attr (EID (Vault))
 import Srtd.CmdlineArgs qualified as CArgs
 import Srtd.Component
 import Srtd.Components.MainTree qualified as MainTree
+import Srtd.Components.Tabs hiding (make)
+import Srtd.Components.Tabs qualified as Tabs
 import Srtd.Keymap (KeyDesc (..))
 import Srtd.Log
 import Srtd.ModelSaver qualified as ModelSaver
@@ -44,13 +42,8 @@ data AppState = AppState
   , -- SOMEDAY we may wanna keep these as MainTree so we can clone. Or 'new tab' should be a shortcut of MainTree, not sure.
     -- SOMEDAY should we have a componentResourceName getter in AppComponent? Then we can get rid of storing it here.
     -- SOMEDAY maybe it makes sense to frame a tab as an overlay and use the infra from maintree??
-    asTabs :: LZ.Zipper (AppResourceName, SomeAppComponent)
+    asTabs :: Tabs SomeAppComponent
   -- ^ We make sure that `asTabs` is never after the end and in particular that it's nonempty.
-  -- We store the resource name of the tab title (!) so we can find it again for mouse clicks.
-  -- SOMEDAY I don't think we even have to store the resource name as state. We can just use the
-  -- index in the list.
-  , asNextTabID :: Int
-  -- ^ "Unique ID" for the next tab being opened, for resource names.
   , asHelpAlways :: Bool
   , asAttrMapRing :: CList.CList (String, AttrMap)
   , asExitCode :: ExitCode
@@ -106,8 +99,7 @@ main = do
         AppState
           { asContext = actx
           , -- Set to the default tab upon init action.
-            asTabs = LZ.empty
-          , asNextTabID = 1
+            asTabs = Tabs.make 0 "Root Tabs" [] "root_tabs"
           , asHelpAlways = False
           , asAttrMapRing = attrMapRing
           , asExitCode = ExitSuccess
@@ -138,27 +130,11 @@ main = do
 myAppDraw :: AppState -> [Widget AppResourceName]
 myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
  where
-  tab0 = snd $ LZ.cursor asTabs
   mainUIs =
     let (w0, ovls0) =
           let ?actx = asContext
-           in renderComponentWithOverlays tab0
-     in map (uncurry wrapOverlay) ovls0 ++ [renderTabBar asTabs <=> w0]
-  renderTabTitle :: (AppComponent c, Ord n) => Bool -> n -> c -> Widget n
-  renderTabTitle sel rname c = clickable rname . withAttr theAttrName . padLeftRight 1 . hLimit 25 $ txt (componentTitle c)
-   where
-    theAttrName =
-      (if sel then AppAttr.tab_bar <> attrName "selected" else AppAttr.tab_bar)
-        <> attrName "tab_title"
-  renderTabBar pairs =
-    withDefAttr AppAttr.tab_bar $
-      let (front, cur, back) = lzSplit3 pairs
-       in hBox $
-            intersperse (txt "|") $
-              map (uncurry (renderTabTitle False)) front
-                ++ [uncurry (renderTabTitle True) cur]
-                ++ map (uncurry (renderTabTitle False)) back
-                ++ [padLeft Max (str " ")]
+           in renderComponentWithOverlays asTabs
+     in map (uncurry wrapOverlay) ovls0 ++ [w0]
   wrapOverlay title w =
     centerLayer
       . Brick.hLimitPercent 80
@@ -174,7 +150,7 @@ myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
         -- I think helix did this, e.g., in the `"` overlay.
         alignBottomRightLayer . borderWithLabel (padLeftRight 1 $ txt keymapName) $ renderTable inner
   keyHelpUI =
-    let KeyDesc keymapName isToplevel keydescs = componentKeyDesc $ state ^. activeTabL
+    let KeyDesc keymapName isToplevel keydescs = componentKeyDesc asTabs
         -- Key desc for keys at the toplevel. We don't use a keymap for this right now.
         mainKeydescs =
           map (first ppBinding) $
@@ -207,34 +183,17 @@ myHandleEvent ev = wrappingActions $
     (VtyEvent (EvKey (KFun 10) [])) -> do
       asAttrMapRingL %= CList.rotR
     (AppEvent aev) -> case aev of
-      PushTab t -> modify $ pushTab t
-      NextTab -> asTabsL %= lzCircRight
-      PrevTab -> asTabsL %= lzCircLeft
-      SwapTabNext -> asTabsL %= lzSwapRightCirc
-      SwapTabPrev -> asTabsL %= lzSwapLeftCirc
-      AppComponentMsg acev ->
-        case acev of
-          -- SOMEDAY alt, just push acev through every time, but let's stay a bit safe here for now.
-          ModelUpdated _ -> eachTabHandleEvent (AppEvent acev)
-          Tick -> eachTabHandleEvent (AppEvent acev)
-    (MouseDown rname@(SingleTabTitleFor _) Vty.BLeft [] _location) -> asTabsL %= lzFindBegin ((rname ==) . fst)
-    -- some boilerplate to safely cast BrickEvent n AppRootMsg to BrickEvent n AppComponentMsg here.
-    -- SOMEDAY this can certainly be done in a more clever way. Maybe a dispatch function on BrickEvent.
-    VtyEvent k -> routeToCurrentTab (VtyEvent k)
-    MouseDown rname btn mods loc -> routeToCurrentTab (MouseDown rname btn mods loc)
-    MouseUp rname mbtn loc -> routeToCurrentTab (MouseUp rname mbtn loc)
+      PushTab t -> callIntoTabs (pushTab t)
+      NextTab -> callIntoTabs nextTab
+      PrevTab -> callIntoTabs prevTab
+      SwapTabNext -> callIntoTabs swapTabNext
+      SwapTabPrev -> callIntoTabs swapTabPrev
+      AppComponentMsg acev -> handleTabs $ handleEvent (AppEvent acev)
+    -- We rebuild the events here to convert the app event type
+    VtyEvent k -> handleTabs $ handleEvent (VtyEvent k)
+    MouseDown rname btn mods loc -> handleTabs $ handleEvent (MouseDown rname btn mods loc)
+    MouseUp rname mbtn loc -> handleTabs $ handleEvent (MouseUp rname mbtn loc)
  where
-  routeToCurrentTab ev' = do
-    -- NB we ignore events from child components here.
-    -- SOMEDAY information could travel up to us (but not with SomeAppComponent, that one eats events)
-    (res, events) <- zoom activeTabL $ runComponentEventM' ?actx $ handleEvent ev'
-    -- Attests that there are no (non-bottom) events
-    mapM_ absurd events
-    case res of
-      Continue -> return ()
-      -- See the AppComponent instance of MainTree
-      Confirmed () -> popTabOrQuitAction
-      Canceled -> popTabAction
   -- NB explicit type required to bind the implicit parameter in the right place.
   wrappingActions ::
     ((?actx :: AppContext) => EventM AppResourceName AppState ()) -> EventM AppResourceName AppState ()
@@ -252,83 +211,40 @@ myHandleEvent ev = wrappingActions $
   -- SOMEDAY could also just react to the tick event.
   updateCurrentTime = liftIO getZonedTime >>= assign (asContextL . acZonedTimeL)
 
-eachTabHandleEvent ::
-  (?actx :: AppContext) =>
-  BrickEvent AppResourceName AppComponentMsg -> EventM AppResourceName AppState ()
-eachTabHandleEvent ev = do
+callIntoTabs ::
+  ComponentEventM (Tabs SomeAppComponent) a -> EventM AppResourceName AppState a
+callIntoTabs act = do
+  actx <- gets asContext
   tabs <- use asTabsL
-  mtabs' <- lzForM tabs $ \(rname, tabCmp) -> do
-    -- NB we ignore events from child components here.
-    -- SOMEDAY information could travel up to us (but not with SomeAppComponent, that one eats events)
-    (tabCmp', (res, events)) <- nestEventM tabCmp $ runComponentEventM' ?actx $ handleEvent ev
-    -- Attests that there are no (non-bottom) events
-    mapM_ absurd events
-    return $ case res of
-      Continue -> Just (rname, tabCmp')
-      _ -> Nothing
-  let tabs' = lzCatMaybesLeftNonEmpty $ mtabs'
+  (tabs', (ret, events)) <- nestEventM tabs $ runComponentEventM' actx $ act
+  -- Ignore events. Nothing interesting here.
+  forM_ events $ const (return ())
   asTabsL .= tabs'
-  fixEmptyTabs
- where
+  return ret
 
--- | Use this (internally) after a tab was deleted to make sure we always have a tab.
-fixEmptyTabs :: EventM AppResourceName AppState ()
-fixEmptyTabs = do
-  tabs <- use asTabsL
-  when (LZ.emptyp tabs) setDefaultTab
+handleTabs ::
+  (?actx :: AppContext) =>
+  ComponentEventM' (Tabs SomeAppComponent) -> EventM AppResourceName AppState ()
+handleTabs act = do
+  res <- callIntoTabs act
+  case res of
+    Continue -> return ()
+    -- When Tabs returns Confirmed, this means the last tab closed with Confirmed. This is quit, so halt.
+    Confirmed () -> halt
+    -- When Tabs returns Canceled, this means the last tab errored out. Push the default tab instead
+    Canceled -> pushDefaultTab
 
-pattern SingleTabTitleFor :: AppResourceName -> AppResourceName
-pattern SingleTabTitleFor rname = AppResourceName [TabTitleFor rname]
-
--- | Only valid when there are no tabs. Then sets the default tabs (or exits if something is *really* wrong)
-setDefaultTab :: EventM AppResourceName AppState ()
-setDefaultTab = do
+pushDefaultTab :: EventM AppResourceName AppState ()
+pushDefaultTab = do
   actx <- use asContextL
   model <- liftIO $ getModel (acModelServer actx)
-  let ?actx = actx
-  rname <- getFreshTabRName
-  let emt = MainTree.make ?actx Vault model rname
-  case emt of
+  let emk = MainTree.make' actx Vault model
+  case emk of
     Left _err -> do
       liftIO $ glogL ERROR "'Vault' node not found. Something is horribly wrong. Exiting."
       asExitCodeL .= ExitFailure 1
       halt
-    Right mt -> do
-      asTabsL .= (LZ.fromList [(SingleTabTitleFor rname, SomeAppComponent mt)])
-
-activeTabL :: Lens' AppState SomeAppComponent
--- There's probably some clever way to do this but idk. It's also trivial rn.
-activeTabL = lens getter setter
- where
-  getter AppState {asTabs} = snd $ LZ.cursor asTabs
-  setter state@(AppState {asTabs}) t' = state {asTabs = lzModify (second $ const t') asTabs}
-
-pushTab :: (AppResourceName -> SomeAppComponent) -> AppState -> AppState
-pushTab mk state@(AppState {asTabs, asNextTabID}) = state {asTabs = asTabs', asNextTabID = asNextTabID + 1}
- where
-  rname = AppResourceName [NamedAppResource "tab" asNextTabID]
-  asTabs' = LZ.insert (SingleTabTitleFor rname, mk rname) . LZ.right $ asTabs
-
--- | You prob wanna use 'pushTab' instead.
-getFreshTabRName :: EventM AppResourceName AppState AppResourceName
-getFreshTabRName = do
-  tabID <- use asNextTabIDL
-  asNextTabIDL += 1
-  return $ AppResourceName [NamedAppResource "tab" tabID]
-
--- | Remove active tab and go to previous or else next. You must call 'fixEmptyTabs' afterwards!
-popTab :: AppState -> AppState
-popTab = asTabsL %~ lzDeleteLeft
-
-popTabAction :: EventM AppResourceName AppState ()
-popTabAction = modify popTab >> fixEmptyTabs
-
--- | Like `popTabAction` but halt when the last tab was closed.
-popTabOrQuitAction :: EventM AppResourceName AppState ()
-popTabOrQuitAction = do
-  modify popTab
-  isNoTabs <- LZ.emptyp <$> use asTabsL
-  when isNoTabs halt
+    Right mk -> callIntoTabs (pushTab $ SomeAppComponent . mk)
 
 -- not sure if this is quite right but maybe it's enough. If we're missing cursors, we should prob revise.
 myChooseCursor ::
@@ -353,8 +269,8 @@ myAppStartEvent = do
   -- See Brick's `MouseDemo.hs`
   vty <- getVtyHandle
   liftIO $ Vty.setMode (Vty.outputIface vty) Vty.Mouse True
-
-  setDefaultTab
+  -- Push default tab
+  pushDefaultTab
 
 app :: App AppState AppRootMsg AppResourceName
 app =
@@ -365,7 +281,3 @@ app =
     , appAttrMap = myChooseAttrMap
     , appChooseCursor = myChooseCursor
     }
-
--- --------------------------
--- Utils
--- --------------------------
