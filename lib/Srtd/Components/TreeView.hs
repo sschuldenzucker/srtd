@@ -229,7 +229,7 @@ makeFromModel' fctx root fi model = do
   subtree <- runFilter fctx fi root model
   let go doFollowItem scrolloff rname =
         TreeView
-          { tvSubtree = simpleCell subtree $ replaceSubtree'
+          { tvSubtree = simpleOldNewCell subtree $ replaceSubtree'
           , tvFilter = simpleCell fi $ \_fi' -> reloadModel
           , tvList = forestToBrickList (rname <> "brick list") $ stForest subtree
           , tvResourceName = rname
@@ -515,35 +515,43 @@ reloadModel = do
   subtree <- liftEither $ runFilter (appContext2FilterContext actx) filter_ root_ model'
   lift $ runUpdateLens tvSubtreeL subtree
 
-replaceSubtree' :: Subtree -> ComponentEventM TreeView ()
-replaceSubtree' subtree = do
-  old <- get
-  let list' = forestToBrickList (getName . tvList $ old) (stForest subtree)
-  tvListL .= list'
-  liftEventM $ resetListPosition (tvDoFollowItem old) old
+-- | Handler. Given that we have just replaced some old subtree (given) by a new subtree (also
+-- given), update the list accordingly, respecting follow settings.
+--
+-- This is a bit nonstandard and doesn't fit well with our Cell infra b/c the list is also updated
+-- in other ways (e.g., moving, scrolling, jumping).
+--
+-- It could be handled using some complex cell architecture with an Either input but single state,
+-- but that kinda defeats the point.
+replaceSubtree' :: Subtree -> Subtree -> ComponentEventM TreeView ()
+replaceSubtree' oldSubtree newSubtree = do
+  oldList <- gets tvList
+  doFollow <- gets tvDoFollowItem
+  tvListL .= forestToBrickList (getName oldList) (stForest newSubtree)
+  resetListPosition doFollow (oldSubtree, oldList)
 
 -- | Choose between follow or no-follow using a flag
-resetListPosition :: (MonadState TreeView m) => Bool -> TreeView -> m ()
+resetListPosition :: (MonadState TreeView m) => Bool -> (Subtree, TreeViewList) -> m ()
 resetListPosition True = resetListPositionFollow
 resetListPosition False = resetListPositionIndex
 
 -- | Tries preserve the list position by index  only.
 -- TODO needed?? This is the default behavior I think
-resetListPositionIndex :: (MonadState TreeView m) => TreeView -> m ()
-resetListPositionIndex old = case L.listSelectedElement (tvList old) of
+resetListPositionIndex :: (MonadState TreeView m) => (a, TreeViewList) -> m ()
+resetListPositionIndex (_, oldList) = case L.listSelectedElement oldList of
   Nothing -> return ()
   Just (ix_, _) -> moveToIndex ix_
 
 -- | `resetListPosition old new` tries to set the position of `new` to the current element of `old`, prioritizing the EID or, if that fails, the siblings or, then parents or, then the current position.
 -- EXPERIMENTAL. This may not always be desired actually.
-resetListPositionFollow :: (MonadState TreeView m) => TreeView -> m ()
-resetListPositionFollow old =
-  gets tvList >>= \new -> case L.listSelectedElement (tvList old) of
+resetListPositionFollow :: (MonadState TreeView m) => (Subtree, TreeViewList) -> m ()
+resetListPositionFollow (oldSubtree, oldList) =
+  gets tvList >>= \new -> case L.listSelectedElement oldList of
     Nothing -> return () -- `old` is empty
     Just (ix_, tgtItm) ->
       let
         selEID = gEID tgtItm
-        selz = zForestFindId selEID (stForest . cValue . tvSubtree $ old)
+        selz = zForestFindId selEID (stForest oldSubtree)
         tgtEIDs =
           catMaybes $
             (Just selEID)

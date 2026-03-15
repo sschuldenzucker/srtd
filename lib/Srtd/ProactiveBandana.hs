@@ -23,6 +23,7 @@ module Srtd.ProactiveBandana (
   justStoreCell,
   justStoreCellM,
   simpleCell,
+  simpleOldNewCell,
   simpleMappingCell,
   simplePreMappingCell,
   uniqueCell,
@@ -132,6 +133,14 @@ justCallCell go = cell () $ return . go
 -- | A cell that stores its input and calls the handler on each update.
 simpleCell :: v -> (v -> h) -> Cell' v h
 simpleCell v0 go = cell v0 $ \i -> put i >> return (go i)
+
+-- | Like 'simpleCell' but the handler also receives the _old_ value that just got replaced, in
+-- addition to the new one.
+simpleOldNewCell :: v -> (v -> v -> h) -> Cell' v h
+simpleOldNewCell v0 go = cell v0 $ \i -> do
+  old <- get
+  put i
+  return (go old i)
 
 -- | A variant of 'simpleCell' that maps its input to its value using a function.
 --
