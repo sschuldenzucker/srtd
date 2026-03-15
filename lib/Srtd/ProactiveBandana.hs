@@ -10,6 +10,8 @@ module Srtd.ProactiveBandana (
   -- a cell is to at least observe the handler.
   --
   -- SOMEDAY maybe we should export Cell_ and have some useful combinators. Definite state lets us transform it.
+  --
+  -- NOTE Cells with internal state are needed for something like 'meanCell' but are currently not used.
   Cell,
   Cell',
   cValue,
@@ -57,6 +59,7 @@ module Srtd.ProactiveBandana (
   -- actions executed.
   pairCells,
   eitherCells,
+  eitherCells1,
 
   -- * Access
   getValue,
@@ -70,6 +73,8 @@ module Srtd.ProactiveBandana (
 
   -- * Experimental / Examples
   meanCell,
+
+  -- * EXPERIMENTAL: Cell Builders (TODO)
 ) where
 
 import Brick (suffixLenses)
@@ -77,7 +82,7 @@ import Control.Monad (join)
 import Control.Monad.State
 import Lens.Micro.Mtl.Internal (Zoom)
 import Lens.Micro.Platform
-import Srtd.Util (safeConst)
+import Srtd.Util (fromEither, safeConst)
 
 -- * Type
 
@@ -282,6 +287,14 @@ _22L =
     (\((_v1', v2'), (_s1', s2')) -> (v2', s2'))
     (\((v1', _v2'), (s1', _s2')) (v2'', s2'') -> ((v1', v2''), (s1', s2'')))
 
+_k1L :: Lens' (a, (x, y)) (a, x)
+_k1L f (a, (x, y)) =
+  (\(a', x') -> (a', (x', y))) <$> f (a, x)
+
+_k2L :: Lens' (a, (x, y)) (a, y)
+_k2L f (a, (x, y)) =
+  (\(a', y') -> (a', (x, y'))) <$> f (a, y)
+
 -- | Combine two cells along inputs, handlers, and value.
 pairCells :: Cell i1 h1 v1 -> Cell i2 h2 v2 -> Cell (i1, i2) (h1, h2) (v1, v2)
 pairCells (Cell (Cell_ v1 s1 go1)) (Cell (Cell_ v2 s2 go2)) = cellWithState (v1, v2) (s1, s2) $ \(i1, i2) -> do
@@ -295,6 +308,15 @@ eitherCells :: Cell i1 h1 v1 -> Cell i2 h2 v2 -> Cell (Either i1 i2) (Either h1 
 eitherCells (Cell (Cell_ v1 s1 go1)) (Cell (Cell_ v2 s2 go2)) = cellWithState (v1, v2) (s1, s2) $ \case
   Left i1 -> fmap Left . zoom _11L $ go1 i1
   Right i2 -> fmap Right . zoom _22L $ go2 i2
+
+-- | Variant of 'eitherCells' where we only store _one_ state and both inputs update that one state.
+-- The handler is chosen based on the input. The initial value is the value of the _LHS_ cell.
+--
+-- TODO and that's kinda ugly.
+eitherCells1 :: Cell i1 h1 v -> Cell i2 h2 v -> Cell (Either i1 i2) (Either h1 h2) v
+eitherCells1 (Cell (Cell_ v1 s1 go1)) (Cell (Cell_ _v2 s2 go2)) = cellWithState v1 (s1, s2) $ \case
+  Left i1 -> fmap Left . zoom _k1L $ go1 i1
+  Right i2 -> fmap Right . zoom _k2L $ go2 i2
 
 -- * Access
 
@@ -340,3 +362,93 @@ runModifyLens :: (MonadState t m) => Lens' t (Cell i (m b) v) -> (v -> i) -> m b
 runModifyLens l f = join . liftState . zoom l $ do
   s <- gets cValue
   updateCellState (f s)
+
+-- * Cell Builders (EXPERIMENTAL)
+
+-- Goal: Make it easier to combine cells. Typically you want to build the structure of a cell, which
+-- excludes the initial state, then finally apply it to an initial state.
+
+-- | Cell logic without the actual state. Expected usage is that you build up your logic using the
+-- combinators here and then call 'buildCell' to attach the initial state and make the cell "live".
+--
+-- SOMEDAY support internal state
+data CellBuilder i h v = CellBuilder
+  { cbUpdate :: i -> State v h
+  }
+
+type CellBuilder' v h = CellBuilder v h v
+
+buildCell :: CellBuilder i h v -> v -> Cell i h v
+buildCell cb v0 = cell v0 (cbUpdate cb)
+
+-- | Forgets the cell's current state.
+--
+-- Implementable but we don't support state right now, cells can have state, and I can't be
+-- bothered. Likewise, modifying logic while keeping internal state etc.
+cell2Builder :: Cell i h v -> CellBuilder i h v
+cell2Builder = error "Not Implemented"
+
+cellBuilder :: (i -> State v h) -> CellBuilder i h v
+cellBuilder = CellBuilder
+
+justCallCellBuilder :: (i -> h) -> CellBuilder i h ()
+justCallCellBuilder go = cellBuilder $ return . go
+
+simpleCellBuilder :: (v -> h) -> CellBuilder' v h
+simpleCellBuilder go = cellBuilder $ \i -> put i >> return (go i)
+
+-- TODO ... primitives
+
+transformCBHandler ::
+  (((i -> State v h) -> (j -> State v g))) -> CellBuilder i h v -> CellBuilder j g v
+transformCBHandler f = cellBuilder . f . cbUpdate
+
+mapCBInput :: (j -> i) -> CellBuilder i h v -> CellBuilder j h v
+mapCBInput f = transformCBHandler (. f)
+
+mapCBHandler :: (h -> g) -> CellBuilder i h v -> CellBuilder i g v
+mapCBHandler f = transformCBHandler (fmap f .)
+
+setCBHandler :: h -> CellBuilder i () v -> CellBuilder i h v
+setCBHandler h = mapCBHandler (safeConst h)
+
+pairCellBuilders ::
+  CellBuilder i1 h1 v1 -> CellBuilder i2 h2 v2 -> CellBuilder (i1, i2) (h1, h2) (v1, v2)
+pairCellBuilders cb1 cb2 = cellBuilder $ \(i1, i2) -> do
+  h1 <- zoom _1 $ cbUpdate cb1 i1
+  h2 <- zoom _2 $ cbUpdate cb2 i2
+  return (h1, h2)
+
+-- | Monadic variant of 'pairCellBuilders' where the two update actions are executed, one after the other.
+pairCellBuildersM_ ::
+  (Monad m) =>
+  CellBuilder i1 (m ()) v1 -> CellBuilder i2 (m ()) v2 -> CellBuilder (i1, i2) (m ()) (v1, v2)
+pairCellBuildersM_ cb1 cb2 = mapCBHandler (uncurry (>>)) $ pairCellBuilders cb1 cb2
+
+-- | Accept an 'Either' input while storing _two_ states. A 'Left' input only updates the left state
+-- (and emits the left handler), and vice versa.
+eitherCellBuilders ::
+  CellBuilder i1 h1 v1 -> CellBuilder i2 h2 v2 -> CellBuilder (Either i1 i2) (Either h1 h2) (v1, v2)
+eitherCellBuilders cb1 cb2 = cellBuilder $ \case
+  Left i1 -> fmap Left . zoom _1 $ cbUpdate cb1 i1
+  Right i2 -> fmap Right . zoom _2 $ cbUpdate cb2 i2
+
+-- | Variant of 'eitherCellBuilders' where the handler types are the same and we collapse them into
+-- one. Typical usage.
+eitherCellBuilders_ ::
+  CellBuilder i1 h v1 -> CellBuilder i2 h v2 -> CellBuilder (Either i1 i2) h (v1, v2)
+eitherCellBuilders_ cb1 cb2 = mapCBHandler fromEither $ eitherCellBuilders cb1 cb2
+
+-- | Accept an 'Either' input and choose the state update and the handler based on whether it's
+-- 'Left' or 'Right'. In contrast to 'eitherCellBuilders', input always modifies the same state.
+eitherCellBuilders1 ::
+  CellBuilder i1 h1 v -> CellBuilder i2 h2 v -> CellBuilder (Either i1 i2) (Either h1 h2) v
+eitherCellBuilders1 cb1 cb2 = cellBuilder $ \case
+  Left i1 -> fmap Left $ cbUpdate cb1 i1
+  Right i2 -> fmap Right $ cbUpdate cb2 i2
+
+-- | Variant of 'eitherCellBuilders1' where the handler types are the same and we collapse them into
+-- one. Typical usage.
+eitherCellBuilders1_ :: CellBuilder i1 h v -> CellBuilder i2 h v -> CellBuilder (Either i1 i2) h v
+-- eitherCellBuilders1_ cb1 cb2 = mapCBHandler fromEither $ eitherCellBuilders1 cb1 cb2
+eitherCellBuilders1_ cb1 cb2 = cellBuilder $ either (cbUpdate cb1) (cbUpdate cb2)

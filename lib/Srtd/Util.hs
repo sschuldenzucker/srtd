@@ -56,7 +56,8 @@ safeHead [] = Nothing
 safeConst :: a -> () -> a
 safeConst x () = x
 
--- Enables regex support for Text
+fromEither :: Either a a -> a
+fromEither = either id id
 
 maybeToEither :: a -> Maybe b -> Either a b
 maybeToEither err = maybe (Left err) Right
