@@ -277,7 +277,7 @@ tvCur = fmap fst . tvCurWithAttr
 
 -- | Currently selected item with label
 tvCurWithAttr :: TreeView -> Maybe LocalIdLabel
-tvCurWithAttr TreeView {tvList} = L.listSelectedElement tvList & fmap (\(_, itm) -> listIdLabel2LocalIdLabel itm)
+tvCurWithAttr s = L.listSelectedElement (tvList s) & fmap (\(_, itm) -> listIdLabel2LocalIdLabel itm)
 
 -- * Component Instance
 
