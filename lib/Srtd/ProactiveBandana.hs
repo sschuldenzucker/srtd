@@ -89,6 +89,8 @@ import Srtd.Util (safeConst)
 --    `m` is some monad. Usually, `m` is another state monad and then we can run the update and the
 --    returned action via 'runUpdateALens'.
 -- - `v` is the type of the stored value.
+--
+-- TODO flip the order of parameters. h shouldn't be in the middle, that's weird.
 data Cell i h v = forall s. Cell (Cell_ s i h v)
 
 -- | Variant of 'Cell' with its state variable exposed. Lets you modify the state.
@@ -267,6 +269,7 @@ mapCellHandlerInputM_ f g = mapCellHandlerInput f $ \j h -> h >> g j
 
 -- ** Combining cells
 
+-- There's probably a smarter way to do this...
 _11L :: Lens' ((a, b), (x, y)) (a, x)
 _11L =
   lens
