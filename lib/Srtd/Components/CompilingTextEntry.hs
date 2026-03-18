@@ -43,7 +43,8 @@ import Srtd.BrickHelpers (pattern SomeNonVtyKeyBrickEvent, pattern VtyKeyEvent)
 import Srtd.Component
 import Srtd.Components.EditorProactive
 import Srtd.Keymap
-import Srtd.ProactiveBandana
+import Srtd.ProactiveBandana (Cell, Cell', cValue, cell)
+import Srtd.ProactiveBandana qualified as C
 import Srtd.Query
 import Srtd.Util (captureWriterT, eitherToMaybe, tell1)
 import Text.Regex.TDFA (
@@ -82,7 +83,7 @@ data MaybeEmpty a = Valid a | Empty | Invalid
 
 data CompilingTextEntry c = CompilingTextEntry
   { sEditor :: EditorProactive
-  , sValue :: Cell Text (ComponentEventM (CompilingTextEntry c) ()) (MaybeEmpty (CompiledWithSource c))
+  , sValue :: Cell Text (MaybeEmpty (CompiledWithSource c)) (ComponentEventM (CompilingTextEntry c) ())
   , sInitialText :: Text
   }
 
@@ -126,7 +127,7 @@ compilingTextEntry f s rname =
     { sEditor = editorProactiveText "" (rname <> "editor")
     , -- NB this is *not* a unique cell b/c EditorProactive already has unique semantics for its text,
       -- and we wouldn't gain anything here.
-      sValue = simpleMappingCell Empty compile' $ \mev' -> do
+      sValue = cell Empty $ C.simpleMap compile' $ \mev' -> do
         -- A bit hacky b/c our component interface doesn't let us pass parameters, so we store this
         -- in state
         callIntoEditor $ setPostRender (postRenderFor $ maybeEmptyToMaybe mev')
@@ -188,7 +189,7 @@ keymap =
 
 callIntoEditor :: ComponentEventM EditorProactive a -> ComponentEventM (CompilingTextEntry c) a
 callIntoEditor = callIntoComponentEventM sEditorL $ \case
-  TextChanged t -> runUpdateLens sValueL t
+  TextChanged t -> C.runUpdateLens sValueL t
 
 postRenderFor :: Maybe a -> Widget n -> Widget n
 postRenderFor mv =

@@ -33,7 +33,8 @@ import Srtd.BrickHelpers (pattern SomeNonVtyKeyBrickEvent, pattern VtyKeyEvent)
 import Srtd.Component
 import Srtd.Keymap
 import Srtd.MonadBrick
-import Srtd.ProactiveBandana
+import Srtd.ProactiveBandana (Cell', cValue, cell)
+import Srtd.ProactiveBandana qualified as C
 import Srtd.Util (tell1)
 
 data EditorProactive = EditorProactive
@@ -49,7 +50,7 @@ editorProactiveText :: Text -> AppResourceName -> EditorProactive
 editorProactiveText initText rname =
   EditorProactive
     { epEditor = editor (rname <> "brick editor") (Just 1) initText
-    , epText = uniqueCellM initText $ \t' -> tell1 (TextChanged t')
+    , epText = cell initText $ C.uniqueM $ \t' -> tell1 (TextChanged t')
     , epPostRender = id
     }
 
@@ -92,7 +93,7 @@ applyEdit f = do
 updateTextCellFromEditor :: ComponentEventM EditorProactive ()
 updateTextCellFromEditor = do
   t <- liftEventM $ (T.intercalate "\n" . getEditContents) <$> gets epEditor
-  runUpdateLens epTextL t
+  C.runUpdateLens epTextL t
 
 keymap :: Keymap (ComponentEventM' EditorProactive)
 keymap =
@@ -116,7 +117,7 @@ instance AppComponent (EditorProactive) where
       t' <- liftEventM $ do
         zoom epEditorL $ handleEditorEvent ev
         (T.intercalate "\n" . getEditContents) <$> gets epEditor
-      runUpdateLens epTextL t'
+      C.runUpdateLens epTextL t'
       return Continue
 
   componentKeyDesc _s = KeyDesc "Editor" True []

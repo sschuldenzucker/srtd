@@ -92,7 +92,8 @@ import Srtd.Model (
  )
 import Srtd.ModelServer (getModel)
 import Srtd.MonadBrick
-import Srtd.ProactiveBandana
+import Srtd.ProactiveBandana (Cell', cValue, cell)
+import Srtd.ProactiveBandana qualified as C
 import Srtd.Util (
   for,
   forestFlattenToList,
@@ -229,8 +230,8 @@ makeFromModel' fctx root fi model = do
   subtree <- runFilter fctx fi root model
   let go doFollowItem scrolloff rname =
         TreeView
-          { tvSubtree = simpleOldNewCell subtree $ replaceSubtree'
-          , tvFilter = simpleCell fi $ \_fi' -> reloadModel
+          { tvSubtree = cell subtree $ C.simpleOldNew replaceSubtree'
+          , tvFilter = cell fi $ C.simple $ \_fi' -> reloadModel
           , tvList = forestToBrickList (rname <> "brick list") $ stForest subtree
           , tvResourceName = rname
           , tvSearchRx = Nothing
@@ -240,7 +241,7 @@ makeFromModel' fctx root fi model = do
   return go
 
 replaceFilter :: Filter -> ComponentEventMOrNotFound TreeView ()
-replaceFilter = runUpdateLens tvFilterL
+replaceFilter = C.runUpdateLens tvFilterL
 
 setResourceName :: AppResourceName -> TreeView -> TreeView
 setResourceName rname =
@@ -513,7 +514,7 @@ reloadModel = do
   actx <- ask
   model' <- liftIO $ getModel (acModelServer actx)
   subtree <- liftEither $ runFilter (appContext2FilterContext actx) filter_ root_ model'
-  lift $ runUpdateLens tvSubtreeL subtree
+  lift $ C.runUpdateLens tvSubtreeL subtree
 
 -- | Handler. Given that we have just replaced some old subtree (given) by a new subtree (also
 -- given), update the list accordingly, respecting follow settings.

@@ -41,7 +41,8 @@ import Srtd.Components.TreeView qualified as TV
 import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
-import Srtd.ProactiveBandana
+import Srtd.ProactiveBandana (Cell', cValue, cell)
+import Srtd.ProactiveBandana qualified as C
 import Srtd.Query (SingleItemQuery (..))
 import Srtd.Util (replaceExceptT, safeConst)
 import Text.Regex.TDFA.Common (Regex)
@@ -99,7 +100,7 @@ quickFilterFromTreeView _v tv s name rname =
   QuickFilter
     { sTextEntry = textEntry
     , sTreeView = TV.setResourceName (rname <> "treeview") tv & TV.tvSearchRxL .~ Nothing
-    , sValue = uniqueCell (return ()) Empty maybePushQueryIntoTreeView
+    , sValue = C.cell Empty $ C.uniqueM maybePushQueryIntoTreeView
     , sBaseFilter = cValue . tvFilter $ tv
     , sKMZ = keymapToZipper $ mkKeymap name
     , sResourceName = rname
@@ -127,7 +128,7 @@ callIntoTextEntry ::
 callIntoTextEntry act = callIntoComponentEventMOrNotFound sTextEntryL h (lift act)
  where
   h = \case
-    CTE.ValueChanged mev -> runUpdateLens sValueL mev
+    CTE.ValueChanged mev -> C.runUpdateLens sValueL mev
 
 instance (VariantBehavior v) => AppComponent (QuickFilter v) where
   type Return (QuickFilter v) = ConfirmType v

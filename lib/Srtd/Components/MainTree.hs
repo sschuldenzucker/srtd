@@ -61,7 +61,8 @@ import Srtd.Log
 import Srtd.Model
 import Srtd.ModelServer
 import Srtd.MonadBrick (MonadBrick (..))
-import Srtd.ProactiveBandana
+import Srtd.ProactiveBandana (Cell', cValue)
+import Srtd.ProactiveBandana qualified as C
 import Srtd.Util
 import System.Hclip (setClipboard)
 import Text.Regex.TDFA.Common (Regex)
@@ -211,8 +212,8 @@ makeWithFilters actx root filters hhf doFollowItem model rname = do
       (rname <> "treeview")
   return $
     MainTree
-      { mtFilters = simpleCell filters $ \_fis' -> resetTreeViewFilter
-      , mtHideHierarchyFilter = simpleCell hhf $ \_fis -> resetTreeViewFilter
+      { mtFilters = C.cell filters $ C.simple $ \_fis' -> resetTreeViewFilter
+      , mtHideHierarchyFilter = C.cell hhf $ C.simple $ \_fis -> resetTreeViewFilter
       , mtTreeView = tv
       , mtResourceName = rname
       , mtKeymap = keymapToZipper rootKeymap
@@ -239,8 +240,8 @@ makeWithFilters' actx root filters hhf model = do
       model
   let go doFollowItem rname =
         MainTree
-          { mtFilters = simpleCell filters $ \_fis' -> resetTreeViewFilter
-          , mtHideHierarchyFilter = simpleCell hhf $ \_fis -> resetTreeViewFilter
+          { mtFilters = C.cell filters $ C.simple $ \_fis' -> resetTreeViewFilter
+          , mtHideHierarchyFilter = C.cell hhf $ C.simple $ \_fis -> resetTreeViewFilter
           , mtTreeView = mkTV doFollowItem Config.scrolloff rname
           , mtResourceName = rname
           , mtKeymap = keymapToZipper rootKeymap
@@ -335,8 +336,8 @@ rootKeymap =
       , (kmLeaf_ (bind 'H') "Go to next uncle" (callIntoTreeView $ TV.moveGoWalkerFromCur goNextAncestor))
       , (kmSub (bind 't') setStatusKeymap)
       , (kmSub (bind 'o') openExternallyKeymap)
-      , (kmLeaf (bind ',') "Prev filter" $ notFoundToAER_ $ runModifyLens mtFiltersL CList.rotL)
-      , (kmLeaf (bind '.') "Next filter" $ notFoundToAER_ $ runModifyLens mtFiltersL CList.rotR)
+      , (kmLeaf (bind ',') "Prev filter" $ notFoundToAER_ $ C.runModifyLens mtFiltersL CList.rotL)
+      , (kmLeaf (bind '.') "Next filter" $ notFoundToAER_ $ C.runModifyLens mtFiltersL CList.rotR)
       , (kmSub (bind 'd') editDateKeymap)
       , (kmLeaf_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
       , (kmSub (bind 'g') goKeymap)
@@ -901,7 +902,7 @@ resetTreeViewFilter = do
 
 modifyHideHierarchyFilter ::
   (HideHierarchyFilter -> HideHierarchyFilter) -> ComponentEventMOrNotFound MainTree ()
-modifyHideHierarchyFilter f = runModifyLens mtHideHierarchyFilterL f
+modifyHideHierarchyFilter f = C.runModifyLens mtHideHierarchyFilterL f
 
 selectFilterByName :: String -> ComponentEventMOrNotFound MainTree ()
 selectFilterByName s = do
@@ -911,7 +912,7 @@ selectFilterByName s = do
     -- NB this isn't quite the right error but w/e
     Nothing -> throwError IdNotFoundError
     Just newFilters -> do
-      runUpdateLens mtFiltersL newFilters
+      C.runUpdateLens mtFiltersL newFilters
 
 -- * Rendering
 

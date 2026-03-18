@@ -19,12 +19,13 @@ import Srtd.Component
 import Srtd.Components.EditorProactive
 import Srtd.Dates
 import Srtd.Keymap
-import Srtd.ProactiveBandana
+import Srtd.ProactiveBandana (Cell, cValue)
+import Srtd.ProactiveBandana qualified as C
 import Srtd.Util (tell1)
 
 data DateSelectOverlay = DateSelectOverlay
   { dsEditor :: EditorProactive
-  , dsValue :: Cell (Text, ZonedTime) (ComponentEventM DateSelectOverlay ()) (Maybe DateOrTime)
+  , dsValue :: Cell (Text, ZonedTime) (Maybe DateOrTime) (ComponentEventM DateSelectOverlay ())
   -- ^ `Nothing` means invalid and `Just` means valid. Deletion is handled directly and not
   -- represented in the state.
   -- NB this updates *only when* the user changes the text, not when the reference time changes.
@@ -40,7 +41,7 @@ dateSelectOverlay ::
 dateSelectOverlay origValue title rname =
   DateSelectOverlay
     { dsEditor = editorProactiveText "" (rname <> "editor")
-    , dsValue = simpleMappingCell Nothing compile' $ \mv -> tell1 (ValueChanged mv)
+    , dsValue = C.cell Nothing $ C.simpleMap compile' $ \mv -> tell1 (ValueChanged mv)
     , dsOrigValue = origValue
     , dsTitle = title
     }
@@ -67,7 +68,7 @@ callIntoEditor ::
 callIntoEditor = callIntoComponentEventM dsEditorL $ \case
   TextChanged t -> do
     zt <- asks acZonedTime
-    runUpdateLens dsValueL (t, zt)
+    C.runUpdateLens dsValueL (t, zt)
 
 data DateSelectOverlayEvent = ValueChanged (Maybe DateOrTime)
 

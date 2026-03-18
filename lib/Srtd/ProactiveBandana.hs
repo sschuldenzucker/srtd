@@ -1,68 +1,50 @@
 {-| An imperative events handlers framework.
 
 This is basically a thin upgrade over an imperative setter function, but provides a single point
-of entry and some basic consistency enforcement / hiding.
+of entry and some basic consistency enforcement.
+
+You probably wanna import this qualified.
 -}
 module Srtd.ProactiveBandana (
-  -- * Type
-
-  -- NB we intentionally do not export the constructor or fields for safety; the only way to update
-  -- a cell is to at least observe the handler.
-  --
-  -- SOMEDAY maybe we should export Cell_ and have some useful combinators. Definite state lets us transform it.
-  --
-  -- NOTE Cells with internal state are needed for something like 'meanCell' but are currently not used.
-  Cell,
+  -- * Types
+  CellUpdate,
+  CellUpdate',
+  Cell (..),
   Cell',
-  cValue,
+
+  -- * Conversion
+  cell,
 
   -- * Construction
-  cell,
-  cellWithState,
+  justCall,
+  simple,
+  simpleOldNew,
+  simpleMap,
+  simplePreMap,
+  store,
+  storeM,
+  unique,
+  uniqueM,
+  uniqueMaybe,
+  uniqueMaybeM,
 
-  -- ** Ready-made constructions
-  justCallCell,
-  justStoreCell,
-  justStoreCellM,
-  simpleCell,
-  simpleOldNewCell,
-  simpleMappingCell,
-  simplePreMappingCell,
-  uniqueCell,
-  uniqueCellM,
-  uniqueMaybeCell,
-  uniqueMaybeCellM,
+  -- * Modification
+  mapInput,
+  mapHandler,
+  setHandler,
+  bindHandler,
+  bindHandler_,
+  mapInputHandler,
 
   -- * Combinators
+  pair,
+  pairM_,
+  either2,
+  either2_,
+  either1,
+  either1_,
 
-  -- ** Transforming input
-  mapCellInput,
-
-  -- ** Transforming handlers
-  transformCellHandler,
-  mapCellHandler,
-  mapCellHandlerM,
-  mapCellHandlerM_,
-  setCellHandler,
-
-  -- ** Transforming input and handlers
-  mapCellHandlerInput,
-  mapCellHandlerInputM,
-  mapCellHandlerInputM_,
-
-  -- ** Combining cells
-
-  -- Note: These combine *cell state*. The network of dependencies is exactly as you define it. No
-  -- effort is made to resolve a network of dependencies in some efficient way or avoid duplicate
-  -- updates, or ensuree consistency. If you have non-tree dependencies, this means that you should
-  -- probably build a pure pipeline first and then use 'mapCellHandler' to map this to handler
-  -- actions executed.
-  pairCells,
-  eitherCells,
-  eitherCells1,
-
-  -- * Access
-  getValue,
+  -- * Convenience Access
   getsValue,
   useValue,
 
@@ -70,24 +52,31 @@ module Srtd.ProactiveBandana (
   updateCellState,
   runUpdateLens,
   runModifyLens,
-
-  -- * Experimental / Examples
-  meanCell,
-
-  -- * EXPERIMENTAL: Cell Builders (TODO)
 ) where
 
 import Brick (suffixLenses)
 import Control.Monad (join)
 import Control.Monad.State
-import Lens.Micro.Mtl.Internal (Zoom)
 import Lens.Micro.Platform
 import Srtd.Util (fromEither, safeConst)
 
 -- * Type
 
--- | An imperative-reactive cell that (optionally) stores a state and (optionally) returns a value
--- on update. The value is often a monadic action to notify others.
+-- | Type of cell updates.
+--
+-- The usual workflow is to construct an update, either raw or using our simple combinators, then
+-- use 'cell' to make a 'Cell' out of that. You can also re-use existing cells by reading
+-- 'cUpdate'.
+--
+-- Note that this is conceptually a monad, namely `ReaderT (State v) h`. We don't implement this
+-- though, b/c it's not that useful.
+type CellUpdate i v h = i -> State v h
+
+-- | The common case where the input is equal to the value type.
+type CellUpdate' v h = CellUpdate v v h
+
+-- | An imperative-reactive cell that (optionally) returns a value on update. The value is often a
+-- monadic action to notify others.
 --
 -- - `i` is the input type: updates input that type into the cell.
 -- - `h` is the handler type: updates result in that value being output. Usually, `h = m ()` where
@@ -95,102 +84,81 @@ import Srtd.Util (fromEither, safeConst)
 --    returned action via 'runUpdateALens'.
 -- - `v` is the type of the stored value.
 --
--- TODO flip the order of parameters. h shouldn't be in the middle, that's weird.
-data Cell i h v = forall s. Cell (Cell_ s i h v)
-
--- | Variant of 'Cell' with its state variable exposed. Lets you modify the state.
-data Cell_ s i h v = Cell_
-  { csValue :: v
-  , csState :: s
-  , csUpdate :: i -> State (v, s) h
+-- NB An earlier version of this had some internal (erased) state type s and could keep it but we
+-- never used this. Could bring it back. In that case, it's prob best to _only_ store the internal
+-- state and make cValue just a view into the state. This is to enforce consistency in combinators.
+data Cell i v h = Cell
+  { cValue :: v
+  , cUpdate :: CellUpdate i v h
   }
 
-suffixLenses ''Cell_
-
-csValueStateL :: Lens' (Cell_ s i h v) (v, s)
-csValueStateL =
-  -- I'm sure there's a smarter way to do this...
-  lens
-    (\c_ -> (c_ ^. csValueL, c_ ^. csStateL))
-    (\c_ (v, s) -> (c_ & csValueL .~ v & csStateL .~ s))
-
--- | Construct a cell from initial value and update function, without hidden state
-cell :: v -> (i -> State v h) -> Cell i h v
-cell y0 up = Cell $ Cell_ y0 () $ zoom _1 . up
-
--- | A stateful cell of type 's'
-cellWithState :: v -> s -> (i -> State (v, s) h) -> Cell i h v
-cellWithState y0 s0 up = Cell (Cell_ y0 s0 up)
+suffixLenses ''Cell
 
 -- | A cell with input == value, which is common.
-type Cell' v h = Cell v h v
+type Cell' v h = Cell v v h
 
--- | Get the current value of a cell
-cValue :: Cell i h v -> v
--- NB we cannot just export the field b/c that would let users modify the cell. (there's no way to
--- just export the accessor function but not the field.)
-cValue (Cell c_) = csValue c_
+-- | Construct a cell from initial value and update function
+cell :: v -> CellUpdate i v h -> Cell i v h
+cell = Cell
 
--- * Construction
+-- | Just call the handler and doesn't store any state.
+justCall :: (i -> h) -> CellUpdate i v h
+justCall go = return . go
 
--- | A cell that just calls its handler and doesn't store any state.
-justCallCell :: (i -> h) -> Cell i h ()
-justCallCell go = cell () $ return . go
+-- | Store the input and call the handler on each update.
+simple :: (v -> h) -> CellUpdate' v h
+simple go = \i -> put i >> return (go i)
 
--- | A cell that stores its input and calls the handler on each update.
-simpleCell :: v -> (v -> h) -> Cell' v h
-simpleCell v0 go = cell v0 $ \i -> put i >> return (go i)
-
--- | Like 'simpleCell' but the handler also receives the _old_ value that just got replaced, in
--- addition to the new one.
-simpleOldNewCell :: v -> (v -> v -> h) -> Cell' v h
-simpleOldNewCell v0 go = cell v0 $ \i -> do
+-- | Like 'sipmle' but the handler also receives the _old_ value that just got replaced, in addition
+-- to the new one.
+simpleOldNew :: (v -> v -> h) -> CellUpdate' v h
+simpleOldNew go = \i -> do
   old <- get
   put i
   return (go old i)
 
--- | A variant of 'simpleCell' that maps its input to its value using a function.
+-- | A variant of 'simple' that maps its input to its value using a function.
 --
--- We have `simpleCell x0 g == simpleMappingCell x0 id g`
-simpleMappingCell :: v -> (i -> v) -> (v -> h) -> Cell i h v
-simpleMappingCell v0 f go = cell v0 $ \i ->
+-- We have `simple x0 g == simpleMap x0 id g`
+simpleMap :: (i -> v) -> (v -> h) -> CellUpdate i v h
+simpleMap f go = \i ->
   let v = f i
    in put v >> return (go v)
 
--- | Like 'simpleMappingCell' but the handler depends on the _input_, not the mapped value.
+-- | Like 'simpleMap' but the handler depends on the _input_, not the mapped value.
 --
 -- May be useful when the input contains some kind of context for the handler to run, but we don't
 -- need to store this.
-simplePreMappingCell :: v -> (i -> v) -> (i -> h) -> Cell i h v
-simplePreMappingCell v0 f go = cell v0 $ \i -> put (f i) >> return (go i)
+simplePreMap :: (i -> v) -> (i -> h) -> CellUpdate i v h
+simplePreMap f go = \i -> put (f i) >> return (go i)
 
--- | A cell that just stores its input and doesn't have a handler.
-justStoreCell :: v -> Cell v () v
-justStoreCell x0 = simpleCell x0 (const ())
+-- | Just store the input, with no handler.
+store :: CellUpdate' v ()
+store = simple (const ())
 
--- | A cell that just stores its input and does nothing on handler.
-justStoreCellM :: (Monad m) => v -> Cell v (m ()) v
-justStoreCellM x0 = simpleCell x0 (const $ return ())
+-- | Just store the input, do nothing as handler
+storeM :: (Monad m) => CellUpdate' v (m ())
+storeM = simple (const $ return ())
 
--- | A cell that stores its input and calls its handler _iff_ the input has changed. Otherwise a given default.
-uniqueCell :: (Eq v) => h -> v -> (v -> h) -> Cell' v h
-uniqueCell dflt x0 f = cell x0 $ \x' -> do
+-- | Store the input and call the handler _iff_ the input has changed. Otherwise a given default.
+unique :: (Eq v) => h -> (v -> h) -> CellUpdate' v h
+unique dflt f = \x' -> do
   x <- get
   if
     | x /= x' -> put x' >> return (f x')
     | otherwise -> return $ dflt
 
--- | Monadic version of 'uniqueCell' that does nothing on no change.
-uniqueCellM :: (Eq v, Monad m) => v -> (v -> m ()) -> Cell v (m ()) v
-uniqueCellM = uniqueCell (return ())
+-- | Monadic variant of 'unique' that does nothing as a default.
+uniqueM :: (Eq v, Monad m) => (v -> m ()) -> CellUpdate' v (m ())
+uniqueM = unique (return ())
 
--- | A cell that stores a Maybe value and calls its handler _iff_ the input is Just and changed.
--- Otherwise a given default.
+-- | Store a Maybe value and call the handler _iff_ the input is Just and changed. Otherwise a given
+-- default.
 --
 -- This is useful when Nothing means "invalid". The cell then stores the last valid input and calls
 -- back on each new valid input.
-uniqueMaybeCell :: (Eq v) => h -> Maybe v -> (v -> h) -> Cell' (Maybe v) h
-uniqueMaybeCell dflt mx0 f = cell mx0 $ \mx' -> do
+uniqueMaybe :: (Eq v) => h -> (v -> h) -> CellUpdate' (Maybe v) h
+uniqueMaybe dflt f = \mx' -> do
   mx <- get
   case (mx, mx') of
     (Nothing, Just x') -> put (Just x') >> return (f x')
@@ -199,82 +167,45 @@ uniqueMaybeCell dflt mx0 f = cell mx0 $ \mx' -> do
       | otherwise -> return dflt
     (_, Nothing) -> return dflt
 
--- | Monadic version of 'uniqueMaybeCell' that does nothing unless there's a new valid input.
-uniqueMaybeCellM :: (Eq v, Monad m) => Maybe v -> (v -> m ()) -> Cell' (Maybe v) (m ())
-uniqueMaybeCellM = uniqueMaybeCell (return ())
-
--- * Cells with hidden state
-
--- EXAMPLE: Everything here.
-
--- | A cell with value equal to the mean of all its inputs, initialized at 0
-meanCell :: (Fractional a) => Cell a () a
-meanCell = cellWithState 0 0 $ \x' -> do
-  (x, n) <- get
-  put (((x * n) + x') / (n + 1), n + 1)
-
--- * Combinators
-
--- ** Transforming input
+uniqueMaybeM :: (Monad m, Eq v) => (v -> m ()) -> CellUpdate' (Maybe v) (m ())
+uniqueMaybeM = uniqueMaybe (return ())
 
 -- | Map a cell's input using a (contravariant) function.
 --
--- This conceptually turns `Cell _ h v` into a contravariant functor.
-mapCellInput :: (j -> i) -> Cell i h v -> Cell j h v
-mapCellInput f = transformCellHandler (. f)
-
--- ** Transforming handlers
-
--- | Transform a cell handler using a state-universal function.
---
--- This is the most general variant of the handler transformation functions.
-transformCellHandler ::
-  (forall s. ((i -> State (v, s) h) -> (j -> State (v, s) g))) -> Cell i h v -> Cell j g v
-transformCellHandler f (Cell (Cell_ v s go)) = cellWithState v s (f go)
+-- This conceptually turns `Cell _ v h` into a contravariant functor.
+mapInput :: (j -> i) -> CellUpdate i v h -> CellUpdate j v h
+mapInput f = (. f)
 
 -- | Map a cell's handler using a (covariant) function.
 --
 -- This conceptually turns `Cell i _ v` into a functor.
-mapCellHandler :: (h -> g) -> Cell i h v -> Cell i g v
-mapCellHandler f = transformCellHandler (fmap f .)
-
--- | Set a handler for a cell that doesn't have one yet
-setCellHandler :: h -> Cell i () v -> Cell i h v
-setCellHandler h = mapCellHandler (safeConst h)
-
--- | Monadic variant of 'mapCellHandler' for the common case where our handler transformation is of
--- shape "and then do something else with the result"
-mapCellHandlerM :: (Monad m) => (a -> m b) -> Cell i (m a) v -> Cell i (m b) v
-mapCellHandlerM act = mapCellHandler (>>= act)
-
--- | Variant of 'mapCellHandlerM' without an input
-mapCellHandlerM_ :: (Monad m) => m b -> Cell i (m ()) v -> Cell i (m b) v
-mapCellHandlerM_ act = mapCellHandlerM $ safeConst act
+mapHandler :: (h -> g) -> CellUpdate i v h -> CellUpdate i v g
+mapHandler f = (fmap f .)
 
 -- | Transform both a cell's input (contravariantly) and a cell's handler (covariantly), and the
 -- handler transformation has the original input available.
-mapCellHandlerInput :: (j -> i) -> (j -> h -> g) -> Cell i h v -> Cell j g v
-mapCellHandlerInput f g = transformCellHandler $ \go x -> fmap (g x) . go . f $ x
-
--- | Monadic variant of 'mapCellHandlerInput' where our handler transformation is of shape "and then
--- do something else with the result", with the (contravariantly transformed) input available.
-mapCellHandlerInputM :: (Monad m) => (j -> i) -> (j -> a -> m b) -> Cell i (m a) v -> Cell j (m b) v
-mapCellHandlerInputM f g = mapCellHandlerInput f $ \j h -> h >>= g j
-
--- | Variant of 'mapCellHandlerInputM' without a result from the original handler.
 --
--- This runs the original handler "in the background" and also lets us do things on top of it.
 --
 -- A common use case is when we wanna give our handler additional context as part of the input,
 -- for example:
 --
---     mapCellHandlerInputM_ fst (\(i, ctx) -> do_something_else i ctx)
-mapCellHandlerInputM_ :: (Monad m) => (j -> i) -> (j -> m b) -> Cell i (m ()) v -> Cell j (m b) v
-mapCellHandlerInputM_ f g = mapCellHandlerInput f $ \j h -> h >> g j
+--     mapInputHandler fst (\(i, ctx) h -> h >> do_something_else i ctx)
+mapInputHandler :: (j -> i) -> (j -> h -> g) -> CellUpdate i v h -> CellUpdate j v g
+mapInputHandler f g up = \x -> fmap (g x) . up . f $ x
 
--- ** Combining cells
+-- | Set a handler if there isn't any yet.
+setHandler :: h -> CellUpdate i v () -> CellUpdate i v h
+setHandler h = mapHandler (safeConst h)
 
--- There's probably a smarter way to do this...
+-- | Monadic bind in handlers.
+bindHandler :: (Monad m) => (a -> m b) -> CellUpdate i v (m a) -> CellUpdate i v (m b)
+bindHandler f = mapHandler (>>= f)
+
+-- | Monadic bind in handlers, ignoring return of the existing handler.
+bindHandler_ :: (Monad m) => m b -> CellUpdate i v (m ()) -> CellUpdate i v (m b)
+bindHandler_ act = mapHandler (>> act)
+
+{- -- There's probably a smarter way to do this...
 _11L :: Lens' ((a, b), (x, y)) (a, x)
 _11L =
   lens
@@ -293,45 +224,56 @@ _k1L f (a, (x, y)) =
 
 _k2L :: Lens' (a, (x, y)) (a, y)
 _k2L f (a, (x, y)) =
-  (\(a', y') -> (a', (x, y'))) <$> f (a, y)
+  (\(a', y') -> (a', (x, y'))) <$> f (a, y) -}
 
 -- | Combine two cells along inputs, handlers, and value.
-pairCells :: Cell i1 h1 v1 -> Cell i2 h2 v2 -> Cell (i1, i2) (h1, h2) (v1, v2)
-pairCells (Cell (Cell_ v1 s1 go1)) (Cell (Cell_ v2 s2 go2)) = cellWithState (v1, v2) (s1, s2) $ \(i1, i2) -> do
-  h1 <- zoom _11L $ go1 i1
-  h2 <- zoom _22L $ go2 i2
+pair :: CellUpdate i1 v1 h1 -> CellUpdate i2 v2 h2 -> CellUpdate (i1, i2) (v1, v2) (h1, h2)
+pair go1 go2 = \(i1, i2) -> do
+  h1 <- zoom _1 $ go1 i1
+  h2 <- zoom _2 $ go2 i2
   return (h1, h2)
+
+-- | Monadic variant of 'pair' where we execute both handlers.
+pairM_ ::
+  (Monad m) =>
+  CellUpdate i1 v1 (m ()) -> CellUpdate i2 v2 (m ()) -> CellUpdate (i1, i2) (v1, v2) (m ())
+pairM_ go1 go2 = mapHandler (uncurry (>>)) $ pair go1 go2
 
 -- | Combine twc cells into a cell that updates one of the two and returns the respective handler.
 -- The value is the pair of _both_ values at that point in time.
-eitherCells :: Cell i1 h1 v1 -> Cell i2 h2 v2 -> Cell (Either i1 i2) (Either h1 h2) (v1, v2)
-eitherCells (Cell (Cell_ v1 s1 go1)) (Cell (Cell_ v2 s2 go2)) = cellWithState (v1, v2) (s1, s2) $ \case
-  Left i1 -> fmap Left . zoom _11L $ go1 i1
-  Right i2 -> fmap Right . zoom _22L $ go2 i2
+either2 ::
+  CellUpdate i1 v1 h1 -> CellUpdate i2 v2 h2 -> CellUpdate (Either i1 i2) (v1, v2) (Either h1 h2)
+either2 go1 go2 = \case
+  Left i1 -> fmap Left . zoom _1 $ go1 i1
+  Right i2 -> fmap Right . zoom _2 $ go2 i2
 
--- | Variant of 'eitherCells' where we only store _one_ state and both inputs update that one state.
--- The handler is chosen based on the input. The initial value is the value of the _LHS_ cell.
---
--- TODO and that's kinda ugly.
-eitherCells1 :: Cell i1 h1 v -> Cell i2 h2 v -> Cell (Either i1 i2) (Either h1 h2) v
-eitherCells1 (Cell (Cell_ v1 s1 go1)) (Cell (Cell_ _v2 s2 go2)) = cellWithState v1 (s1, s2) $ \case
-  Left i1 -> fmap Left . zoom _k1L $ go1 i1
-  Right i2 -> fmap Right . zoom _k2L $ go2 i2
+-- | Variant of 'either2' where we collapse the two handlers into one.
+either2_ ::
+  CellUpdate i1 v1 h -> CellUpdate i2 v2 h -> CellUpdate (Either i1 i2) (v1, v2) h
+either2_ go1 go2 = mapHandler fromEither $ either2 go1 go2
+
+-- | Accept an 'Either' input and choose the state update and the handler based on whether it's
+-- 'Left' or 'Right'. In contrast to 'either2', input always modifies the same state.
+either1 ::
+  CellUpdate i1 v h1 -> CellUpdate i2 v h2 -> CellUpdate (Either i1 i2) v (Either h1 h2)
+either1 go1 go2 = \case
+  Left i1 -> fmap Left $ go1 i1
+  Right i2 -> fmap Right $ go2 i2
+
+-- | Variant of 'either1' where we collapse the two handlers into one. This is the most common way
+-- to have different "kinds" of inputs.
+either1_ ::
+  CellUpdate i1 v h -> CellUpdate i2 v h -> CellUpdate (Either i1 i2) v h
+either1_ go1 go2 = mapHandler fromEither $ either1 go1 go2
 
 -- * Access
 
--- SOMEDAY these may not be needed.
-
--- | Get the value of a cell in a state monad
-getValue :: (MonadState (Cell i h v) m) => m v
-getValue = gets cValue
-
 -- | Get the value of a Cell field in a state monad
-getsValue :: (MonadState s m) => (s -> Cell i h a) -> m a
+getsValue :: (MonadState s m) => (s -> Cell i v h) -> m v
 getsValue f = gets (cValue . f)
 
 -- | Get the value of a lens pointing to a Cell in a state monad
-useValue :: (MonadState s m) => Lens' s (Cell i h a) -> m a
+useValue :: (MonadState s m) => Lens' s (Cell i v h) -> m v
 useValue l = gets (cValue . view l)
 
 -- * Updating
@@ -339,17 +281,16 @@ useValue l = gets (cValue . view l)
 -- | Update a cell in a state monad.
 --
 -- NB You usually want to use 'runUpdateLens' instead.
-updateCellState :: i -> State (Cell i h v) h
+updateCellState :: i -> State (Cell i v h) h
 updateCellState x = do
-  (Cell c_) <- get
-  let theLens = lens (const c_) (const Cell)
-  zoom (theLens . csValueStateL) $ csUpdate c_ x
+  c <- get
+  zoom cValueL $ cUpdate c x
 
 -- | Given a lens pointing to a cell with monadic output type, supply a new value and run the
 -- handler action.
 --
 -- This is how cells are most commonly used.
-runUpdateLens :: (MonadState t m) => Lens' t (Cell i (m b) v) -> i -> m b
+runUpdateLens :: (MonadState t m) => Lens' t (Cell i v (m a)) -> i -> m a
 runUpdateLens l = join . liftState . zoom l . updateCellState
 
 liftState :: (MonadState s m) => State s a -> m a
@@ -358,97 +299,7 @@ liftState = state . runState
 -- | Apply a pure modification function to a cell inside a lens.
 --
 -- You typically use this with i == v (i.e., a Cell') but this is not necessary.
-runModifyLens :: (MonadState t m) => Lens' t (Cell i (m b) v) -> (v -> i) -> m b
+runModifyLens :: (MonadState t m) => Lens' t (Cell i v (m b)) -> (v -> i) -> m b
 runModifyLens l f = join . liftState . zoom l $ do
   s <- gets cValue
   updateCellState (f s)
-
--- * Cell Builders (EXPERIMENTAL)
-
--- Goal: Make it easier to combine cells. Typically you want to build the structure of a cell, which
--- excludes the initial state, then finally apply it to an initial state.
-
--- | Cell logic without the actual state. Expected usage is that you build up your logic using the
--- combinators here and then call 'buildCell' to attach the initial state and make the cell "live".
---
--- SOMEDAY support internal state
-data CellBuilder i h v = CellBuilder
-  { cbUpdate :: i -> State v h
-  }
-
-type CellBuilder' v h = CellBuilder v h v
-
-buildCell :: CellBuilder i h v -> v -> Cell i h v
-buildCell cb v0 = cell v0 (cbUpdate cb)
-
--- | Forgets the cell's current state.
---
--- Implementable but we don't support state right now, cells can have state, and I can't be
--- bothered. Likewise, modifying logic while keeping internal state etc.
-cell2Builder :: Cell i h v -> CellBuilder i h v
-cell2Builder = error "Not Implemented"
-
-cellBuilder :: (i -> State v h) -> CellBuilder i h v
-cellBuilder = CellBuilder
-
-justCallCellBuilder :: (i -> h) -> CellBuilder i h ()
-justCallCellBuilder go = cellBuilder $ return . go
-
-simpleCellBuilder :: (v -> h) -> CellBuilder' v h
-simpleCellBuilder go = cellBuilder $ \i -> put i >> return (go i)
-
--- TODO ... primitives
-
-transformCBHandler ::
-  (((i -> State v h) -> (j -> State v g))) -> CellBuilder i h v -> CellBuilder j g v
-transformCBHandler f = cellBuilder . f . cbUpdate
-
-mapCBInput :: (j -> i) -> CellBuilder i h v -> CellBuilder j h v
-mapCBInput f = transformCBHandler (. f)
-
-mapCBHandler :: (h -> g) -> CellBuilder i h v -> CellBuilder i g v
-mapCBHandler f = transformCBHandler (fmap f .)
-
-setCBHandler :: h -> CellBuilder i () v -> CellBuilder i h v
-setCBHandler h = mapCBHandler (safeConst h)
-
-pairCellBuilders ::
-  CellBuilder i1 h1 v1 -> CellBuilder i2 h2 v2 -> CellBuilder (i1, i2) (h1, h2) (v1, v2)
-pairCellBuilders cb1 cb2 = cellBuilder $ \(i1, i2) -> do
-  h1 <- zoom _1 $ cbUpdate cb1 i1
-  h2 <- zoom _2 $ cbUpdate cb2 i2
-  return (h1, h2)
-
--- | Monadic variant of 'pairCellBuilders' where the two update actions are executed, one after the other.
-pairCellBuildersM_ ::
-  (Monad m) =>
-  CellBuilder i1 (m ()) v1 -> CellBuilder i2 (m ()) v2 -> CellBuilder (i1, i2) (m ()) (v1, v2)
-pairCellBuildersM_ cb1 cb2 = mapCBHandler (uncurry (>>)) $ pairCellBuilders cb1 cb2
-
--- | Accept an 'Either' input while storing _two_ states. A 'Left' input only updates the left state
--- (and emits the left handler), and vice versa.
-eitherCellBuilders ::
-  CellBuilder i1 h1 v1 -> CellBuilder i2 h2 v2 -> CellBuilder (Either i1 i2) (Either h1 h2) (v1, v2)
-eitherCellBuilders cb1 cb2 = cellBuilder $ \case
-  Left i1 -> fmap Left . zoom _1 $ cbUpdate cb1 i1
-  Right i2 -> fmap Right . zoom _2 $ cbUpdate cb2 i2
-
--- | Variant of 'eitherCellBuilders' where the handler types are the same and we collapse them into
--- one. Typical usage.
-eitherCellBuilders_ ::
-  CellBuilder i1 h v1 -> CellBuilder i2 h v2 -> CellBuilder (Either i1 i2) h (v1, v2)
-eitherCellBuilders_ cb1 cb2 = mapCBHandler fromEither $ eitherCellBuilders cb1 cb2
-
--- | Accept an 'Either' input and choose the state update and the handler based on whether it's
--- 'Left' or 'Right'. In contrast to 'eitherCellBuilders', input always modifies the same state.
-eitherCellBuilders1 ::
-  CellBuilder i1 h1 v -> CellBuilder i2 h2 v -> CellBuilder (Either i1 i2) (Either h1 h2) v
-eitherCellBuilders1 cb1 cb2 = cellBuilder $ \case
-  Left i1 -> fmap Left $ cbUpdate cb1 i1
-  Right i2 -> fmap Right $ cbUpdate cb2 i2
-
--- | Variant of 'eitherCellBuilders1' where the handler types are the same and we collapse them into
--- one. Typical usage.
-eitherCellBuilders1_ :: CellBuilder i1 h v -> CellBuilder i2 h v -> CellBuilder (Either i1 i2) h v
--- eitherCellBuilders1_ cb1 cb2 = mapCBHandler fromEither $ eitherCellBuilders1 cb1 cb2
-eitherCellBuilders1_ cb1 cb2 = cellBuilder $ either (cbUpdate cb1) (cbUpdate cb2)
