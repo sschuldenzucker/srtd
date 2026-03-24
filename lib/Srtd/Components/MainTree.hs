@@ -464,6 +464,16 @@ editDateKeymap =
                  let f = setLastModified (zonedTimeToUTC ztime) . (datesL .~ noDates)
                  modifyModelAsync (modifyAttrByEID cur f)
              )
+         , kmLeaf_
+             (binding (KChar 'd') [MCtrl, MMeta])
+             "Delete all ancestors"
+             ( withCur $ \cur -> do
+                 utime <- asks $ zonedTimeToUTC . acZonedTime
+                 let f attr
+                       | isAttrDatesEmpty (dates attr) = attr
+                       | otherwise = setLastModified utime . (datesL .~ noDates) $ attr
+                 modifyModelAsync (modifyAncestorAttrsByEID cur f)
+             )
          ]
  where
   mkDateEditShortcut (kb, label, l0) = kmLeaf_ kb label $ withCurWithAttr $ \(cur, ((attr, _), _)) ->
