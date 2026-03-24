@@ -65,6 +65,15 @@ mapIdForestWithIds f = withIdForest $ mapForest go
  where
   go (i, x) = (i, f i x)
 
+-- | Like 'mapIdForestWithIds' but only consider the ancestors of a given id.
+mapIdForestAncestorsWithIds :: (Eq id) => id -> (id -> a -> a) -> IdForest id a -> IdForest id a
+mapIdForestAncestorsWithIds tgt f = onTreeBelowId tgt (fmap f')
+ where
+  f' (i, x) = (i, f i x)
+
+mapIdForestAncestors :: (Eq id) => id -> (a -> a) -> IdForest id a -> IdForest id a
+mapIdForestAncestors tgt f = mapIdForestAncestorsWithIds tgt (const f)
+
 -- | Only leaves the initial segments of the forest where the predicate all applies.
 filterIdForest :: (a -> Bool) -> IdForest id a -> IdForest id a
 filterIdForest p = filterIdForestWithIds (const p)
@@ -105,11 +114,14 @@ onForestBelowId ::
   (Eq id) => id -> (Forest (id, a) -> Forest (id, a)) -> IdForest id a -> IdForest id a
 -- This is probably a bit inefficient but it was there so w/e
 -- SOMEDAY it's actually an error if root is not found.
-onForestBelowId root f idforest@(IdForest forest) = case zFindId root . Z.fromForest $ forest of
+onForestBelowId root f = onTreeBelowId root $ \(Node x children) -> Node x (f children)
+
+-- | Modify the tree below and including a given target ID by a function. No-op if the ID is not found.
+onTreeBelowId ::
+  (Eq id) => id -> (Tree (id, a) -> Tree (id, a)) -> IdForest id a -> IdForest id a
+onTreeBelowId root f idforest@(IdForest forest) = case zFindId root . Z.fromForest $ forest of
   Nothing -> idforest
-  Just rootLoc -> IdForest $ Z.forest . zForestRoot . Z.modifyTree (onTreeChildren f) $ rootLoc
- where
-  onTreeChildren g (Node x children) = Node x (g children)
+  Just rootLoc -> IdForest $ Z.forest . zForestRoot . Z.modifyTree f $ rootLoc
 
 -- SOMEDAY the non-Rec functions can be replaced by the Rec variant.
 

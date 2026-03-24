@@ -636,6 +636,11 @@ modifyAttrByEID tgt f = updateDerivedAttrs . (forestL %~ mapIdForestWithIds upda
  where
   updateContent eid (attr, dattr) = (if eid == tgt then f attr else attr, dattr)
 
+modifyAncestorAttrsByEID :: (?mue :: ModelUpdateEnv) => EID -> (Attr -> Attr) -> Model -> Model
+modifyAncestorAttrsByEID tgt f = updateDerivedAttrs . (forestL %~ mapIdForestAncestors tgt updateContent)
+ where
+  updateContent (attr, dattr) = (f attr, dattr)
+
 -- | Delete the given ID and the subtree below it.
 deleteSubtree :: (?mue :: ModelUpdateEnv) => EID -> Model -> Model
 deleteSubtree eid = updateDerivedAttrs . (forestL %~ filterIdForestWithIds (\eid' _ -> eid' /= eid))
