@@ -13,6 +13,7 @@ See `README.md` for a high-level description of what's going on here. See its `D
 ## Module structure
 
 - Use explicit module exports.
+- Use haddoc sections (`-- * Section Title`) and subsections to split up long export lists and long files.
 - Always add haddock comments for all exported functions and data types.
 - Keep your haddock comments concise: brief description + any non-obvious behavior. Only document
   constructors and function arguments when they are not obvious.
