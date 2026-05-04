@@ -22,7 +22,6 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
 import Data.CircularList qualified as CList
 import Data.Functor (void)
-import Data.List (intersperse)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -41,19 +40,22 @@ import Srtd.BrickHelpers
 import Srtd.Component
 import Srtd.Component qualified as Component
 import Srtd.Components.Attr (
-  actionabilityAttr,
-  mostUrgentDateAttr,
-  renderMostUrgentDateMaybe,
   renderStatus,
  )
 import Srtd.Components.CompilingTextEntry
 import Srtd.Components.DateSelectOverlay (dateSelectOverlay)
 import Srtd.Components.NewNodeOverlay (newNodeOverlay)
 import Srtd.Components.QuickFilter qualified as QF
+import Srtd.Components.TreeStatusBar (
+  BreadcrumbDirection (..),
+  renderBreadcrumbs,
+  renderLabelShort,
+  renderStatusActionabilityCounts,
+  statusBarW,
+ )
 import Srtd.Components.TreeView qualified as TV
 import Srtd.Config qualified as Config
 import Srtd.Data.IdTree
-import Srtd.Data.MapLike qualified as MapLike
 import Srtd.Data.TreeZipper
 import Srtd.Dates (DateOrTime (..), prettyAbsolute)
 import Srtd.Keymap
@@ -936,32 +938,10 @@ renderRoot ztime glabel breadcrumbs =
   pathW = renderLabelWithBreadcrumbs ztime glabel breadcrumbs
 
 renderLabelWithBreadcrumbs :: ZonedTime -> Label -> [IdLabel] -> Widget n
-renderLabelWithBreadcrumbs ztime rootLabel breadcrumbs = rootW <+> renderBreadcrumbs ztime breadcrumbs
+renderLabelWithBreadcrumbs ztime rootLabel breadcrumbs =
+  rootW <+> renderBreadcrumbs BreadcrumbsLeafFirst ztime breadcrumbs
  where
   rootW = renderLabelShort ztime rootLabel
-
--- NB we don't shade colors in the breadcrumbs so they "pop out", but I consider this a feature
--- rather than a bug for now.
-renderBreadcrumbs :: ZonedTime -> [IdLabel] -> Widget n
-renderBreadcrumbs ztime breadcrumbs =
-  withAttr AppAttr.breadcrumbs $
-    hBox [x | (_, lbl) <- breadcrumbs, x <- [str " < ", renderLabelShort ztime lbl]]
-
--- | Render a short (one-line version of the item) with dates but without status
-renderLabelShort :: ZonedTime -> Label -> Widget n
-renderLabelShort ztime (attr, dattr) =
-  hBox
-    [ str (name attr)
-    , maybe
-        emptyWidget
-        wrapDateWidget
-        (renderMostUrgentDateMaybe ztime False (dates attr) (daImpliedDates dattr))
-    ]
- where
-  wrapDateWidget w =
-    -- SOMEDAY it's kinda stupid that this does the same calculation again as above
-    let battr = mostUrgentDateAttr ztime False (dates attr) (daImpliedDates dattr)
-     in hBox [str " ", withAttr battr (str "["), w, withAttr battr (str "]")]
 
 -- Currently we only render the currently selected filter.
 renderFilters :: CList.CList Filter -> Widget n
@@ -995,6 +975,7 @@ renderItemDetails ztime (eid, llabel) =
       , -- SOMEDAY all these conversions are pretty fucking annoying. Maybe use lenses? Proper data
         -- structures for the different *Label things?
         renderBreadcrumbs
+          BreadcrumbsLeafFirst
           ztime
           (map localIdLabel2IdLabel . gLocalBreadcrumbs $ llabel)
       ]
@@ -1069,64 +1050,6 @@ renderItemDetails ztime (eid, llabel) =
   padFirstCell (h : t) = padRight (Pad 2) h : t
   sectionHeaderAttr = attrName "section_header"
 
-renderStatusActionabilityCounts :: StatusActionabilityCounts -> Widget n
-renderStatusActionabilityCounts sac =
-  -- SOMEDAY There _may_ be a performance issue b/c we vary the created set of widget on selection
-  -- move.
-  -- SOMEDAY show Done/Canceled statuses?
-  hBox . concat $
-    [ intersperse sepIntraGroup
-        . catMaybes
-        $ [ maybeRenderIndicatorSingle WIP
-          , maybeRenderIndicatorSingle Next
-          , maybeRenderIndicatorSingle Waiting
-          -- , maybeRenderIndicatorSingle Later
-          -- , maybeRenderIndicatorSingle Open
-          ]
-    , [sepSingleProjects]
-    , intersperse sepIntraGroup . catMaybes $
-        map maybeRenderIndicatorProject displayedProjectActionabilities
-          ++ [maybeStuckProjectsActionabilitiesW]
-    ]
- where
-  -- Not rendering Opens by actionability b/c I think that's too much information
-  -- SOMEDAY alt, if n == 0, show the number and the indicator but in standard gray. Could make it less busy.
-  sepMarkerCount = emptyWidget
-  sepSingleProjects = str " | "
-  sepIntraGroup = str " "
-  maybeRenderIndicatorSingle s =
-    let n = MapLike.findWithDefault 0 s . sacSingleStatuses $ sac
-     in if n == 0
-          then Nothing
-          else
-            Just $
-              withAttr (actionabilityAttr False s) $
-                hBox [renderStatus False s s, sepMarkerCount, str . show $ n]
-  maybeRenderIndicatorProject a =
-    let n = MapLike.findWithDefault 0 a . sacProjects $ sac
-     in if n == 0
-          then Nothing
-          else
-            Just $
-              withAttr (actionabilityAttr False a) $
-                hBox [renderStatus False Project a, sepMarkerCount, str . show $ n]
-  -- Not displaying LATER b/c I think that's basically stuck and we need to prune down items.
-  displayedProjectActionabilities = [WIP, Next, Waiting]
-  maybeStuckProjectsActionabilitiesW =
-    let
-      totalProjects = MapLike.findWithDefault 0 Project $ sacSingleStatuses sac
-      n = sacNStalledProjects sac
-     in
-      -- totalProjects
-      --   - sum [MapLike.findWithDefault 0 a (sacProjects sac) | a <- displayedProjectActionabilities]
-
-      if n == 0
-        then Nothing
-        else
-          Just $
-            withAttr (actionabilityAttr False Someday) $
-              hBox [renderStatus False Project Someday, sepMarkerCount, str . show $ n]
-
 -- * Component instance
 
 -- | We use `Confirmed ()` to indicate that the user *asked* to exit and `Canceled ()` to indicate
@@ -1165,24 +1088,9 @@ instance AppComponent MainTree where
             ]
       doFollowBox = withDefAttr AppAttr.follow_box $ str (if tvDoFollowItem then "(follow)" else "(keep)")
       listW = renderComponent mtTreeView
-      statusBarW =
-        withDefAttr AppAttr.header_row $
-          padRight Max (txt " CUR" <+> selectedBreadcrumbsW) <+> statusBarRightW
-      selectedBreadcrumbsW = case mtCurWithAttr s of
-        Nothing -> emptyWidget
-        Just illabel ->
-          overrideAttr AppAttr.breadcrumbs AppAttr.header_row $
-            renderBreadcrumbs (acZonedTime ?actx) (map localIdLabel2IdLabel . gLocalBreadcrumbs $ illabel)
-      statusBarRightW =
-        hBox
-          [ maybe emptyWidget (renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr) $
-              mtCurWithAttr s
-          , -- Spacer b/c I find it hard to read stuff at the right side of the screen
-            str " "
-          ]
       cmdBarW = almostEmptyWidget -- nothing here yet, just reserving some space
       -- box = headrow <=> listW <=> statusBarW <=> cmdBarW
-      box = vBox [headrow, listW, statusBarW, cmdBarW]
+      box = vBox [headrow, listW, statusBarW BreadcrumbsLeafFirst now (mtCurWithAttr s), cmdBarW]
       detailsOvl = case (mtShowDetails, mtCurWithAttr s) of
         (True, Just illabel) -> Just ("Item Details", renderItemDetails now illabel)
         _ -> Nothing

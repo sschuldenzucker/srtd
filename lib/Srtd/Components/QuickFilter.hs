@@ -36,6 +36,7 @@ import Srtd.Components.CompilingTextEntry (
   compilingRegexEntry,
  )
 import Srtd.Components.CompilingTextEntry qualified as CTE
+import Srtd.Components.TreeStatusBar (BreadcrumbDirection (..), statusBarW)
 import Srtd.Components.TreeView (TreeView (..))
 import Srtd.Components.TreeView qualified as TV
 import Srtd.Keymap
@@ -141,6 +142,7 @@ instance (VariantBehavior v) => AppComponent (QuickFilter v) where
       [ renderComponent (sTextEntry s)
       , hBorder
       , renderComponent (sTreeView s)
+      , statusBarW BreadcrumbsRootFirst (acZonedTime ?actx) (TV.tvCurWithAttr $ sTreeView s)
       ]
 
   handleEvent ev = case ev of

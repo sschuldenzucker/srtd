@@ -29,6 +29,7 @@ library
         Srtd.Components.QuickFilter
         Srtd.Components.Tabs
         Srtd.Components.TestOverlay
+        Srtd.Components.TreeStatusBar
         Srtd.Components.TreeView
         Srtd.Config
         Srtd.Data.IdTree
