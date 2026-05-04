@@ -2,34 +2,51 @@
 usually a query.
 
 Generalizes regex / single item query / query entry.
+
+SOMEDAY this could be just a Cell if we can reliably own our Editor. But then it's really basically an AppComponent.
 -}
 module Srtd.Components.CompilingTextEntry (
   -- * Types
   CompiledWithSource (..),
   ConfirmType (..),
   CompilingTextEntry (..),
+  CompilingTextEntryEvent (..),
 
   -- * Construction
   compilingTextEntry,
   compilingSingleItemQueryEntry,
   compilingQueryEntry,
   compilingRegexEntry,
+
+  -- * Access
+  valueMaybeEmpty,
+  valueMaybe,
+
+  -- * Helpers
+  MaybeEmpty (..),
+  maybeToMaybeEmpty,
+  maybeEmptyToMaybe,
+  uniqueMaybeEmptyCell,
 ) where
 
 import Brick
 import Brick.Keybindings
-import Brick.Widgets.Edit
-import Control.Monad (when)
+import Control.Monad (forM_, when)
+import Data.Function qualified as Function
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Zipper qualified as TZ
 import Graphics.Vty.Input.Events
 import Lens.Micro.Platform
+import Srtd.BrickHelpers (pattern SomeNonVtyKeyBrickEvent, pattern VtyKeyEvent)
 import Srtd.Component
+import Srtd.Components.EditorProactive
 import Srtd.Keymap
+import Srtd.ProactiveBandana (Cell, Cell', cValue, cell)
+import Srtd.ProactiveBandana qualified as C
 import Srtd.Query
-import Srtd.Util (eitherToMaybe)
+import Srtd.Util (captureWriterT, eitherToMaybe, tell1)
 import Text.Regex.TDFA (
   CompOption (..),
   ExecOption (..),
@@ -48,35 +65,80 @@ data CompiledWithSource c = CompiledWithSource
   , cwsSource :: Text
   }
 
+-- The Eq instances compares the _source_ not the compiled one. This creates a correct Eq instance
+-- but note that two different sources can give rise to the same (e.g.) regex.
+-- Where equality is used for reloading, this also means that there will be false positives when only unimportant details changed (e.g., spacing in a Query). This is not detected.
+instance Eq (CompiledWithSource c) where
+  (==) = (==) `Function.on` cwsSource
+
 compileWithSource :: (Text -> Maybe c) -> Text -> Maybe (CompiledWithSource c)
 compileWithSource f t = CompiledWithSource <$> (f t) <*> pure t
 
+-- | A tertiary value that can be valid, empty, or invalid. We sometimes use this for regexs. (the
+-- empty regex is invalid but should still receive some special treatment)
+--
+-- SOMEDAY we could make this the default return value type of CompilingTextEntry
+data MaybeEmpty a = Valid a | Empty | Invalid
+  deriving (Eq, Ord, Show)
+
 data CompilingTextEntry c = CompilingTextEntry
-  { sEditor :: Editor Text AppResourceName
-  , -- NB there is some redundancy here (text being stored in two places) but it's easier to return stuff this way.
-    sValue :: Maybe (CompiledWithSource c)
+  { sEditor :: EditorProactive
+  , sValue :: Cell Text (MaybeEmpty (CompiledWithSource c)) (ComponentEventM (CompilingTextEntry c) ())
   , sInitialText :: Text
-  , sCompile :: Text -> Maybe c
   }
 
 suffixLenses ''CompilingTextEntry
 
-type MyAppEventAction c =
-  AppEventAction
-    (CompilingTextEntry c)
-    (Maybe (CompiledWithSource c))
-    (CompiledWithSource c, ConfirmType)
+-- | Map a Maybe to MaybeEmpty. The result will never be Empty.
+maybeToMaybeEmpty :: Maybe a -> MaybeEmpty a
+maybeToMaybeEmpty = \case
+  Just x -> Valid x
+  Nothing -> Invalid
+
+maybeEmptyToMaybe :: MaybeEmpty a -> Maybe a
+maybeEmptyToMaybe = \case
+  Valid x -> Just x
+  Empty -> Nothing
+  Invalid -> Nothing
+
+valueMaybeEmpty :: CompilingTextEntry c -> MaybeEmpty (CompiledWithSource c)
+valueMaybeEmpty = cValue . sValue
+
+valueMaybe :: CompilingTextEntry c -> Maybe (CompiledWithSource c)
+valueMaybe = maybeEmptyToMaybe . valueMaybeEmpty
+
+-- | Like 'uniqueMaybeCell' but for 'MaybeEmpty'
+--
+-- SOMEDAY may not be needed, it's pretty simple
+uniqueMaybeEmptyCell ::
+  (Eq v) => h -> MaybeEmpty v -> (v -> h) -> h -> Cell' (MaybeEmpty v) h
+uniqueMaybeEmptyCell dflt mex0 onNewlyValid onNewlyEmpty = cell mex0 $ \mex' -> do
+  mex <- get
+  if
+    | (Valid x') <- mex', mex' /= mex -> return $ onNewlyValid x'
+    | Empty <- mex', mex' /= mex -> return $ onNewlyEmpty
+    | otherwise -> return $ dflt
 
 -- | General form with a specified compiler
 compilingTextEntry :: (Text -> Maybe c) -> Text -> AppResourceName -> CompilingTextEntry c
 compilingTextEntry f s rname =
   -- SOMEDAY actual completion and highlight the previous pattern
   CompilingTextEntry
-    { sEditor = editorText (EditorFor rname) (Just 1) ""
-    , sValue = Nothing
+    { sEditor = editorProactiveText "" (rname <> "editor")
+    , -- NB this is *not* a unique cell b/c EditorProactive already has unique semantics for its text,
+      -- and we wouldn't gain anything here.
+      sValue = cell Empty $ C.simpleMap compile' $ \mev' -> do
+        -- A bit hacky b/c our component interface doesn't let us pass parameters, so we store this
+        -- in state
+        callIntoEditor $ setPostRender (postRenderFor $ maybeEmptyToMaybe mev')
+        tell1 (ValueChanged mev')
     , sInitialText = s
-    , sCompile = f
     }
+ where
+  -- Special case so that the empty string is _always_ Nothing.
+  -- This wouldn't be all that necessary b/c empty regexs are invalid but let's be sure about it.
+  compile' "" = Empty
+  compile' t = maybeToMaybeEmpty . compileWithSource f $ t
 
 compilingSingleItemQueryEntry :: Text -> AppResourceName -> CompilingTextEntry SingleItemQuery
 compilingSingleItemQueryEntry = compilingTextEntry parseAndCompileSingleItemQuery
@@ -90,84 +152,73 @@ compilingRegexEntry = compilingTextEntry (eitherToMaybe . TDFA.compile myCompOpt
   myCompOpt = defaultCompOpt {caseSensitive = False}
   myExecOpt = defaultExecOpt {captureGroups = False}
 
-keymap :: Keymap (MyAppEventAction c)
+keymap :: Keymap (ComponentEventM' (CompilingTextEntry c))
 keymap =
   kmMake
     "Search"
-    [ kmLeafA (binding KEsc []) "Cancel" $ return Canceled
+    [ kmLeaf (binding KEsc []) "Cancel" $ return Canceled
     , -- SOMEDAY more descriptive names for this: it's confirm-and-go and confirm-and-go-to-sibling.
-      kmLeafA (binding KEnter []) "Confirm" $ do
-        mv <- use sValueL
+      kmLeaf (binding KEnter []) "Confirm" $ do
+        mv <- gets valueMaybe
         case mv of
           -- NB the user can't confirm an invalid regex.
-          Nothing -> return $ Continue Nothing
+          Nothing -> return $ Continue
           Just v -> return $ Confirmed (v, RegularConfirm)
-    , kmLeafA (binding KEnter [MMeta]) "Confirm (alt)" $ do
-        mv <- use sValueL
+    , kmLeaf (binding KEnter [MMeta]) "Confirm (alt)" $ do
+        mv <- gets valueMaybe
         case mv of
           -- NB the user can't confirm an invalid regex.
-          Nothing -> return $ Continue Nothing
+          Nothing -> return $ Continue
           Just v -> return $ Confirmed (v, AltConfirm)
-    , ( kmLeafA (ctrl 'd') "Clear" $ do
-          setText ""
-          sEditorL %= applyEdit TZ.clearZipper
-          Continue <$> use sValueL
+    , ( kmLeaf (ctrl 'd') "Clear" $ do
+          callIntoEditor $ applyEdit TZ.clearZipper
+          return Continue
       )
-    , ( kmLeafA (ctrl 'l') "Clear" $ do
-          setText ""
-          sEditorL %= applyEdit TZ.clearZipper
-          Continue <$> use sValueL
+    , ( kmLeaf (ctrl 'l') "Clear" $ do
+          callIntoEditor $ applyEdit TZ.clearZipper
+          return Continue
       )
-    , kmLeafA (bind '\t') "Complete" $ do
-        s0 <- gets (getEditContents . sEditor)
-        let s = case s0 of
-              [s_] -> s_
-              _ -> error "Single-line editor must have a single line."
-        init_ <- gets sInitialText
+    , kmLeaf (bind '\t') "Complete" $ do
+        s <- gets (getEditorText . sEditor)
         -- SOMEDAY proper completion, also have a visual hint.
+        init_ <- gets sInitialText
         when (s `T.isPrefixOf` init_) $ do
-          sEditorL %= applyEdit (const $ TZ.textZipper [init_] (Just 1))
-          setText init_
-        Continue <$> use sValueL
+          callIntoEditor $ applyEdit (const $ TZ.textZipper [init_] (Just 1))
+        return Continue
     ]
 
-keymapZipper :: KeymapZipper (MyAppEventAction c)
-keymapZipper = keymapToZipper keymap
+callIntoEditor :: ComponentEventM EditorProactive a -> ComponentEventM (CompilingTextEntry c) a
+callIntoEditor = callIntoComponentEventM sEditorL $ \case
+  TextChanged t -> C.runUpdateLens sValueL t
 
-setText :: Text -> EventM AppResourceName (CompilingTextEntry c) ()
--- Can't search for an empty string.
-setText "" = sValueL .= Nothing
-setText s = do
-  f <- gets sCompile
-  let erx = compileWithSource f s
-  sValueL .= erx
+postRenderFor :: Maybe a -> Widget n -> Widget n
+postRenderFor mv =
+  withAttr $ attrName "search_entry" <> (if isNothing mv then attrName "error" else mempty)
+
+-- SOMEDAY should this be MaybeEmpty?
+data CompilingTextEntryEvent c = ValueChanged (MaybeEmpty (CompiledWithSource c))
 
 instance
   AppComponent
     (CompilingTextEntry c)
-    (Maybe (CompiledWithSource c))
-    ((CompiledWithSource c), ConfirmType)
   where
-  renderComponent self = editUI
-   where
-    editUI = renderEditor (withAttr myAttr . txt . T.intercalate "\n") True (sEditor self)
-    myAttr = attrName "search_entry" <> (if isNothing (sValue self) then attrName "error" else mempty)
+  type Return (CompilingTextEntry c) = ((CompiledWithSource c), ConfirmType)
+
+  type Event (CompilingTextEntry c) = CompilingTextEntryEvent c
+
+  renderComponent = renderComponent . sEditor
 
   handleEvent ev =
     case ev of
-      (VtyEvent (EvKey key mods)) -> do
-        case kmzLookup keymapZipper key mods of
-          NotFound -> handleFallback ev
-          LeafResult act _nxt -> runAppEventAction act
-          SubmapResult _sm -> error "wtf submap?"
-      _ -> handleFallback ev
+      VtyKeyEvent key mods -> kmDispatch keymap key mods (handleFallback ev)
+      SomeNonVtyKeyBrickEvent -> handleFallback ev
+      AppEvent (ModelUpdated _) -> handleFallback ev
+      AppEvent Tick -> handleFallback ev
    where
     handleFallback ev' = do
-      zoom sEditorL $ handleEditorEvent ev'
-      text <- (T.intercalate "\n" . getEditContents) <$> use sEditorL
-      setText text
-      Continue <$> use sValueL
+      _resIsAlwaysContinue <- callIntoEditor $ handleEvent ev'
+      return Continue
 
-  componentKeyDesc _self = kmzDesc keymapZipper
+  componentKeyDesc _self = kmDesc keymap
 
   componentTitle _self = "Search"

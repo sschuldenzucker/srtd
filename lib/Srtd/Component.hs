@@ -1,11 +1,12 @@
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FunctionalDependencies #-}
+-- For the MonadWriter instance of ComponentEventM. It's fine!!
+{-# LANGUAGE UndecidableInstances #-}
 
 {-| A model defining a unified component interface. I have no idea why Brick doesn't include this.
 
 A Component is a piece of data that can be rendered to brick and supports a vaguely "call" like
 interface where a parent can hold and call it and the component can tell it when it's done and
-return a value (and/or pass a stream of intermediate values if desired). It also provides context
+return a value (and/or pass a stream of intermediate events if desired). It also provides context
 info (e.g., a list of supported keybindings) to the parent for rendering.
 
 This is very similar to [brick-panes](https://github.com/kquick/brick-panes), though more
@@ -21,76 +22,132 @@ import Brick
 import Brick.BChan (BChan)
 import Brick.Keybindings (Binding)
 import Control.Monad.Except
+import Control.Monad.Reader (MonadReader (..), ReaderT (runReaderT))
+import Control.Monad.State (MonadState)
+import Control.Monad.Writer.Strict
+import Data.List qualified as L
+import Data.String (IsString (..))
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Time (ZonedTime)
+import Data.Void (Void)
+import Graphics.Vty.Input (Key (KBS, KEsc), Modifier)
 import Lens.Micro.Platform
-import Srtd.Keymap (KeyDesc, KeymapItem, kmLeaf)
+import Srtd.Keymap (
+  KeyDesc,
+  Keymap,
+  KeymapItem,
+  KeymapResult (..),
+  KeymapZipper,
+  kmLeaf,
+  kmLookup,
+  kmzIsToplevel,
+  kmzLookup,
+  kmzResetRoot,
+  kmzUp,
+ )
+import Srtd.Log (Priority (..), glogL)
 import Srtd.Model (FilterContext (..), IdNotFoundError)
 import Srtd.ModelServer (ModelServer, MsgModelUpdated)
+import Srtd.MonadBrick (MonadBrick (..))
+import Srtd.Util (ALens' (..), captureWriterT)
 
--- | Global messages sent through Srtd at the app (top) level together with any brick events.
--- Individual components can define their own message type.
-data AppMsg
-  = -- SOMEDAY the first couple ones are for MainTree to communicate with Main. May not be needed, could just be the message returned by MainTree.
-    -- (but let's keep them for now in case I have some funky interaction pattern later)
-    PushTab (AppResourceName -> SomeAppComponent)
+-- | Messages that reach the root of the app. They do not recur into individual components.
+--
+-- SOMEDAY these messages could also be returned as child events from components up the tree. But
+-- I'm not doing that right now.
+data AppRootMsg
+  = PushTab (AppResourceName -> SomeAppComponent)
   | NextTab
   | PrevTab
   | SwapTabNext
   | SwapTabPrev
-  | ModelUpdated MsgModelUpdated
+  | AppComponentMsg AppComponentMsg
+
+-- | Messages that reach individual components and cascade hierarchically.
+data AppComponentMsg
+  = ModelUpdated MsgModelUpdated
   | -- | A signal sent once per minute. Only needs to be handled for components where the internal
     -- state depends on the clock. (which typically means they cache data that depends on entered
     -- dates). Even then, blanket handlers (running on *every* event) are often fine.
     Tick
+  deriving (Show)
 
 -- SOMEDAY we could make Show a precondition for BrickComponent or for SomeBrickComponent for better vis
 -- This is a custom instance b/c some constructors' data doesn't have show and there are no sane defaults. :/
-instance Show AppMsg where
+instance Show AppRootMsg where
   show (PushTab _) = "PushTab _"
   show NextTab = "NextTab"
   show PrevTab = "PrevTab"
   show SwapTabNext = "SwapTabNext"
   show SwapTabPrev = "SwapTabPrev"
-  show (ModelUpdated msg) = "ModelUpdated(" ++ show msg ++ ")"
-  show Tick = "Tick"
+  show (AppComponentMsg msg) = "AppComponentMsg (" ++ show msg ++ ")"
 
--- | Global type for Brick "resource names", which are used to detect clicks (and also visibility/scroll, but I'm not using that right now). This can be anything but resource names need to be globally unique.
+-- | Global type for Brick "resource names", which are used to detect clicks (and also
+-- visibility/scroll, but I'm not using that right now). This (1) needs to be globally unique for brick
+-- widgets and (2) needs to follow the AppComponent hierarchy to tell them where to route.
 --
 -- NB tabs, overlays, etc. are _not_ numbered consecutively but the Int is to ensure uniqueness only.
 --
--- Not super clean but I don't think I'll need a lot here. These nest to be unique across different tabs / overlays.
--- SOMEDAY maybe our resource names should just be lists of strings, aka. Brick attr names.
-data AppResourceName
-  = MainListFor AppResourceName
-  | OverlayFor Int AppResourceName
-  | Tab Int
-  | TabTitleFor AppResourceName
-  | EditorFor AppResourceName
-  | TreeFor AppResourceName
+-- The list is in hierarchical order with toplevel hierarchy *first*.
+--
+-- SOMEDAY this might be a bit slow for applications that need a lot of throughput, like scrolling. Not clear to me.
+newtype AppResourceName = AppResourceName {unAppResourceName :: [PrimitiveAppResourceName]}
+  deriving (Eq, Ord, Show, Semigroup)
+
+data PrimitiveAppResourceName = NamedAppResource Text Int
   deriving (Eq, Ord, Show)
 
--- | App conext passed down from the app (top) level to components that need it.
+instance IsString AppResourceName where
+  fromString s = AppResourceName [NamedAppResource (T.pack s) 0]
+
+isPrefixOf :: AppResourceName -> AppResourceName -> Bool
+(AppResourceName s) `isPrefixOf` (AppResourceName t) = s `L.isPrefixOf` t
+
+stripPrefix :: AppResourceName -> AppResourceName -> Maybe [PrimitiveAppResourceName]
+stripPrefix (AppResourceName pns) (AppResourceName pns') = L.stripPrefix pns pns'
+
+-- | Common pattern for dispatching on MouseDown etc. for child components
+dispatchChildRName ::
+  (MonadIO m, MonadState s m) =>
+  -- | Component name, for error messages
+  String ->
+  -- | Getter for this component's resource name. We respond to children below it.
+  (s -> AppResourceName) ->
+  -- | Resource name from an event that we want to process
+  AppResourceName ->
+  -- | Handler if the resource name is an ancestor of ours. Receive an error message for no-match
+  -- and the tail of the resource name.
+  (m (AppEventReturn a) -> [PrimitiveAppResourceName] -> m (AppEventReturn a)) ->
+  m (AppEventReturn a)
+dispatchChildRName cname getter rname go = do
+  myRName <- gets getter
+  let errmsg = cname ++ " received click on " ++ show rname ++ ", which we don't recognize. Ignoring."
+      warnact = liftIO (glogL WARNING errmsg) >> return Continue
+  case stripPrefix myRName rname of
+    Nothing -> warnact
+    Just res -> go warnact res
+
+-- | App context passed down from the app (top) level to components that need it.
 data AppContext = AppContext
   { acModelServer :: ModelServer
-  , acAppChan :: BChan AppMsg
+  , acAppChan :: BChan AppRootMsg
   , acZonedTime :: ZonedTime
   -- ^ Current time and time zone at the time of processing this event. ONLY for user-facing
   -- interactions, NOT for internal process coordination!
   }
 
-translateAppFilterContext :: (?actx :: AppContext) => ((?fctx :: FilterContext) => a) -> a
-translateAppFilterContext x =
-  let ?fctx = FilterContext {fcZonedTime = acZonedTime $ ?actx}
-   in x
+appContext2FilterContext :: AppContext -> FilterContext
+appContext2FilterContext actx = FilterContext {fcZonedTime = acZonedTime $ actx}
 
 -- | Return data returned by 'handleEvent' (see below) to tell the parent component if the child
 -- component should be kept around.
-data AppEventReturn a b
-  = -- | Event processed successfully and the component should be kept open, returns an intermediate
-    -- result of type `a`. (choose `a = ()`) for components that don't return any intermediate result,
-    -- which are most of them.
-    Continue a
+--
+-- NB this is obviously a functor and could be made a monad, but we don't provide these instances
+-- for now b/c they don't seem super useful.
+data AppEventReturn b
+  = -- | Event processed successfully and the component should be kept open.
+    Continue
   | -- | Event processed successfully and the user has confirmed whatever action encoded.
     -- The component should be closed.
     Confirmed b
@@ -102,31 +159,106 @@ data AppEventReturn a b
     -- distinction.
     Canceled
 
-forgetAppEventReturnData :: AppEventReturn a b -> AppEventReturn () ()
+forgetAppEventReturnData :: AppEventReturn b -> AppEventReturn ()
 forgetAppEventReturnData = \case
-  Continue _ -> Continue ()
+  Continue -> Continue
   Confirmed _ -> Confirmed ()
   Canceled -> Canceled
 
--- Somehow TemplateHaskell breaks everything here. Perhaps b/c of the circularity.
--- suffixLenses ''AppContext
-
+-- had some issues with TemplateHaskell
 acZonedTimeL :: Lens' AppContext ZonedTime
 acZonedTimeL = lens acZonedTime (\ctx ztime -> ctx {acZonedTime = ztime})
 
+-- | Shorthand for MonadBrick constraints in the app
+type AppMonadBrick s m = MonadBrick AppResourceName s m
+
+-- | Monad for event handlers
+--
+-- This is Brick's 'EventM' + ability to write events + ability to read AppContext
+newtype ComponentEventM s a = ComponentEventM
+  {runComponentEventM :: ReaderT AppContext (WriterT [Event s] (EventM AppResourceName s)) a}
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadIO
+    , MonadState s
+    , MonadReader AppContext
+    , MonadBrick AppResourceName s
+    )
+
+-- | Type of component event handlers
+type ComponentEventM' s = ComponentEventM s (AppEventReturn (Return s))
+
+-- Hack around limitations: type synonyms not allowed in instance heads (to ensure consistency). Fine here.
+-- Requires UndecidableInstances.
+-- Needs a manual instance.
+instance (e ~ [Event s]) => MonadWriter e (ComponentEventM s) where
+  tell x = ComponentEventM $ tell x
+  listen = ComponentEventM . listen . runComponentEventM
+  pass = ComponentEventM . pass . runComponentEventM
+
+-- | Run a 'ComponentEventM' down to its inner 'EventM' action
+runComponentEventM' :: AppContext -> ComponentEventM s a -> EventM AppResourceName s (a, [Event s])
+runComponentEventM' actx = runWriterT . flip runReaderT actx . runComponentEventM
+
+-- NOTE: There is *no* instance for Zoom on ComponentEventM. This is b/c ComponentEventM
+-- ties together the event type and the state and this monad is generally not zoomable. Use
+-- callIntoComponentEventM or, if needed, nestComponentEventM, or walk into the stack itself (you
+-- probably won't need to do that though)
+
+-- | Run a 'ComponentEventM' with explicitly provided state, returning explicit events. Like
+-- `nestEventM` but for ComponentEventM.
+nestComponentEventM ::
+  s -> ComponentEventM s a -> ComponentEventM t (s, (a, [Event s]))
+nestComponentEventM s act = do
+  actx <- ask
+  let act' = runWriterT $ runReaderT (runComponentEventM act) actx
+  liftEventM $ nestEventM s $ act'
+
+-- | Run a 'ComponentEventM' action in a child component, and return produced events.
+--
+-- Generally 'callIntoComponentEventM' is preferred for simple use cases, but you can use this to
+-- process events in another monad, for instance.
+--
+-- This is not like 'zoom' b/c the return type is different
+zoomComponentEventM :: Lens' t s -> ComponentEventM s a -> ComponentEventM t (a, [Event s])
+zoomComponentEventM l act = do
+  -- SOMEDAY should we use zoom here with an unwrapper?
+  s <- use l
+  (s', ret) <- nestComponentEventM s act
+  l .= s'
+  return ret
+
+-- | Given a lens and an event handler, run an action on a child component and handle events.
+--
+-- Use this instead of `zoom` when calling into another component.
+callIntoComponentEventM ::
+  Lens' t s -> (Event s -> ComponentEventM t ()) -> ComponentEventM s a -> ComponentEventM t a
+callIntoComponentEventM l h act = do
+  (ret, events) <- zoomComponentEventM l act
+  mapM_ h events
+  return ret
+
 -- | A class of components. All Brick components (hopefully,,,) satisfy this.
 --
--- Parameters:
---
--- - `s` The state type of the component
--- - `a` The type of intermediate messages that is passed to the parent/caller when the component
---   remains visible.
--- - `b` The type of final messages that is passed to the parent/caller when the component is
---   closed.
---
--- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented.
-class AppComponent s a b | s -> a, s -> b where
+-- Either `renderComponent` or `renderComponentWithOverlays` has to be implemented, and all the other functions.
+class AppComponent s where
+  -- | Return type passed to the parent when the user confirms (and the component accepts that,
+  -- e.g., the input is valid) and a `Confirmed` value is returned. Can be `Void` if the component
+  -- doesn't confirm, or `()` if all info is passed via events, or the component doesn't have
+  -- anything useful to return.
+  type Return s
+
+  -- | Type of events sent back to the parent during operation. Can be `Void` if the component doesn't
+  -- have anything interesting to say (beyond potentially the return type).
+  type Event s
+
   -- | Render this component to a widget. Like `appRender` for apps, or the many render functions.
+  --
+  -- NB Different from 'handleEvent', this uses an implicit param b/c the app context (and really
+  -- just the current time) is sometimes but very rarely used for rendering. Implicit params are
+  -- convenient here.
   renderComponent :: (?actx :: AppContext) => s -> Widget AppResourceName
   renderComponent = fst . renderComponentWithOverlays
 
@@ -139,12 +271,11 @@ class AppComponent s a b | s -> a, s -> b where
 
   -- | Handle an event. Like the `handleEvent` functions.
   --
-  -- The return value gives the caller an intermediate or final result and tells them what to do
-  -- with the component.
+  -- The return value gives the caller final result (if Confirmed) and tells them what to do with
+  -- the component.
   handleEvent ::
-    (?actx :: AppContext) =>
-    BrickEvent AppResourceName AppMsg ->
-    EventM AppResourceName s (AppEventReturn a b)
+    BrickEvent AppResourceName AppComponentMsg ->
+    ComponentEventM' s
 
   -- | Give description of currently bound keys. You probably wanna use the Keymap module to generate these.
   componentKeyDesc :: s -> KeyDesc
@@ -152,10 +283,13 @@ class AppComponent s a b | s -> a, s -> b where
   -- | Title of the component. Used in tabs and (should be used in) overlay titles.
   componentTitle :: s -> Text
 
--- | Wrapper that encapsulates any AppComponent and forgets results.
-data SomeAppComponent = forall s a b. (AppComponent s a b) => SomeAppComponent s
+-- | Wrapper that encapsulates any AppComponent and forgets results and events. (!)
+data SomeAppComponent = forall s. (AppComponent s) => SomeAppComponent s
 
-instance AppComponent SomeAppComponent () () where
+instance AppComponent SomeAppComponent where
+  type Return SomeAppComponent = ()
+  type Event SomeAppComponent = Void
+
   renderComponent (SomeAppComponent s) = renderComponent s
   renderComponentWithOverlays (SomeAppComponent s) = renderComponentWithOverlays s
 
@@ -165,8 +299,13 @@ instance AppComponent SomeAppComponent () () where
   handleEvent ev = do
     (SomeAppComponent s) <- get
     -- Alternatively, we could make the actual transform and use unsafeCoerce. But this seems to work fine.
-    let theLens = lens (const s) (const SomeAppComponent)
-    res <- zoom theLens $ handleEvent ev
+    -- For some reason, I need ALens' if I wanna put this into a variable, else it complains about
+    -- an ambiguous functor thingy f0. When I just replace the `lens` expression below, I don't need
+    -- ALens'. Whatever...
+    let theLens = ALens' $ lens (const s) (const SomeAppComponent)
+    -- This ignores events! And also the Confirmed value.
+    -- (res, _events) <- zoom theLens $ captureWriterT $ handleEvent ev
+    res <- callIntoComponentEventM (runALens' theLens) (const $ return ()) $ handleEvent ev
     return $ forgetAppEventReturnData res
 
   componentKeyDesc (SomeAppComponent s) = componentKeyDesc s
@@ -175,64 +314,97 @@ instance AppComponent SomeAppComponent () () where
 
 -- * Keymap wrapper tools
 
--- | Helper type for keymaps. This must be a newtype (not type alias) so that we can avoid
--- ImpredicativeTypes, which can lead to ghc hangup (I've seen this with this particular code
--- before!)
+-- | Execute action and return Continue
+aerVoid :: (Monad m) => m () -> m (AppEventReturn b)
+aerVoid act = act >> return Continue
+
+-- | Like 'kmLeaf' but also return 'Continue'.
+kmLeaf_ :: (Monad m) => Binding -> Text -> m () -> (Binding, KeymapItem (m (AppEventReturn b)))
+kmLeaf_ b n x = kmLeaf b n (aerVoid x)
+
+-- | Common dispatch routine for keymaps. Given a lens where we store a KeymapZipper, look up,
+-- execute, and update the keymap, or execute a fallback.
+kmzDispatch ::
+  -- | Lens where the KeymapZipper is stored
+  Lens' s (KeymapZipper (ComponentEventM' s)) ->
+  -- | Pressed key from VtyEvent
+  Key ->
+  -- | Pressed modifiers from VtyEvent
+  [Modifier] ->
+  -- | Fallback action if no key matches
+  ComponentEventM' s ->
+  ComponentEventM' s
+kmzDispatch l key mods fallback = do
+  kmz <- use l
+  case kmzLookup kmz key mods of
+    NotFound ->
+      if
+        | key == KEsc && mods == [] && not (kmzIsToplevel kmz) -> aerVoid $ l %= kmzResetRoot
+        | key == KBS && mods == [] && not (kmzIsToplevel kmz) -> aerVoid $ l %= kmzUp
+        | otherwise -> fallback
+    LeafResult act nxt -> do
+      res <- act
+      l .= nxt
+      return res
+    SubmapResult nxt -> do
+      l .= nxt
+      return Continue
+
+-- | 'kmzDispatch' when we don't have submaps and don't track state.
 --
--- This isn't used in this module but you can use it with a keymap.
-newtype AppEventAction s a b = AppEventAction
-  { runAppEventAction ::
-      (?actx :: AppContext) =>
-      EventM AppResourceName s (AppEventReturn a b)
-  }
-
--- | Like 'kmLeaf' but wrap the given action in 'AppEventAction'
-kmLeafA ::
-  Binding ->
-  Text ->
-  -- NB For some reason, *this* use of the constraint inside the type doesn't need ImpredicativeTypes.
-  ((?actx :: AppContext) => EventM AppResourceName s (AppEventReturn a b)) ->
-  (Binding, KeymapItem (AppEventAction s a b))
-kmLeafA b n x = kmLeaf b n (AppEventAction x)
-
--- | Like 'kmLeafA' but also return 'Continue ()'. Useful to simplify code for components that don't
--- return intermediate results.
-kmLeafA_ ::
-  Binding ->
-  Text ->
-  ((?actx :: AppContext) => EventM AppResourceName s ()) ->
-  (Binding, KeymapItem (AppEventAction s () b))
--- NB this is one of the few cases where we can't make this point-free b/c the definition of
--- 'aerVoid' doesn't include the `?actx` constraint.
-kmLeafA_ b n x = kmLeafA b n (aerVoid x)
-
--- | Return `Continue ()`.
-aerContinue :: (Monad m) => m (AppEventReturn () b)
-aerContinue = return $ Continue ()
-
--- | Variant of 'void' for the (common) case where there's no intermediate result.
-aerVoid :: (Monad m) => m a -> m (AppEventReturn () b)
-aerVoid act = act >> aerContinue
+-- Reports an error and ignores if a submap is found.
+kmDispatch ::
+  -- | Input keymap
+  Keymap (ComponentEventM' s) ->
+  -- | Pressed key from VtyEvent
+  Key ->
+  -- | Pressed modifiers from VtyEvent
+  [Modifier] ->
+  -- | Fallback action if no key matches
+  ComponentEventM' s ->
+  ComponentEventM' s
+kmDispatch km key mods fallback = case kmLookup km key mods of
+  NotFound -> fallback
+  -- We ignore nxt, which tells us whether the keymap is sticky: without a zipper, it will always be.
+  LeafResult act _nxt -> act
+  SubmapResult _nxt -> do
+    liftIO $
+      glogL ERROR $
+        "kmDispatch found submap result at " ++ show (key, mods) ++ " but cannot handle it. Ignoring."
+    return Continue
 
 -- * Error Handling
 
--- | Type of computations that update the subtree synchronously (and may fail because of that).
---
--- SOMEDAY we may wanna change the result type in AppComponent to be a transformer instead of a
--- fixed return type. Could make it more ergonomic to write handlers. OTOH, the additional flexibility
--- in the computation isn't really needed right now. (only in `wrappingActions` below, maybe)
-type EventMOrNotFound n s a = ExceptT IdNotFoundError (EventM n s) a
+type ComponentEventMOrNotFound s a =
+  ExceptT IdNotFoundError (ComponentEventM s) a
 
--- | Convert exception handling.
-notFoundToAER_ :: EventMOrNotFound n s () -> EventM n s (AppEventReturn () ())
-notFoundToAER_ = notFoundToAER . aerVoid
+-- | Like 'callIntoComponentEventM' but with actions and handlers that may fail.
+--
+-- Specific to IdNotFoundError over other error types for no reason.
+--
+-- NB you can also apply this to an input action that _cannot_ fail (of type `ComponentEventM`) by
+-- simply wrapping it in `lift`. The important bit here is that the _handler_ may fail.
+callIntoComponentEventMOrNotFound ::
+  Lens' t s ->
+  (Event s -> ComponentEventMOrNotFound t ()) ->
+  ComponentEventMOrNotFound s a ->
+  ComponentEventMOrNotFound t a
+callIntoComponentEventMOrNotFound l h act = do
+  (ret, events) <- lift $ zoomComponentEventM l (runExceptT act)
+  mapM_ h events
+  liftEither ret
 
 -- | Merge exception handling.
 --
 -- An exception is treated equivalent to returning 'Canceled'.
-notFoundToAER :: EventMOrNotFound n s (AppEventReturn a b) -> EventM n s (AppEventReturn a b)
+notFoundToAER :: (Monad m) => ExceptT IdNotFoundError m (AppEventReturn b) -> m (AppEventReturn b)
 notFoundToAER act = do
   eres <- runExceptT act
   case eres of
     Left _err -> return Canceled
     Right res -> return res
+
+-- | Convert exception handling. Like 'notFoundToAER' but for an action without an 'AppEventReturn'
+-- of its own.
+notFoundToAER_ :: (Monad m) => ExceptT IdNotFoundError m () -> m (AppEventReturn b)
+notFoundToAER_ = notFoundToAER . aerVoid

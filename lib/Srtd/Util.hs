@@ -6,9 +6,12 @@
 module Srtd.Util where
 
 import Control.Applicative (liftA2, (<|>))
+import Control.Arrow (Arrow (second))
 import Control.Monad ((<=<))
 import Control.Monad.Except
 import Control.Monad.State
+import Control.Monad.Trans.Writer.Strict (WriterT (WriterT, runWriterT), mapWriterT)
+import Control.Monad.Writer.Strict (MonadWriter (tell))
 import Data.Array qualified as Array
 import Data.Either (fromRight)
 import Data.List (isPrefixOf, sort, sortBy)
@@ -23,7 +26,7 @@ import System.Process (callProcess)
 import Text.Regex.TDFA
 import Text.Regex.TDFA.Text (compile)
 
--- SOMEDAY most of these helpers shouldn't exist and instead we should be using MissingH or some similar library.
+-- SOMEDAY most of these helpers shouldn't exist and instead we should be using MissingH or some similar library. Or `composition-extra` or something. Or `utility-ht`. Or `extra`. Choose one.
 
 -- | if-then-else as a function.
 --
@@ -41,11 +44,20 @@ select xElse ((False, _) : cs) = select xElse cs
 ignore :: a -> b -> b
 ignore = flip const
 
+-- From composition-extra
+slipl :: (a -> b -> c -> d) -> b -> c -> a -> d
+slipl f y z x = f x y z
+
 safeHead :: [a] -> Maybe a
 safeHead (x : _) = Just x
 safeHead [] = Nothing
 
--- Enables regex support for Text
+-- | Safe 'const', only drops `()`.
+safeConst :: a -> () -> a
+safeConst x () = x
+
+fromEither :: Either a a -> a
+fromEither = either id id
 
 maybeToEither :: a -> Maybe b -> Either a b
 maybeToEither err = maybe (Left err) Right
@@ -259,12 +271,6 @@ withLensValue l v act = do
   l .= oldValue
   return res
 
--- * Monad helpers
-
--- | Lift an Either value into the monad computation of an 'ExceptT'.
-pureET :: (Monad m) => Either e a -> ExceptT e m a
-pureET ev = (ExceptT $ return ev)
-
 -- * Regex helpers
 
 -- | Split a text into matching and non-matching chunks according to a regex
@@ -371,3 +377,27 @@ findFirstMatch rx = listToMaybe . getAllTextMatches . match rx
 
 openURL :: String -> IO ()
 openURL url = callProcess "open" [url]
+
+-- * MTL helpers
+
+-- | Map the logs of a WriterT using some function
+mapWriterTLog :: (Monad m) => (w -> w') -> WriterT w m a -> WriterT w' m a
+mapWriterTLog f = mapWriterT $ fmap (second $ f)
+
+-- | Capture the logs of a WriterT without emitting them
+captureWriterT :: (Monad m, Monoid w') => WriterT w m a -> WriterT w' m (a, w)
+captureWriterT act = WriterT $ do
+  (a, w) <- runWriterT act
+  return ((a, w), mempty)
+
+-- | Tell a single value for a list writer
+tell1 :: (MonadWriter [a] m) => a -> m ()
+tell1 x = tell [x]
+
+-- | Replace the inner monad of an ExceptT with something else. Useful with functions like
+-- `callIntoEditor`
+--
+-- SOMEDAY this is a pretty general pattern and works similarly with WriterT for instance.
+replaceExceptT ::
+  (Monad m, Monad n) => (forall b. m b -> n b) -> ExceptT e m a -> ExceptT e n a
+replaceExceptT f act = liftEither =<< lift (f $ runExceptT act)

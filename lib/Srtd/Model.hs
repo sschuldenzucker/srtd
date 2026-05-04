@@ -13,6 +13,7 @@ import Data.Maybe (catMaybes, fromMaybe)
 import Data.Ord (Down (..), comparing)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Text qualified as T
 import Data.Time (TimeZone, ZonedTime (zonedTimeZone), addUTCTime, zonedTimeToUTC)
 import Data.Tree
 import Data.UUID (UUID)
@@ -22,6 +23,7 @@ import Srtd.Attr
 import Srtd.Data.IdTree
 import Srtd.Data.TreeZipper
 import Srtd.ModelJSON qualified as ModelJSON
+import Srtd.Query
 import Srtd.Todo
 import Srtd.Util (
   chooseMax,
@@ -37,6 +39,7 @@ import Srtd.Util (
   onForestChildren,
   transformForestTopDown,
  )
+import Text.Regex.TDFA (RegexLike (matchTest))
 
 -- import Data.UUID.V4 (nextRandom)
 
@@ -299,14 +302,17 @@ chainFilters f1 f2 =
 instance Show Filter where
   show f = "<Filter " ++ fiName f ++ ">"
 
-runFilter :: (?fctx :: FilterContext) => Filter -> EID -> Model -> Either IdNotFoundError Subtree
-runFilter (Filter {fiIncludeDone, fiPostprocess}) i m = do
+runFilter :: FilterContext -> Filter -> EID -> Model -> Either IdNotFoundError Subtree
+runFilter fctx (Filter {fiIncludeDone, fiPostprocess}) i m = do
   st0 <- modelGetSubtreeBelow i m
-  let
-    -- TODO apply fiIncludeDone *before* deriving local attrs!
-    st1 = (if fiIncludeDone then id else filterSubtree pNotDone) st0
-    st2 = (stForestL %~ fiPostprocess) $ st1
-  return st2
+  -- SOMEDAY get rid of the ?fctx implicit param, we don't really benefit from it.
+  let ?fctx = fctx
+   in let
+        -- TODO apply fiIncludeDone *before* deriving local attrs!
+        st1 = (if fiIncludeDone then id else filterSubtree pNotDone) st0
+        st2 = (stForestL %~ fiPostprocess) $ st1
+       in
+        return st2
  where
   pNotDone = not . isDone . gStatus
 
@@ -592,6 +598,26 @@ hideHierarchyFilter hhf =
             -- Show
             Node lilabel cs
 
+singleItemQueryFlatFilter :: SingleItemQuery -> Filter
+singleItemQueryFlatFilter (QueryRegexParts rxs) =
+  Filter
+    { fiName = "single item query filter flat"
+    , fiDesc = "filter single item query flat"
+    , fiIncludeDone = True
+    , fiPostprocess = go
+    }
+ where
+  go =
+    fmap snd
+      . filterIdForest p
+      . fmap (\a -> (matchScore a, a))
+      . withIdForest forestFlatten
+  -- SOMEDAY this is a _very_ simple scoring. And very simple presentation.
+  p (score, _) = score > 0
+  matchScore llabel =
+    let theName = T.pack . gName $ llabel
+     in if all (`matchTest` theName) rxs then (1 :: Int) else 0
+
 -- * Model modifications
 
 -- SOMEDAY Implemente Undo. Major restructuring probably.
@@ -609,6 +635,11 @@ modifyAttrByEID :: (?mue :: ModelUpdateEnv) => EID -> (Attr -> Attr) -> Model ->
 modifyAttrByEID tgt f = updateDerivedAttrs . (forestL %~ mapIdForestWithIds updateContent)
  where
   updateContent eid (attr, dattr) = (if eid == tgt then f attr else attr, dattr)
+
+modifyAncestorAttrsByEID :: (?mue :: ModelUpdateEnv) => EID -> (Attr -> Attr) -> Model -> Model
+modifyAncestorAttrsByEID tgt f = updateDerivedAttrs . (forestL %~ mapIdForestAncestors tgt updateContent)
+ where
+  updateContent (attr, dattr) = (f attr, dattr)
 
 -- | Delete the given ID and the subtree below it.
 deleteSubtree :: (?mue :: ModelUpdateEnv) => EID -> Model -> Model

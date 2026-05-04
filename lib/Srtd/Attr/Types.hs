@@ -79,6 +79,10 @@ data AttrDates_ a = AttrDates
 noDates :: AttrDates
 noDates = AttrDates Nothing Nothing Nothing Nothing
 
+isAttrDatesEmpty :: AttrDates -> Bool
+isAttrDatesEmpty (AttrDates Nothing Nothing Nothing Nothing) = True
+isAttrDatesEmpty _ = False
+
 initAutoDates :: UTCTime -> AttrAutoDates
 initAutoDates now = AttrAutoDates now now now
 
