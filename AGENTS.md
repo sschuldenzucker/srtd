@@ -22,3 +22,9 @@ See `README.md` for a high-level description of what's going on here. See its `D
 - Liberally use SOMEDAY comments for things that could be improved (made cleaner, more efficient,
   more modular, safer, etc.) in the future but where the payoff is unclear right now.
 
+# Known Quirks
+
+## Brick
+
+- adding padding around an empty widget sometimes does nothing. Restructure or use `almostEmptyWidget = str " "` instead.
+
