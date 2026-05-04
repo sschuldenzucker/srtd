@@ -13,6 +13,7 @@ import Data.Maybe (catMaybes)
 import Data.Time (ZonedTime)
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr
+import Srtd.BrickHelpers (almostEmptyWidget)
 import Srtd.Components.Attr (
   actionabilityAttr,
   mostUrgentDateAttr,
@@ -35,10 +36,13 @@ statusBarW breadcrumbDirection now mcur =
     padRight Max selectedBreadcrumbsW <+> statusBarRightW
  where
   selectedBreadcrumbsW = case mcur of
-    Nothing -> emptyWidget
+    Nothing -> almostEmptyWidget
     Just illabel ->
-      overrideAttr AppAttr.breadcrumbs AppAttr.header_row $
-        renderBreadcrumbs breadcrumbDirection now (map localIdLabel2IdLabel . gLocalBreadcrumbs $ illabel)
+      case map localIdLabel2IdLabel . gLocalBreadcrumbs $ illabel of
+        [] -> almostEmptyWidget
+        breadcrumbs ->
+          overrideAttr AppAttr.breadcrumbs AppAttr.header_row $
+            renderBreadcrumbs breadcrumbDirection now breadcrumbs
   statusBarRightW =
     hBox
       [ maybe emptyWidget (renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr) mcur
