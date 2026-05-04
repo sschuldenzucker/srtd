@@ -13,16 +13,15 @@ import Brick.Keybindings (Binding, bind, ctrl, meta)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
-import Control.Monad (forM_, when)
+import Control.Monad (when)
 import Control.Monad.Except
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (MonadReader, ask, asks)
 import Control.Monad.State (MonadState)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe
-import Data.CircularList qualified as CList
 import Data.Functor (void)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
+import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -31,14 +30,12 @@ import Data.Tree (Tree (Node))
 import Data.UUID.V4 (nextRandom)
 import Data.Void (absurd)
 import Graphics.Vty (Key (..), Modifier (..))
-import Graphics.Vty qualified as Vty
 import Lens.Micro.Platform
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Attr hiding (Canceled)
 import Srtd.Attr qualified (Status (Canceled))
 import Srtd.BrickHelpers
 import Srtd.Component
-import Srtd.Component qualified as Component
 import Srtd.Components.Attr (
   renderStatus,
  )
@@ -99,8 +96,10 @@ ignoreEvent _ = return ()
 
 -- * Main Data Structure
 
+-- | Main tree component with the selected filter and hierarchy-collapse state.
 data MainTree = MainTree
-  { mtFilters :: Cell' (CList.CList Filter) (ComponentEventMOrNotFound MainTree ())
+  { mtSelectedFilter :: Cell' Filter (ComponentEventMOrNotFound MainTree ())
+  -- ^ Currently selected view filter. Updating it refreshes the child 'TV.TreeView'.
   , mtTreeView :: TV.TreeView
   , mtResourceName :: AppResourceName
   -- ^ Top-level resource name for this component. We can assign anything nested below (or "above") it.
@@ -117,18 +116,22 @@ data MainTree = MainTree
 
 suffixLenses ''MainTree
 
--- The first one is default selected.
-defaultFilters :: [Filter]
-defaultFilters =
-  [ f_notDone
-  , f_deepByDates
-  , f_NotDelayedByLastModified
-  , f_flatByDates
-  , f_nextFlatByDates
-  , f_waitingFlatByDates
-  , f_stalledProjects
-  , f_projectOverview
-  , f_all
+-- | Default selected filter for new main trees.
+defaultFilter :: Filter
+defaultFilter = f_notDone
+
+-- | Key bindings for directly selecting filters from the view menu.
+filterBindings :: [(Char, Filter)]
+filterBindings =
+  [ ('n', f_notDone)
+  , ('u', f_deepByDates)
+  , ('m', f_NotDelayedByLastModified)
+  , ('F', f_flatByDates)
+  , ('N', f_nextFlatByDates)
+  , ('W', f_waitingFlatByDates)
+  , ('s', f_stalledProjects)
+  , ('p', f_projectOverview)
+  , ('a', f_all)
   ]
 
 -- ** Convenience Accessors
@@ -185,36 +188,37 @@ callIntoTreeView = callIntoComponentEventM mtTreeViewL $ safeConst (return ())
 
 -- | Create new 'MainTree'
 make :: AppContext -> EID -> Model -> AppResourceName -> Either IdNotFoundError MainTree
-make actx root = makeWithFilters actx root (CList.fromList defaultFilters) emptyHideHierarchyFilter True
+make actx root = makeWithFilter actx root defaultFilter emptyHideHierarchyFilter True
 
+-- | Create a reusable 'MainTree' constructor for a fixed root and model.
 make' :: AppContext -> EID -> Model -> Either IdNotFoundError (AppResourceName -> MainTree)
 make' actx root model = do
-  go <- makeWithFilters' actx root (CList.fromList defaultFilters) emptyHideHierarchyFilter model
+  go <- makeWithFilter' actx root defaultFilter emptyHideHierarchyFilter model
   return $ \rname -> go True rname
 
--- | filters must not be empty.
-makeWithFilters ::
+-- | Create a new 'MainTree' with an explicit selected filter.
+makeWithFilter ::
   AppContext ->
   EID ->
-  CList.CList Filter ->
+  Filter ->
   HideHierarchyFilter ->
   Bool ->
   Model ->
   AppResourceName ->
   Either IdNotFoundError MainTree
-makeWithFilters actx root filters hhf doFollowItem model rname = do
+makeWithFilter actx root selectedFilter hhf doFollowItem model rname = do
   tv <-
     TV.makeFromModel
       (appContext2FilterContext actx)
       root
-      (chainFilters (hideHierarchyFilter hhf) (fromJust $ CList.focus filters))
+      (chainFilters (hideHierarchyFilter hhf) selectedFilter)
       doFollowItem
       Config.scrolloff
       model
       (rname <> "treeview")
   return $
     MainTree
-      { mtFilters = C.cell filters $ C.simple $ \_fis' -> resetTreeViewFilter
+      { mtSelectedFilter = C.cell selectedFilter $ C.simple $ \_fi -> resetTreeViewFilter
       , mtHideHierarchyFilter = C.cell hhf $ C.simple $ \_fis -> resetTreeViewFilter
       , mtTreeView = tv
       , mtResourceName = rname
@@ -223,26 +227,26 @@ makeWithFilters actx root filters hhf doFollowItem model rname = do
       , mtOverlay = Nothing
       }
 
--- | A version of 'makeWithFilters' that's stricter based on what can fail
-makeWithFilters' ::
+-- | A version of 'makeWithFilter' that's stricter based on what can fail.
+makeWithFilter' ::
   AppContext ->
   EID ->
-  CList.CList Filter ->
+  Filter ->
   HideHierarchyFilter ->
   Model ->
   Either
     IdNotFoundError
     (Bool -> AppResourceName -> MainTree)
-makeWithFilters' actx root filters hhf model = do
+makeWithFilter' actx root selectedFilter hhf model = do
   mkTV <-
     TV.makeFromModel'
       (appContext2FilterContext actx)
       root
-      (chainFilters (hideHierarchyFilter hhf) (fromJust $ CList.focus filters))
+      (chainFilters (hideHierarchyFilter hhf) selectedFilter)
       model
   let go doFollowItem rname =
         MainTree
-          { mtFilters = C.cell filters $ C.simple $ \_fis' -> resetTreeViewFilter
+          { mtSelectedFilter = C.cell selectedFilter $ C.simple $ \_fi -> resetTreeViewFilter
           , mtHideHierarchyFilter = C.cell hhf $ C.simple $ \_fis -> resetTreeViewFilter
           , mtTreeView = mkTV doFollowItem Config.scrolloff rname
           , mtResourceName = rname
@@ -338,8 +342,6 @@ rootKeymap =
       , (kmLeaf_ (bind 'H') "Go to next uncle" (callIntoTreeView $ TV.moveGoWalkerFromCur goNextAncestor))
       , (kmSub (bind 't') setStatusKeymap)
       , (kmSub (bind 'o') openExternallyKeymap)
-      , (kmLeaf (bind ',') "Prev filter" $ notFoundToAER_ $ C.runModifyLens mtFiltersL CList.rotL)
-      , (kmLeaf (bind '.') "Next filter" $ notFoundToAER_ $ C.runModifyLens mtFiltersL CList.rotR)
       , (kmSub (bind 'd') editDateKeymap)
       , (kmLeaf_ (bind '`') "Toggle details overlay" (mtShowDetailsL %= not))
       , (kmSub (bind 'g') goKeymap)
@@ -370,31 +372,18 @@ rootKeymap =
     )
     `kmUnion` collapseLevelKeymap
 
--- TODO unclean that we have a static keymap but the list of filters is dynamic from the perspective of MainTree.
--- I don't think filters need to be dynamic.
--- Maybe the layout of the filters needs reworking. Maybe the filter structure shouldn't store the name.
 viewKeymap :: Keymap (ComponentEventM' MainTree)
 viewKeymap =
   kmMake
     "Filter"
     ( map
-        -- TODO addressing by description suuuucks and is dangerous.
         mkMapping
-        [ ('n', "not done")
-        , ('a', "all")
-        , ('u', "by simple urgency")
-        , ('F', "flat, by simple urgency")
-        , ('N', "flat next, by simple urgency")
-        , ('W', "flat waiting, by urgency + age")
-        , ('m', "non-delayed by last modified")
-        , ('s', "stalled projects")
-        , ('p', "projects by urgency")
-        ]
+        filterBindings
         ++ [ kmLeaf_ (ctrl 'f') "Toggle follow item" (mtDoFollowItemL %= not)
            ]
     )
  where
-  mkMapping (k :: Char, s :: String) = kmLeaf (bind k) (T.pack s) $ notFoundToAER_ (selectFilterByName s)
+  mkMapping (k :: Char, fi :: Filter) = kmLeaf (bind k) (T.pack $ fiName fi) $ notFoundToAER_ (selectFilter fi)
 
 collapseLevelKeymap :: Keymap (ComponentEventM' MainTree)
 collapseLevelKeymap =
@@ -410,7 +399,7 @@ collapseLevelKeymap =
       ("Collapse level " <> (T.show i))
       ( do
           -- NB there's some double work going on here but I think it's fine.
-          normalFilter <- gets (fromJust . CList.focus . cValue . mtFilters)
+          normalFilter <- gets (cValue . mtSelectedFilter)
           actx <- ask
           model' <- liftIO $ getModel (acModelServer actx)
           root <- gets mtRoot
@@ -659,7 +648,7 @@ spaceKeymap =
         "Toggle collapse children"
         ( withCurOrElse (return Continue) $ \cur -> do
             -- See also collapseLevelKeymap
-            normalFilter <- gets (fromJust . CList.focus . cValue . mtFilters)
+            normalFilter <- gets (cValue . mtSelectedFilter)
             actx <- ask
             model' <- liftIO $ getModel (acModelServer actx)
             root <- gets mtRoot
@@ -909,22 +898,16 @@ resetTreeViewFilter = do
   mtFilter mt = chainFilters collapseFilter normalFilter
    where
     collapseFilter = hideHierarchyFilter . cValue . mtHideHierarchyFilter $ mt
-    -- NB we know that filters will be non-empty.
-    normalFilter = fromJust . CList.focus . cValue . mtFilters $ mt
+    normalFilter = cValue . mtSelectedFilter $ mt
 
+-- | Update the hierarchy-collapse filter and refresh the tree view.
 modifyHideHierarchyFilter ::
   (HideHierarchyFilter -> HideHierarchyFilter) -> ComponentEventMOrNotFound MainTree ()
 modifyHideHierarchyFilter f = C.runModifyLens mtHideHierarchyFilterL f
 
-selectFilterByName :: String -> ComponentEventMOrNotFound MainTree ()
-selectFilterByName s = do
-  -- We don't use the following short form for updating to propagate the error right.
-  mnewFilters <- CList.findRotateTo ((== s) . fiName) <$> gets (cValue . mtFilters)
-  case mnewFilters of
-    -- NB this isn't quite the right error but w/e
-    Nothing -> throwError IdNotFoundError
-    Just newFilters -> do
-      C.runUpdateLens mtFiltersL newFilters
+-- | Select a view filter and refresh the tree view.
+selectFilter :: Filter -> ComponentEventMOrNotFound MainTree ()
+selectFilter = C.runUpdateLens mtSelectedFilterL
 
 -- * Rendering
 
@@ -943,11 +926,9 @@ renderLabelWithBreadcrumbs ztime rootLabel breadcrumbs =
  where
   rootW = renderLabelShort ztime rootLabel
 
--- Currently we only render the currently selected filter.
-renderFilters :: CList.CList Filter -> Widget n
-renderFilters fs = maybe emptyWidget go (CList.focus fs)
- where
-  go f = withDefAttr AppAttr.filter_label $ str (fiName f)
+-- | Render the currently selected filter.
+renderFilter :: Filter -> Widget n
+renderFilter f = withDefAttr AppAttr.filter_label $ str (fiName f)
 
 renderItemDetails :: ZonedTime -> LocalIdLabel -> Widget n
 renderItemDetails ztime (eid, llabel) =
@@ -1066,7 +1047,7 @@ instance AppComponent MainTree where
     s@MainTree
       { mtTreeView =
         mtTreeView@(TV.TreeView {tvSubtree, tvDoFollowItem})
-      , mtFilters
+      , mtSelectedFilter
       , mtShowDetails
       , mtOverlay
       } =
@@ -1082,7 +1063,7 @@ instance AppComponent MainTree where
             , str "  "
             , renderStatusActionabilityCounts . daNDescendantsByActionability . getDerivedAttr $ rootLabel
             , str "   "
-            , renderFilters . cValue $ mtFilters
+            , renderFilter . cValue $ mtSelectedFilter
             , str " "
             , doFollowBox
             ]
