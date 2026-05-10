@@ -69,6 +69,7 @@ import System.IO.Unsafe (unsafePerformIO)
 showEIDShort :: EID -> String
 showEIDShort Inbox = "INBOX"
 showEIDShort Vault = "VAULT"
+showEIDShort Clipboard = "CLIPBOARD"
 showEIDShort (EIDNormal uuid) = show uuid
 
 -- * Attr Types and helpers

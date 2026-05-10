@@ -13,7 +13,7 @@ import Brick.Keybindings (Binding, bind, ctrl, meta)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
-import Control.Monad (when)
+import Control.Monad (replicateM, when)
 import Control.Monad.Except
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (MonadReader, ask, asks)
@@ -323,6 +323,8 @@ rootKeymap =
         )
       , -- (kmSub (bind 'm') moveSingleModeKeymap),
         (kmSub (bind 'M') moveSubtreeModeKeymap)
+      , (kmSub (bind 'y') yankKeymap)
+      , (kmSub (bind 'p') pasteKeymap)
       , (kmSub (bind 'D') deleteKeymap)
       , ( kmLeaf (binding KEnter []) "Hoist" $ withCurOrElse (return Continue) $ \cur -> do
             notFoundToAER_ $ moveRootToEID cur
@@ -496,6 +498,24 @@ moveSubtreeModeKeymap =
       -- SOMEDAY hierarchy-breaking '<' (dedent)
       ]
 
+yankKeymap :: Keymap (ComponentEventM' MainTree)
+yankKeymap =
+  kmMake
+    "Yank"
+    [ kmLeaf (bind 'y') "Copy subtree to clipboard" copyCurToClipboard
+    , kmLeaf_ (bind 'x') "Cut subtree to clipboard" cutCurToClipboard
+    ]
+
+pasteKeymap :: Keymap (ComponentEventM' MainTree)
+pasteKeymap =
+  kmMake
+    "Paste"
+    [ kmLeaf (bind 'p') "After current item" $ pasteClipboardRel insAfter
+    , kmLeaf (bind 'P') "Before current item" $ pasteClipboardRel insBefore
+    , kmLeaf (bind 's') "As last child" $ pasteClipboardRel insLastChild
+    , kmLeaf (bind 'S') "As first child" $ pasteClipboardRel insFirstChild
+    ]
+
 openExternallyKeymap :: Keymap (ComponentEventM' MainTree)
 openExternallyKeymap =
   kmMake
@@ -565,6 +585,8 @@ goKeymap =
     [ kmLeaf_ (bind 'g') "Top" $ callIntoTreeView $ TV.moveToBeginning
     , -- For completeness
       kmLeaf_ (bind 'e') "End" $ callIntoTreeView $ TV.moveToEnd
+    , kmLeaf (bind 'C') "Clipboard" $ notFoundToAER_ $ moveRootToEID Clipboard
+    , kmLeaf (bind 'V') "Vault" $ notFoundToAER_ $ moveRootToEID Vault
     , ( kmLeaf (binding KBS []) "De-hoist, keep pos" $ do
           -- SOMEDAY some code duplication vs the other de-hoist.
           mt <- get
@@ -835,6 +857,50 @@ moveCurRelativeDynamic dgo = withCur $ \cur -> do
   forest <- gets (stForest . mtSubtree)
   withLensValue mtDoFollowItemL True $
     modifyModelSync_ (moveSubtreeRelFromForestDynamic cur dgo forest)
+
+copyCurToClipboard :: ComponentEventM MainTree (AppEventReturn ())
+copyCurToClipboard = do
+  mcur <- gets mtCur
+  case mcur of
+    Nothing -> return Continue
+    Just cur -> do
+      mserver <- asks acModelServer
+      -- We need the current full model here to count IDs in the unfiltered subtree before generating
+      -- UUIDs. This duplicates some work with the eventual model update; see
+      -- 'copySubtreeToClipboardWithNewIds'.
+      model <- liftIO $ getModel mserver
+      case forestFindTree cur (forest model) of
+        Nothing -> notFoundToAER_ $ replaceExceptT callIntoTreeView TV.reloadModel
+        Just tree -> do
+          -- This count can race with later model changes; see 'copySubtreeToClipboardWithNewIds'.
+          uuids <- liftIO $ replicateM (length $ subtreeNormalIds tree) nextRandom
+          modifyModelAsync $ copySubtreeToClipboardWithNewIds uuids cur
+          return Continue
+
+cutCurToClipboard :: ComponentEventM MainTree ()
+cutCurToClipboard = withCur $ \cur ->
+  modifyModelAsync $ cutSubtreeToClipboard cur
+
+pasteClipboardRel :: InsertWalker IdLabel -> ComponentEventM MainTree (AppEventReturn ())
+pasteClipboardRel insRequested = do
+  mcur <- gets mtCur
+  root <- gets mtRoot
+  let (anchor, ins) = case mcur of
+        Just cur -> (cur, insRequested)
+        Nothing -> (root, insLastChild)
+  mserver <- asks acModelServer
+  -- This can race with another clipboard edit before the model update below. That's tolerable
+  -- because the value is only used to focus the pasted node after reload.
+  --
+  -- SOMEDAY let model modification calls return data so this focus target can come from the same
+  -- model transaction as the paste.
+  mpayload <- clipboardFirstEntry <$> liftIO (getModel mserver)
+  case mpayload of
+    Nothing -> return Continue
+    Just payload -> do
+      notFoundToAER_ $ do
+        modifyModelSync $ pasteFirstClipboardEntryRelTo anchor ins
+        replaceExceptT callIntoTreeView $ TV.moveToEID payload
 
 -- ** Model Modification
 

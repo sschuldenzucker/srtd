@@ -16,6 +16,7 @@ import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Time (TimeZone, ZonedTime (zonedTimeZone), addUTCTime, zonedTimeToUTC)
 import Data.Tree
+import Data.Traversable (mapAccumL)
 import Data.UUID (UUID)
 import GHC.Generics
 import Lens.Micro.Platform
@@ -74,10 +75,18 @@ emptyDiskModel =
     -- We shouldn't make a special node type b/c in almost all relevant cases, a node will be a
     -- "normal" one. Perhaps we can restructure 'Model' so that the toplevel elements are not part
     -- of a tree. It would be a bit cumbersome, but maybe not too much.
-    IdForest $
-      [ leaf (Inbox, unsafeAttrMinimal "INBOX")
-      , leaf (Vault, unsafeAttrMinimal "VAULT")
-      ]
+    IdForest requiredTopLevelForest
+
+-- | Top-level roots that are required for the app to function.
+requiredTopLevelNodes :: [(EID, String)]
+requiredTopLevelNodes =
+  [ (Inbox, "INBOX")
+  , (Vault, "VAULT")
+  , (Clipboard, "CLIPBOARD")
+  ]
+
+requiredTopLevelForest :: Forest (EID, Attr)
+requiredTopLevelForest = [leaf (eid, unsafeAttrMinimal label) | (eid, label) <- requiredTopLevelNodes]
 
 -- We do *not* use the generic JSON instance b/c the ToJSON instance of Tree (provided by aeson)
 -- makes for kinda messy JSON. It encodes the whole thing as a list (not an object). While we're
@@ -91,10 +100,13 @@ diskModelToJSONModel (DiskModel (IdForest forest)) = ModelJSON.Model forestJSON
   treeToJSONTree = foldTree $ \(i, attr) children -> ModelJSON.Tree i attr children
 
 diskModelFromJSONModel :: ModelJSON.Model -> DiskModel
-diskModelFromJSONModel (ModelJSON.Model forestJSON) = DiskModel $ IdForest forest
+diskModelFromJSONModel (ModelJSON.Model forestJSON) = DiskModel $ withIdForest addMissingRequiredRoots (IdForest forest)
  where
   forest = jsonForestToForest forestJSON
   jsonForestToForest = unfoldForest $ \(ModelJSON.Tree i attr children) -> ((i, attr), children)
+  addMissingRequiredRoots forest' =
+    forest' ++ [tree | tree@(Node (eid, _) _) <- requiredTopLevelForest, not (hasRoot eid forest')]
+  hasRoot eid = any (\(Node (eid', _) _) -> eid' == eid)
 
 instance ToJSON DiskModel where
   toJSON = toJSON . diskModelToJSONModel
@@ -686,6 +698,59 @@ moveSubtreeRelFromForestDynamic ::
   Model ->
   Model
 moveSubtreeRelFromForestDynamic tgt dto haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestIdDynamic tgt dto haystack))
+
+-- ** Clipboard operations
+
+-- | ID of the first entry currently stored in the persistent clipboard.
+clipboardFirstEntry :: Model -> Maybe EID
+clipboardFirstEntry (Model forest) = forestFirstChildId Clipboard forest
+
+-- | Copy a subtree into 'Clipboard', refreshing all normal IDs.
+--
+-- UUID generation stays outside this pure model update because 'ModelServer' updates are currently
+-- pure functions. This creates a race: callers count IDs before submitting the update, but the
+-- subtree may change before the update runs. If too few UUIDs are provided, this is a no-op. If too
+-- many UUIDs are provided, extras are ignored.
+--
+-- TODO generalize 'ModelServer' updates so model operations can perform effects, then request UUIDs
+-- exactly where the nodes are rewritten.
+copySubtreeToClipboardWithNewIds ::
+  (?mue :: ModelUpdateEnv) => [UUID] -> EID -> Model -> Model
+copySubtreeToClipboardWithNewIds newIds tgt model@(Model forest) = fromMaybe model $ do
+  tree <- forestFindTree tgt forest
+  tree' <- refreshTreeNormalIds newIds tree
+  return . updateDerivedAttrs . Model $ forestAppendTreeBelowId Clipboard tree' forest
+
+-- | Cut a subtree into 'Clipboard', preserving all IDs.
+cutSubtreeToClipboard :: (?mue :: ModelUpdateEnv) => EID -> Model -> Model
+cutSubtreeToClipboard tgt (Model forest) =
+  updateDerivedAttrs . Model $ forestMoveSubtreeIdRelToAnchorId tgt Clipboard insLastChild forest
+
+-- | Paste the first clipboard entry relative to an anchor.
+pasteFirstClipboardEntryRelTo ::
+  (?mue :: ModelUpdateEnv) => EID -> InsertWalker IdLabel -> Model -> Model
+pasteFirstClipboardEntryRelTo anchor ins model@(Model forest) = fromMaybe model $ do
+  payload <- clipboardFirstEntry model
+  return . updateDerivedAttrs . Model $ forestMoveSubtreeIdRelToAnchorId payload anchor ins forest
+
+-- | Normal IDs in a subtree, in preorder.
+subtreeNormalIds :: Tree (EID, a) -> [UUID]
+subtreeNormalIds (Node (eid, _) children) = current ++ concatMap subtreeNormalIds children
+ where
+  current = case eid of
+    EIDNormal uuid -> [uuid]
+    _ -> []
+
+refreshTreeNormalIds :: [UUID] -> Tree IdLabel -> Maybe (Tree IdLabel)
+refreshTreeNormalIds newIds tree =
+  case mapAccumL go (Right newIds) tree of
+    (Right _, tree') -> Just tree'
+    (Left (), _) -> Nothing
+ where
+  go (Left ()) idLabel = (Left (), idLabel)
+  go (Right (uuid : uuids)) (EIDNormal _, label) = (Right uuids, (EIDNormal uuid, label))
+  go (Right []) idLabel@(EIDNormal _, _) = (Left (), idLabel)
+  go uuids idLabel = (uuids, idLabel)
 
 -- * Sorting (physical)
 

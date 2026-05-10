@@ -132,15 +132,23 @@ executable cabal-helper
 test-suite srtd-test
     type:               exitcode-stdio-1.0
     main-is:            Main.hs
+    other-modules:
+        Test.DateTests
+        Test.ModelClipboardTests
+        Test.QueryTests
+        Test.Support
+        Test.TreeTests
     hs-source-dirs:     test
     default-language:   GHC2024
-    default-extensions: OverloadedStrings
+    default-extensions: OverloadedStrings ImplicitParams
     build-depends:
+        aeson ^>=2.2.3,
         base >=4.17.2.1 && <4.22,
         containers >=0.7 && <0.9,
         srtd,
         text ^>=2.1.1,
         time >=1.12 && <1.15,
+        uuid ^>=1.3,
         megaparsec >=9.6.1 && <9.8,
         tasty ^>=1.5,
         tasty-hunit ^>=0.10.2,
