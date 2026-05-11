@@ -20,6 +20,7 @@ library
         Srtd.BrickListHelpers
         Srtd.CmdlineArgs
         Srtd.Component
+        Srtd.Components.ClipboardIndicator
         Srtd.Components.Attr
         Srtd.Components.CompilingTextEntry
         Srtd.Components.DateSelectOverlay

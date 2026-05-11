@@ -705,6 +705,12 @@ moveSubtreeRelFromForestDynamic tgt dto haystack = updateDerivedAttrs . (forestL
 clipboardFirstEntry :: Model -> Maybe EID
 clipboardFirstEntry (Model forest) = forestFirstChildId Clipboard forest
 
+-- | Number of entries currently stored directly below the persistent clipboard.
+clipboardSize :: Model -> Int
+clipboardSize (Model forest) = maybe 0 nChildren (forestFindTree Clipboard forest)
+ where
+  nChildren (Node _ children) = length children
+
 -- | Copy a subtree into 'Clipboard', refreshing all normal IDs.
 --
 -- UUID generation stays outside this pure model update because 'ModelServer' updates are currently

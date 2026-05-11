@@ -49,4 +49,4 @@ bg = "base"
 fg = "text"
 
 [theme]
-# Empty, all inherited. (but *has* to be there right now)
+"clipboard_indicator" = {fg = "base", bg = "green"}

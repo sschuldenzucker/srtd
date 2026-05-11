@@ -23,6 +23,7 @@ modelClipboardTests =
         case decode (encode oldDiskModel) of
           Just diskModel -> hasTopLevel Clipboard (mkModel diskModel) @?= True
           Nothing -> assertFailure "failed to decode old disk model"
+    , testCase "clipboardSize counts direct clipboard children" testClipboardSize
     , testCase "copy appends clone with refreshed normal IDs" testCopyRefreshesIds
     , testCase "copy ignores extra fresh IDs" testCopyIgnoresExtraIds
     , testCase "copy with too few fresh IDs is a no-op" testCopyTooFewIdsNoops
@@ -31,6 +32,12 @@ modelClipboardTests =
     , testCase "paste supports before and child positions" testPastePositions
     , testCase "empty clipboard paste is a no-op" testEmptyClipboardPaste
     ]
+
+testClipboardSize :: Assertion
+testClipboardSize = do
+  clipboardSize baseModel @?= 0
+  clipboardSize pasteModel @?= 2
+  clipboardSize nestedClipboardModel @?= 1
 
 testCopyRefreshesIds :: Assertion
 testCopyRefreshesIds = do
@@ -116,6 +123,14 @@ pasteModel =
     [ leaf' Inbox "INBOX" []
     , leaf' Vault "VAULT" [leaf' eidC "C" []]
     , leaf' Clipboard "CLIPBOARD" [leaf' eidA "A" [], leaf' eidD "D" []]
+    ]
+
+nestedClipboardModel :: Model
+nestedClipboardModel =
+  mkModel . DiskModel . IdForest $
+    [ leaf' Inbox "INBOX" []
+    , leaf' Vault "VAULT" []
+    , leaf' Clipboard "CLIPBOARD" [leaf' eidA "A" [leaf' eidB "B" []]]
     ]
 
 leaf' :: EID -> String -> Forest (EID, Attr) -> Tree (EID, Attr)

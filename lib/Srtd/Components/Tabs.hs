@@ -10,6 +10,9 @@ module Srtd.Components.Tabs (
   -- * Construction
   make,
 
+  -- * Rendering
+  renderComponentWithOverlaysAndTabBarRight,
+
   -- * Access
   isEmpty,
   activeTabID,
@@ -26,7 +29,6 @@ module Srtd.Components.Tabs (
 
 import Brick
 import Control.Arrow (second)
-import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State (MonadState, runStateT)
 import Control.Monad.Writer (lift, tell)
 import Data.List (intersperse)
@@ -36,7 +38,6 @@ import Lens.Micro.Platform
 import Srtd.AppAttr qualified as AppAttr
 import Srtd.Component
 import Srtd.Keymap (KeyDesc (..))
-import Srtd.Log (Priority (..), glogL)
 import Srtd.Util (slipl, tell1)
 import Srtd.Util.ListZipper
 
@@ -189,8 +190,8 @@ handleActiveTab act =
       ise <- popTab
       return $ if ise then Confirmed () else Continue
 
-renderTabBar :: (AppComponent s) => AppResourceName -> LZ.Zipper (Int, s) -> Widget AppResourceName
-renderTabBar rname tabs =
+renderTabBar :: (AppComponent s) => Widget AppResourceName -> AppResourceName -> LZ.Zipper (Int, s) -> Widget AppResourceName
+renderTabBar rightW rname tabs =
   withDefAttr AppAttr.tab_bar $
     let (front, cur, back) = lzSplit3 tabs
      in hBox $
@@ -198,7 +199,7 @@ renderTabBar rname tabs =
             map (uncurry (renderTabTitle False)) front
               ++ [uncurry (renderTabTitle True) cur]
               ++ map (uncurry (renderTabTitle False)) back
-              ++ [padLeft Max (str " ")]
+              ++ [padLeft Max rightW]
  where
   renderTabTitle :: (AppComponent c) => Bool -> Int -> c -> Widget AppResourceName
   renderTabTitle sel i c =
@@ -214,14 +215,23 @@ data TabsEvent s
   | TabEvent Int (Event s)
   | TabConfirmed Int (Return s)
 
+-- | Render tabs with an arbitrary widget at the right edge of the tab bar.
+renderComponentWithOverlaysAndTabBarRight ::
+  (AppComponent s) =>
+  (?actx :: AppContext) =>
+  Widget AppResourceName ->
+  Tabs s ->
+  (Widget AppResourceName, [(Text, Widget AppResourceName)])
+renderComponentWithOverlaysAndTabBarRight tabBarRightW s =
+  let curTab = snd . LZ.cursor . tTabs $ s
+      (curTabW, ovls) = renderComponentWithOverlays curTab
+   in (vBox [renderTabBar tabBarRightW (tRname s) (tTabs s), curTabW], ovls)
+
 instance (AppComponent s) => AppComponent (Tabs s) where
   type Return (Tabs s) = ()
   type Event (Tabs s) = TabsEvent s
 
-  renderComponentWithOverlays s =
-    let curTab = snd . LZ.cursor . tTabs $ s
-        (curTabW, ovls) = renderComponentWithOverlays curTab
-     in (vBox [renderTabBar (tRname s) (tTabs s), curTabW], ovls)
+  renderComponentWithOverlays = renderComponentWithOverlaysAndTabBarRight emptyWidget
 
   handleEvent ev = case ev of
     AppEvent _ -> handleEachTab $ handleEvent ev
