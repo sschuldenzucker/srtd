@@ -272,6 +272,7 @@ rootKeymap =
       , kmLeaf_ (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore
       , kmLeaf_ (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild
       , kmLeaf_ (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild
+      , kmLeaf_ (bind 'a') "Quick add to inbox" pushQuickAddToInbox
       , ( kmLeaf_ (bind 'e') "Edit name" $ do
             state <- get
             case mtCurWithAttr state of
@@ -586,6 +587,7 @@ goKeymap =
     , -- For completeness
       kmLeaf_ (bind 'e') "End" $ callIntoTreeView $ TV.moveToEnd
     , kmLeaf (bind 'C') "Clipboard" $ notFoundToAER_ $ moveRootToEID Clipboard
+    , kmLeaf (bind 'I') "Inbox" $ notFoundToAER_ $ moveRootToEID Inbox
     , kmLeaf (bind 'V') "Vault" $ notFoundToAER_ $ moveRootToEID Vault
     , ( kmLeaf (binding KBS []) "De-hoist, keep pos" $ do
           -- SOMEDAY some code duplication vs the other de-hoist.
@@ -811,6 +813,16 @@ pushInsertNewItemRelToCur go = do
             callIntoTreeView $ TV.moveToEID eid
             return Continue
   pushOverlay (newNodeOverlay "" "New Item") cb (return Continue) absurd
+
+pushQuickAddToInbox :: ComponentEventM MainTree ()
+pushQuickAddToInbox = do
+  let cb name = do
+        ztime <- asks acZonedTime
+        let attr = attrMinimal (zonedTimeToUTC ztime) name
+        uuid <- liftIO nextRandom
+        modifyModelAsync $ insertNewNormalWithNewId uuid attr Inbox insLastChild
+        return Continue
+  pushOverlay (newNodeOverlay "" "Quick Add to INBOX") cb (return Continue) absurd
 
 setStatus :: (MonadState MainTree m, MonadReader AppContext m, MonadIO m) => Status -> m ()
 setStatus status' = withCur $ \cur -> do
