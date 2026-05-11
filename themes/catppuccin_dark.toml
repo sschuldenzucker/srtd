@@ -55,6 +55,7 @@ fg = "text"
 # "tab_bar.tab_title" = {}  # Unused
 # "tab_bar.selected.tab_title" = {fg = "mauve", bg = "base", style = "underline"}
 "tab_bar.selected.tab_title" = {fg = "mauve", style = "underline"}
+"inbox_indicator" = {fg = "crust", bg = "blue"}
 "clipboard_indicator" = {fg = "crust", bg = "green"}
 
 "header_row" = {bg = "crust"}

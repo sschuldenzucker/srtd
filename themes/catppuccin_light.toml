@@ -49,4 +49,5 @@ bg = "base"
 fg = "text"
 
 [theme]
+"inbox_indicator" = {fg = "base", bg = "blue"}
 "clipboard_indicator" = {fg = "base", bg = "green"}

@@ -701,6 +701,12 @@ moveSubtreeRelFromForestDynamic tgt dto haystack = updateDerivedAttrs . (forestL
 
 -- ** Clipboard operations
 
+-- | Number of entries currently stored directly below the inbox.
+inboxSize :: Model -> Int
+inboxSize (Model forest) = maybe 0 nChildren (forestFindTree Inbox forest)
+ where
+  nChildren (Node _ children) = length children
+
 -- | ID of the first entry currently stored in the persistent clipboard.
 clipboardFirstEntry :: Model -> Maybe EID
 clipboardFirstEntry (Model forest) = forestFirstChildId Clipboard forest

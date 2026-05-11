@@ -11,6 +11,8 @@ The goal is speed and low implementation risk. This should make capture cheap wi
 
 ## First Slice
 
+Status: done.
+
 Add a root-level `a` binding in the main tree keymap:
 
 - Opens a one-line text overlay titled something like `Quick Add to INBOX`.
@@ -93,8 +95,7 @@ Automated checks:
 
 ## Later Improvements
 
-- Add a status bar hint for the size of the inbox. This can sit in the tab bar next to the clipboard indicator.
-  - Probably expand the exiting (tiny) clipboard size widget to a "model state info mini widget" or something.
+- [x] Add a status bar hint for the size of the inbox. This sits in the tab bar right-side indicator next to the clipboard count.
 - Somehow deal with the fact that the user often doesn't just want to add single items, but whole subprojects / trees.
   - One easy way would be to add an alt-confirm mode to the quick-add overlay that opens INBOX in a new tab and focuses the just-added item.
   - This would also be a lightweight way to deal with setting dates and statuses etc.
