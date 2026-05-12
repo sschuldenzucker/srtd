@@ -250,15 +250,24 @@ instance VariantBehavior RefileDestinationSelection where
   onTryConfirm = confirmSelectedRefileDestination insLastChild
 
   extraKeys =
-    [ kmLeaf (binding (KChar 'f') [MMeta]) "First child" $
+    [ kmSub (binding KEnter [MMeta]) refilePlacementKeymap
+    ]
+
+refilePlacementKeymap :: Keymap (ComponentEventM' (QuickFilter RefileDestinationSelection))
+refilePlacementKeymap =
+  kmMake
+    "Refile placement"
+    [ kmLeaf (bind 's') "Selected as last child" $
+        confirmSelectedRefileDestination insLastChild
+    , kmLeaf (bind 'S') "Selected as first child" $
         confirmSelectedRefileDestination insFirstChild
-    , kmLeaf (binding (KChar 'j') [MMeta]) "After" $
+    , kmLeaf (bind 'p') "After selected" $
         confirmSelectedRefileDestination insAfter
-    , kmLeaf (binding (KChar 'k') [MMeta]) "Before" $
+    , kmLeaf (bind 'P') "Before selected" $
         confirmSelectedRefileDestination insBefore
-    , kmLeaf (binding KEnter [MMeta]) "Root last child" $
+    , kmLeaf (bind 'r') "Root as last child" $
         confirmRootRefileDestination insLastChild
-    , kmLeaf (binding (KChar 'F') [MMeta]) "Root first child" $
+    , kmLeaf (bind 'R') "Root as first child" $
         confirmRootRefileDestination insFirstChild
     ]
 

@@ -87,26 +87,30 @@ For local refile, if the selected source is the current root, refile should no-o
 First slice:
 
 - `Enter`: move as last child of the selected destination. This is the default and should stay the muscle-memory path for inbox processing.
-- `M-f`: move as first child of the selected destination.
-- `M-j`: move after the selected destination, as its next sibling.
-- `M-k`: move before the selected destination, as its previous sibling.
-- `M-Enter`: move as last child of the picker root (`VAULT` for global refile, current root for local refile).
-- `M-F`: move as first child of the picker root.
+- `M-Enter`: open the placement submenu.
+
+Placement submenu:
+
+- `s`: move as last child of the selected destination.
+- `S`: move as first child of the selected destination.
+- `p`: move after the selected destination, as its next sibling.
+- `P`: move before the selected destination, as its previous sibling.
+- `r`: move as last child of the picker root (`VAULT` for global refile, current root for local refile).
+- `R`: move as first child of the picker root.
 
 Sibling placement for the picker root is not meaningful, so there is no root variant for before/after.
 
-Why modified keys:
+Why a submenu:
 
 - Plain character keys need to keep editing the regex query.
-- `M-j`/`M-k` already mean movement-like operations elsewhere in srtd, so using them for after/before is reasonably mnemonic.
-- `M-f` is a little arbitrary, but "first child" is the natural non-default child placement.
-- A submenu would be more discoverable but slower for the 80% last-child case and awkward inside a text-entry overlay.
+- Key dispatch checks the overlay keymap before the text-entry widget, so letter keys are safe after entering the submenu.
+- The submenu can use paste-like placement keys (`p`/`P`/`s`/`S`) without stealing normal regex typing at the top level.
+- The 80% last-child case remains a single `Enter`.
 
 Later:
 
-- Revisit if `M-f` feels awkward in practice.
-- Add a visible placement hint in the overlay key help.
-- Consider a placement mini-menu only if the modifier keys are too hard to remember.
+- Revisit the submenu trigger if `M-Enter` feels awkward in practice.
+- Add more placement variants only if the paste-like set is not enough.
 
 For inbox processing, "last child" is the right default because the user is usually filing into an existing project or area.
 
@@ -133,12 +137,12 @@ Manual smoke tests:
 1. From `INBOX`, select an item and `SPC R`; move it below a `VAULT` destination.
 2. Confirm the inbox count decreases.
 3. Confirm the item appears as last child of the destination.
-4. Confirm `M-f` moves it as first child of the selected destination.
-5. Confirm `M-j` and `M-k` move it after/before the selected destination.
+4. Confirm `M-Enter`, then `S`, moves it as first child of the selected destination.
+5. Confirm `M-Enter`, then `p`/`P`, moves it after/before the selected destination.
 6. Confirm the current item cannot be refiled into itself or its descendants.
 7. From a project root, use `SPC r` to move a child under another local destination.
 8. Confirm global refile does not offer `INBOX` or `CLIPBOARD`.
-9. Confirm `M-Enter` and `M-F` refile to the picker root for both global and local refile.
+9. Confirm `M-Enter`, then `r`/`R`, refiles to the picker root for both global and local refile.
 10. Confirm quick jump still behaves exactly as before.
 
 Automated checks:
@@ -164,44 +168,24 @@ Automated checks:
 Likely shape:
 
 ```haskell
-data NodeSelectionOrRoot = NodeSelectionOrRoot EID
+data RefileDestinationSelection = RefileDestinationSelection
 
-data NodeOrRootSelected
-  = NodeDestinationSelected RefilePlacement (Maybe (CompiledWithSource Regex)) EID
-  | RootDestinationSelected RefilePlacement EID
-
-data RefilePlacement
-  = RefileLastChild
-  | RefileFirstChild
-  | RefileAfter
-  | RefileBefore
+data RefileDestination = RefileDestination (InsertWalker IdLabel) EID
 ```
 
-The `NodeSelectionOrRoot` variant would behave like `NodeSelection` for regular `Enter`, and add modified-key confirms:
+The `RefileDestinationSelection` variant behaves like `NodeSelection` for regular `Enter`, and adds a placement submenu:
 
 ```haskell
 extraKeys =
-  [ kmLeaf (binding KEnter []) "Last child" $
-      confirmSelected RefileLastChild
-  , kmLeaf (binding (KChar 'f') [MMeta]) "First child" $
-      confirmSelected RefileFirstChild
-  , kmLeaf (binding (KChar 'j') [MMeta]) "After" $
-      confirmSelected RefileAfter
-  , kmLeaf (binding (KChar 'k') [MMeta]) "Before" $
-      confirmSelected RefileBefore
-  , kmLeaf (binding KEnter [MMeta]) "Root last child" $
-      return $ Confirmed (RootDestinationSelected RefileLastChild rootEID)
-  , kmLeaf (binding (KChar 'F') [MMeta]) "Root first child" $
-      return $ Confirmed (RootDestinationSelected RefileFirstChild rootEID)
-  ]
+  [ kmSub (binding KEnter [MMeta]) refilePlacementKeymap ]
 ```
 
 Implemented with this general shape. `MainTree` uses the refile-specific variant for both global and local refile without altering quick jump's existing `NodeSelection` use.
 
 ## Decisions
 
-- Use `M-Enter` for root-as-destination in the first slice.
-- Include first-child and sibling placement in the first slice; default `Enter` remains last child.
+- Use `M-Enter` for the placement submenu in the first slice.
+- Include first-child, sibling, and root placement in the first slice; default `Enter` remains selected destination as last child.
 - Keep global refile rooted at `VAULT`; do not offer `INBOX` or `CLIPBOARD`.
 - Keep local refile available everywhere, including `INBOX` and `CLIPBOARD`.
 - Do not follow the moved item by default. When refiling from `INBOX`, keep the root as `INBOX` and let normal no-follow behavior land on the next inbox item if available.
