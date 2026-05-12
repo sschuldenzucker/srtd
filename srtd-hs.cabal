@@ -20,12 +20,12 @@ library
         Srtd.BrickListHelpers
         Srtd.CmdlineArgs
         Srtd.Component
-        Srtd.Components.ClipboardIndicator
         Srtd.Components.Attr
         Srtd.Components.CompilingTextEntry
         Srtd.Components.DateSelectOverlay
         Srtd.Components.EditorProactive
         Srtd.Components.MainTree
+        Srtd.Components.ModelStatusIndicator
         Srtd.Components.NewNodeOverlay
         Srtd.Components.QuickFilter
         Srtd.Components.Tabs

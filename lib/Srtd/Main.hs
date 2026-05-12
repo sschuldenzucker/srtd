@@ -28,8 +28,8 @@ import Srtd.AppTheme qualified as AppTheme
 import Srtd.Attr (EID (Vault))
 import Srtd.CmdlineArgs qualified as CArgs
 import Srtd.Component
-import Srtd.Components.ClipboardIndicator qualified as ClipboardIndicator
 import Srtd.Components.MainTree qualified as MainTree
+import Srtd.Components.ModelStatusIndicator qualified as ModelStatusIndicator
 import Srtd.Components.Tabs hiding (make)
 import Srtd.Components.Tabs qualified as Tabs
 import Srtd.Keymap (KeyDesc (..))
@@ -46,7 +46,7 @@ data AppState = AppState
     -- SOMEDAY maybe it makes sense to frame a tab as an overlay and use the infra from maintree??
     asTabs :: Tabs SomeAppComponent
   -- ^ We make sure that `asTabs` is never after the end and in particular that it's nonempty.
-  , asClipboardIndicator :: ClipboardIndicator.ClipboardIndicator
+  , asModelStatusIndicator :: ModelStatusIndicator.ModelStatusIndicator
   , asHelpAlways :: Bool
   , asAttrMapRing :: CList.CList (String, AttrMap)
   , asExitCode :: ExitCode
@@ -104,7 +104,7 @@ main = do
           { asContext = actx
           , -- Set to the default tab upon init action.
             asTabs = Tabs.make 0 "Root Tabs" [] "root_tabs"
-          , asClipboardIndicator = ClipboardIndicator.make initModel
+          , asModelStatusIndicator = ModelStatusIndicator.make initModel
           , asHelpAlways = False
           , asAttrMapRing = attrMapRing
           , asExitCode = ExitSuccess
@@ -133,12 +133,12 @@ main = do
   exitWith exitCode
 
 myAppDraw :: AppState -> [Widget AppResourceName]
-myAppDraw state@(AppState {asTabs, asContext, asClipboardIndicator}) = [keyHelpUI] ++ mainUIs
+myAppDraw state@(AppState {asTabs, asContext, asModelStatusIndicator}) = [keyHelpUI] ++ mainUIs
  where
   mainUIs =
     let (w0, ovls0) =
           let ?actx = asContext
-           in Tabs.renderComponentWithOverlaysAndTabBarRight (renderComponent asClipboardIndicator) asTabs
+           in Tabs.renderComponentWithOverlaysAndTabBarRight (renderComponent asModelStatusIndicator) asTabs
      in map (uncurry wrapOverlay) ovls0 ++ [w0]
   wrapOverlay title w =
     centerLayer
@@ -194,7 +194,7 @@ myHandleEvent ev = wrappingActions $
       SwapTabNext -> callIntoTabs swapTabNext
       SwapTabPrev -> callIntoTabs swapTabPrev
       AppComponentMsg acev -> do
-        handleClipboardIndicator $ handleEvent (AppEvent acev)
+        handleModelStatusIndicator $ handleEvent (AppEvent acev)
         handleTabs $ handleEvent (AppEvent acev)
     -- We rebuild the events here to convert the app event type
     VtyEvent k -> handleTabs $ handleEvent (VtyEvent k)
@@ -242,19 +242,19 @@ handleTabs act = do
     Canceled -> pushDefaultTab
 
 -- Like handleTabs with callIntoTabs inlined.
-handleClipboardIndicator ::
+handleModelStatusIndicator ::
   (?actx :: AppContext) =>
-  ComponentEventM' ClipboardIndicator.ClipboardIndicator -> EventM AppResourceName AppState ()
-handleClipboardIndicator act = do
+  ComponentEventM' ModelStatusIndicator.ModelStatusIndicator -> EventM AppResourceName AppState ()
+handleModelStatusIndicator act = do
   actx <- gets asContext
-  ci <- use asClipboardIndicatorL
-  (ci', (ret, events)) <- nestEventM ci $ runComponentEventM' actx act
+  msi <- use asModelStatusIndicatorL
+  (msi', (ret, events)) <- nestEventM msi $ runComponentEventM' actx act
   case ret of
     Continue -> return ()
     Canceled -> return ()
     Confirmed impossible -> absurd impossible
   forM_ events absurd
-  asClipboardIndicatorL .= ci'
+  asModelStatusIndicatorL .= msi'
 
 pushDefaultTab :: EventM AppResourceName AppState ()
 pushDefaultTab = do
