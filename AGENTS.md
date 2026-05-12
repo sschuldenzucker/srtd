@@ -7,8 +7,6 @@ See `README.md` for a high-level description of what's going on here. See its `D
 
 ## Overall style
 
-- Prefer simple constructs.
-- Prefer direct field views or helper functions over lenses `foo ^. bar` unless it improves the code.
 
 ## Module structure
 
@@ -26,6 +24,14 @@ See `README.md` for a high-level description of what's going on here. See its `D
 ## Data Types
 
 - Name fields with prefixes (e.g., `ac*` for fields of `AppContext`).
+- Data types with a single constructor ("structs") should usually have field names specified. An
+  exception are very small "utility" types with only 1-3 fields.
+- Don't add unnecessary data types, in particular enums. Always check if the same need can
+  be operationalized with an existing type. For example, the location where a node should be
+  moved/inserted can usually be expressed using one of the `*Walker` types.
+- Minimize your data types and always check which data can simply be left out. You can do this by
+  checking if / how constructors are actually pattern-matched.
+  - UI components shouldn't expose more than is necessary to handle the result. 
 
 ### Pattern Matching
 
@@ -34,6 +40,8 @@ Use the following rules for pattern matching on data types.
 - When a `data` type only has a single constructor, prefer field access functions over pattern matching.
   - You can disregard this rule when a type is a small utility only used in the same module.
   - You can disregard this rule for newtypes.
+- Prefer direct field views or helper functions over lens access (`foo ^. bar`) unless it improves the code.
+- Prefer lens updates over restructuring.
 
 # Known Quirks
 
