@@ -136,6 +136,7 @@ test-suite srtd-test
     other-modules:
         Test.DateTests
         Test.ModelClipboardTests
+        Test.ModelMoveTests
         Test.QueryTests
         Test.Support
         Test.TreeTests

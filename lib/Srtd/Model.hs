@@ -699,6 +699,17 @@ moveSubtreeRelFromForestDynamic ::
   Model
 moveSubtreeRelFromForestDynamic tgt dto haystack = updateDerivedAttrs . (forestL %~ (forestMoveSubtreeRelFromForestIdDynamic tgt dto haystack))
 
+-- | Move a subtree relative to an anchor using the given insertion position.
+moveSubtreeRelToAnchor ::
+  (?mue :: ModelUpdateEnv) =>
+  EID ->
+  EID ->
+  InsertWalker IdLabel ->
+  Model ->
+  Model
+moveSubtreeRelToAnchor tgt anchor ins (Model forest) =
+  updateDerivedAttrs . Model $ forestMoveSubtreeIdRelToAnchorId tgt anchor ins forest
+
 -- ** Clipboard operations
 
 -- | Number of entries currently stored directly below the inbox.
@@ -735,15 +746,14 @@ copySubtreeToClipboardWithNewIds newIds tgt model@(Model forest) = fromMaybe mod
 
 -- | Cut a subtree into 'Clipboard', preserving all IDs.
 cutSubtreeToClipboard :: (?mue :: ModelUpdateEnv) => EID -> Model -> Model
-cutSubtreeToClipboard tgt (Model forest) =
-  updateDerivedAttrs . Model $ forestMoveSubtreeIdRelToAnchorId tgt Clipboard insLastChild forest
+cutSubtreeToClipboard tgt = moveSubtreeRelToAnchor tgt Clipboard insLastChild
 
 -- | Paste the first clipboard entry relative to an anchor.
 pasteFirstClipboardEntryRelTo ::
   (?mue :: ModelUpdateEnv) => EID -> InsertWalker IdLabel -> Model -> Model
-pasteFirstClipboardEntryRelTo anchor ins model@(Model forest) = fromMaybe model $ do
+pasteFirstClipboardEntryRelTo anchor ins model = fromMaybe model $ do
   payload <- clipboardFirstEntry model
-  return . updateDerivedAttrs . Model $ forestMoveSubtreeIdRelToAnchorId payload anchor ins forest
+  return $ moveSubtreeRelToAnchor payload anchor ins model
 
 -- | Normal IDs in a subtree, in preorder.
 subtreeNormalIds :: Tree (EID, a) -> [UUID]

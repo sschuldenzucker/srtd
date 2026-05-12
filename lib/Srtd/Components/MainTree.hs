@@ -687,6 +687,10 @@ spaceKeymap =
                      in hhfSetCollapseds c_eids val hhf
               modifyHideHierarchyFilter (hhfSetCollapseds [cur] False . f)
         )
+    , kmLeaf_ (bind 'R') "Global refile" $ pushRefileOverlay Vault "Global refile"
+    , kmLeaf_ (bind 'r') "Local refile" $ do
+        root <- gets mtRoot
+        pushRefileOverlay root "Local refile"
     , kmLeaf_ (bind 'n') "New as parent" $ withCur $ \cur -> do
         -- Copied from 'pushInsertNewItemRelToCur' but that function can't handle "insert as parent".
         let cb name = do
@@ -823,6 +827,51 @@ pushQuickAddToInbox = do
         modifyModelAsync $ insertNewNormalWithNewId uuid attr Inbox insLastChild
         return Continue
   pushOverlay (newNodeOverlay "" "Quick Add to INBOX") cb (return Continue) absurd
+
+pushRefileOverlay :: EID -> Text -> ComponentEventM MainTree ()
+pushRefileOverlay pickerRoot title = withCur $ \source -> do
+  actx <- ask
+  model' <- liftIO $ getModel (acModelServer actx)
+  initSearch <- maybe "" cwsSource <$> gets (TV.tvSearchRx . mtTreeView)
+  let mtv =
+        TV.makeFromModel' (appContext2FilterContext actx) pickerRoot (refileDestinationFilter source) model'
+  case mtv of
+    Left _err -> return ()
+    Right mkTreeView ->
+      let
+        mk rname =
+          QF.quickFilterFromTreeView
+            QF.RefileDestinationSelection
+            (mkTreeView False Config.scrolloff (rname <> "treeview"))
+            initSearch
+            title
+            rname
+        cb (QF.RefileDestination insertion anchor) = do
+          -- This must be sync so the temporary no-follow setting applies to the reload. Refile
+          -- should leave the focus alone, just refile "away from" the current item.
+          -- Alternatively, we could just not set this and then refile would follow if this is set,
+          -- but that's a bit inconsistent b/c _global_ refile may refile into a different root and
+          -- then we cannot follow (at least not without changing our root as well).
+          -- MAYBE I guess we could retain the follow setting on local refile but not global. I'm
+          -- not sure this would be more intuitive, though. Maybe it would be.
+          withLensValue mtDoFollowItemL False $
+            modifyModelSync_ $
+              moveSubtreeRelToAnchor source anchor insertion
+          return Continue
+       in
+        pushOverlay mk cb (return Continue) absurd
+
+refileDestinationFilter :: EID -> Filter
+refileDestinationFilter source =
+  Filter
+    { fiName = "refile destinations"
+    , fiDesc = "Non-done items excluding the source subtree"
+    , fiIncludeDone = False
+    , fiPostprocess = filterIdForestWithIds isDestination
+    }
+ where
+  isDestination eid llabel =
+    eid /= source && all ((/= source) . gEID) (gLocalBreadcrumbs llabel)
 
 setStatus :: (MonadState MainTree m, MonadReader AppContext m, MonadIO m) => Status -> m ()
 setStatus status' = withCur $ \cur -> do
