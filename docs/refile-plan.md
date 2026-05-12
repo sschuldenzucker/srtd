@@ -156,6 +156,8 @@ Automated checks:
 - Optional success flash/status message after refile.
 - A richer inbox processing view only if refile plus normal `MainTree` editing still feels too loose.
 - An easy free feature is then global quick jump (`SPC J`). This project should put all the pieces there.
+- Make local refile respect the applied filters, like quick jump?
+- Make local refile respect the follow setting? (see a comment there)
 
 ## Implementation Sketch
 
