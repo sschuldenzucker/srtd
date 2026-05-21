@@ -187,15 +187,20 @@ instance (VariantBehavior v) => AppComponent (QuickFilter v) where
 
   componentTitle = kmName . cur . kmzResetRoot . sKMZ
 
-  componentKeyDesc s = (kmzDesc . sKMZ $ s) & kdPairsL %~ (++ extraPairs)
+  componentKeyDesc s = (kmzDesc kmz) & kdPairsL %~ (++ extraPairs)
    where
     -- HACK. Some keys we map through dispatch, but they're not in our keymap.
-    -- SOMEDAY that's ugly.
-    extraPairs =
-      [ ("Tab", "Complete")
-      , ("C-l", "Clear")
-      , ("C-d", "Clear")
-      ]
+    -- These keys are handled by `sTextEntry` when dispatch ends up there.
+    -- NB this isn't even technically quite correct.
+    -- This issue asks a deeper question, namely how I should deal with "inherited" keymaps of child components.
+    extraPairs
+      | kmzIsToplevel kmz =
+          [ ("Tab", "Complete")
+          , ("C-l", "Clear")
+          , ("C-d", "Clear")
+          ]
+      | otherwise = []
+    kmz = sKMZ s
 
 -- | Push a given filter into our TreeView, unless it's Invalid.
 --
