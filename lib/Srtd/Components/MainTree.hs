@@ -705,20 +705,8 @@ spaceKeymap =
                   callIntoTreeView $ TV.moveToEID eid
                   return Continue
         pushOverlay (newNodeOverlay "" "New Item as Parent") cb (return Continue) absurd
-    , kmLeaf_ (bind 'j') "Quick jump" $ do
-        tv <- gets mtTreeView
-        let cb (mCompiledRegex, eid) = do
-              callIntoTreeView $ do
-                TV.moveToEID eid
-                whenJust mCompiledRegex $ \rxs ->
-                  TV.tvSearchRxL .= Just rxs
-              return Continue
-        s <- maybe "" cwsSource <$> gets (TV.tvSearchRx . mtTreeView)
-        pushOverlay
-          (QF.quickFilterFromTreeView QF.NodeSelection tv s "Quick jump")
-          cb
-          (return Continue)
-          absurd
+    , kmLeaf_ (bind 'J') "Global quick jump (hoist)" pushGlobalQuickJumpOverlay
+    , kmLeaf_ (bind 'j') "Quick jump" pushLocalQuickJumpOverlay
     ]
 
 -- SOMEDAY these actions should be functions in MainTree
@@ -828,11 +816,55 @@ pushQuickAddToInbox = do
         return Continue
   pushOverlay (newNodeOverlay "" "Quick Add to INBOX") cb (return Continue) absurd
 
+pushLocalQuickJumpOverlay :: ComponentEventM MainTree ()
+pushLocalQuickJumpOverlay = do
+  tv <- gets mtTreeView
+  initSearch <- currentSearchSource
+  let cb (mCompiledRegex, eid) = do
+        callIntoTreeView $ do
+          TV.moveToEID eid
+          whenJust mCompiledRegex $ \rxs ->
+            TV.tvSearchRxL .= Just rxs
+        return Continue
+  pushOverlay
+    (QF.quickFilterFromTreeView QF.NodeSelection tv initSearch "Quick jump")
+    cb
+    (return Continue)
+    absurd
+
+pushGlobalQuickJumpOverlay :: ComponentEventM MainTree ()
+pushGlobalQuickJumpOverlay = do
+  actx <- ask
+  model' <- liftIO $ getModel (acModelServer actx)
+  initSearch <- currentSearchSource
+  let mtv = TV.makeFromModel' (appContext2FilterContext actx) Vault defaultFilter model'
+  case mtv of
+    Left _err -> return ()
+    Right mkTreeView ->
+      let
+        mk rname =
+          QF.quickFilterFromTreeView
+            QF.NodeSelection
+            (mkTreeView False Config.scrolloff (rname <> "treeview"))
+            initSearch
+            "Global quick jump"
+            rname
+        cb (_mCompiledRegex, eid) = do
+          _ <- notFoundToAER_ $ moveRootToEID eid
+          -- Different from local quick jump, we do _not_ set the search rx here b/c it just doesn't
+          -- make much sense based on user intent.
+          return Continue
+       in
+        pushOverlay mk cb (return Continue) absurd
+
+currentSearchSource :: (MonadState MainTree m) => m Text
+currentSearchSource = maybe "" cwsSource <$> gets (TV.tvSearchRx . mtTreeView)
+
 pushRefileOverlay :: EID -> Text -> ComponentEventM MainTree ()
 pushRefileOverlay pickerRoot title = withCur $ \source -> do
   actx <- ask
   model' <- liftIO $ getModel (acModelServer actx)
-  initSearch <- maybe "" cwsSource <$> gets (TV.tvSearchRx . mtTreeView)
+  initSearch <- currentSearchSource
   let mtv =
         TV.makeFromModel' (appContext2FilterContext actx) pickerRoot (refileDestinationFilter source) model'
   case mtv of
