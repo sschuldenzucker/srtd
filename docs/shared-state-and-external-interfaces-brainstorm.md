@@ -269,6 +269,54 @@ Cons:
 
 This is the preferred medium-term design.
 
+### Discover-Or-Become Service
+
+There is a useful middle ground between "manually manage a daemon" and "the TUI must be running." Every client can follow the same startup protocol:
+
+1. Discover whether a compatible local service is already running for this `srtd` data root.
+2. If yes, connect and submit commands to it.
+3. If no, either start a background daemon or become the service owner itself.
+4. Publish enough connection metadata that later clients can find the owner.
+
+This keeps the conceptual daemon boundary while making daemon management mostly invisible. The process that owns the model is still special, but which executable happens to host that owner can be an implementation detail.
+
+Yazi's DDS is a nearby precedent: its docs describe cross-instance communication and state synchronization with a client-server architecture that does not require an additional server process. Yazi instances and helper commands can publish or emit messages to running instances, with IDs and pub/sub-style message kinds. The useful lesson for `srtd` is not "copy Yazi exactly," but "separate the ownership/discovery protocol from the user-visible lifecycle." See [Yazi DDS](https://yazi-rs.github.io/docs/dds/).
+
+Critical read of Yazi DDS:
+
+- DDS is primarily a message distribution mechanism, not a transactional state authority. It is excellent for "tell other instances something happened" and "remote-control this instance," but that is a different reliability tier from "this is the canonical mutation log for my task database."
+- Static messages are persisted by message kind. That is useful for small shared session state such as yanked files, but it looks like last-value-by-kind storage rather than an append-only command/result log. That is much too weak for `srtd` model mutations.
+- The protocol is intentionally Yazi-specific. A yazi.nvim integration issue noted that DDS is bidirectional but custom, awkward for editor integrations compared to a standard RPC surface, and does not expose all Yazi actions out of the box.
+- The serverless feel comes from each Yazi client trying to connect and, if that fails, starting an in-process server. That is elegant, but it also means service ownership is opportunistic.
+- Source-level skim: the client reconnects when writes/reads fail, can start a new server if connection fails, and retries a failed write once after reconnect. That is fine for UI/event sync, but it is not the same as durable at-least-once command submission with idempotency keys and acknowledged results.
+- Source-level skim: server forwarding filters by receiver and advertised abilities. If no recipient is currently connected/able, non-static messages can simply have no effect. Again, fine for ephemeral UI events; scary for task-state writes.
+- State persistence appears tied to the process that becomes server owner. That means persistence and replay semantics are coupled to ownership transitions. This may explain user experiences where cross-instance state "usually" syncs but sometimes feels stale or absent.
+
+Takeaway: DDS is a good inspiration for discover/connect/serve ergonomics, IDs, pub/sub, and "no extra process required." It is not a good model for `srtd`'s command execution semantics. `srtd` should borrow the lifecycle trick, not the reliability contract.
+
+For `srtd`, the discover-or-become model should be stricter than generic pub/sub because task state has one canonical write owner. A sketch:
+
+- Each data root has a runtime directory containing a socket path, owner PID, owner start time, protocol version, data root identity, and maybe a random auth token.
+- On startup, a client tries to connect to the socket and performs a handshake.
+- If the handshake succeeds, the client becomes a normal remote client.
+- If the socket is missing or stale, the client tries to acquire an owner lock.
+- The lock winner starts the service loop, loads the model, owns writes, and publishes connection metadata.
+- Lock losers retry discovery and connect to the new owner.
+
+Two variants:
+
+- Start daemon: the first client spawns `srtd daemon --data-root ...`, waits for it to publish a socket, then connects. The client never hosts the service itself.
+- Become daemon: the first client hosts the model service inside its own process. If that client is a short-lived CLI invocation, it should probably spawn a background daemon instead of becoming owner; otherwise the service would disappear immediately after the command.
+
+My preference: use discover-or-start for short-lived clients and discover-or-become only for long-lived clients. In practice:
+
+- `srtd add`: discover existing service; if absent, start background daemon; submit command; exit.
+- `srtd` TUI: discover existing service; if absent, either start daemon or host service in-process depending on a config flag.
+- `srtd mcp`: discover existing service; if absent, start daemon; then serve MCP as an adapter client.
+- `srtd daemon`: explicit service owner for users who want predictable lifecycle.
+
+This preserves separation of concerns without making the user think about `launchctl`, `systemd --user`, pid files, or "which app has to be open for quick-add to work?"
+
 ### Embedded Server In The TUI
 
 The TUI starts a local socket/http server while running.
@@ -354,6 +402,7 @@ The MCP surface should probably start conservative: read/search plus quick-add, 
 - `sqlite-simple`, `persistent`, or `beam`: possible SQLite layers.
 - `warp`, `wai`, `servant`, or `scotty`: HTTP API options.
 - `network`, `network-simple`, or Unix domain socket libraries: local socket API.
+- `directory`, `filepath`, `unix`, `process`: runtime directory, socket, lock, PID, and spawn mechanics for discover-or-start.
 - `fsnotify`: detect external file changes if JSON remains writable by other processes.
 - `ekg`, `co-log`, or richer logging: optional service observability.
 - `optparse-applicative`: already used and good for CLI expansion.
@@ -448,6 +497,29 @@ A daemon introduces boring-but-real issues:
 - Can two daemons start in the same directory?
 - How does the TUI behave if the daemon version differs?
 
+Discover-or-start reduces user-facing lifecycle pain, but adds its own protocol issues:
+
+- Stale socket metadata after a crash.
+- PID reuse if metadata only stores a PID.
+- Races where two clients start at the same time and both think there is no owner.
+- Version mismatch between a newly started client and an already-running owner.
+- Ownership transfer when an in-process service owner exits.
+- Whether a CLI command is allowed to block while spawning the daemon.
+- How to report "daemon failed to start" without losing a quick-add command.
+
+The important invariant: exactly one service owns writes for a given data root. Everything else is engineering around making that invariant feel automatic.
+
+For `srtd`, command submission should be stricter than Yazi-style ([DDS](https://yazi-rs.github.io/docs/dds/)) pub/sub because failures are way more catastrophic in srtd. Specifically:
+
+- Commands must be request/response, not fire-and-forget broadcasts.
+- Every accepted command should return a revision, affected IDs, and a success/error result.
+- Mutating commands should carry a client-generated command ID so retries after reconnect can be idempotent.
+- The service should persist the command result or at least remember recent command IDs before acknowledging success.
+- If no service can be reached or started, a write client should fail loudly or queue explicitly; it should not silently drop the command.
+- Event subscriptions are secondary. They can lag or reconnect as long as clients can resync from the authoritative model revision.
+- Clients should be able to notice any missed events. Maybe the server should send a revision ID with events. - to be checked if this does the trick.
+- A client that missed events should be able to ask "give me current state or changes since revision N."
+
 ### Human Factors
 
 External interfaces will make capture easier. That can make inbox rot worse. The architecture should support review and processing workflows, not only more ways to dump tasks into `INBOX`.
@@ -472,18 +544,23 @@ This is real but separate from the command/service refactor. Keep it in mind, bu
 - Make sync/focus behavior use `ModelCommandResult` and richer update messages.
 - Keep arbitrary endomorphism submission only for internal/debug paths.
 
-### Slice 3: Local Service / Daemon
+### Slice 3: Discovery And Local Service Ownership
 
+- Define the data-root identity and runtime metadata location.
+- Implement handshake against an existing owner.
+- Implement stale-owner detection.
+- Add an owner lock so simultaneous clients cannot both become the service.
 - Let one process own the model and storage.
-- Expose a simple local protocol.
-- Make TUI and CLI connect to it.
+- Expose a simple local protocol for command submission.
 - Publish revisioned updates to clients.
 
-### Slice 4: CLI Quick Add
+### Slice 4: Discover-Or-Start CLI Quick Add
 
 - Add `srtd add`.
 - Use the same command type library and submission functions.
-- Prefer connecting to the daemon instead of writing the file directly.
+- Discover an existing service.
+- If absent, start the daemon and retry.
+- Never write the model file directly.
 
 ### Slice 5: MCP Read/Search/Capture
 
