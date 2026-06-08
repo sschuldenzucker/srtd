@@ -19,6 +19,7 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Ord (comparing)
 import Data.Text qualified as T
 import Data.Time (getZonedTime)
+import Data.Void (absurd)
 import Graphics.Vty (Event (..), Key (..), Modifier (..))
 import Graphics.Vty qualified as Vty
 import Lens.Micro.Platform
@@ -28,6 +29,7 @@ import Srtd.Attr (EID (Vault))
 import Srtd.CmdlineArgs qualified as CArgs
 import Srtd.Component
 import Srtd.Components.MainTree qualified as MainTree
+import Srtd.Components.ModelStatusIndicator qualified as ModelStatusIndicator
 import Srtd.Components.Tabs hiding (make)
 import Srtd.Components.Tabs qualified as Tabs
 import Srtd.Keymap (KeyDesc (..))
@@ -44,6 +46,7 @@ data AppState = AppState
     -- SOMEDAY maybe it makes sense to frame a tab as an overlay and use the infra from maintree??
     asTabs :: Tabs SomeAppComponent
   -- ^ We make sure that `asTabs` is never after the end and in particular that it's nonempty.
+  , asModelStatusIndicator :: ModelStatusIndicator.ModelStatusIndicator
   , asHelpAlways :: Bool
   , asAttrMapRing :: CList.CList (String, AttrMap)
   , asExitCode :: ExitCode
@@ -94,12 +97,14 @@ main = do
   Async.link =<< startTicker 60 (writeBChan appChan $ AppComponentMsg Tick)
 
   ztime <- getZonedTime
+  initModel <- getModel modelServer
   let actx = AppContext modelServer appChan ztime
   let appState =
         AppState
           { asContext = actx
           , -- Set to the default tab upon init action.
             asTabs = Tabs.make 0 "Root Tabs" [] "root_tabs"
+          , asModelStatusIndicator = ModelStatusIndicator.make initModel
           , asHelpAlways = False
           , asAttrMapRing = attrMapRing
           , asExitCode = ExitSuccess
@@ -128,12 +133,12 @@ main = do
   exitWith exitCode
 
 myAppDraw :: AppState -> [Widget AppResourceName]
-myAppDraw state@(AppState {asTabs, asContext}) = [keyHelpUI] ++ mainUIs
+myAppDraw state@(AppState {asTabs, asContext, asModelStatusIndicator}) = [keyHelpUI] ++ mainUIs
  where
   mainUIs =
     let (w0, ovls0) =
           let ?actx = asContext
-           in renderComponentWithOverlays asTabs
+           in Tabs.renderComponentWithOverlaysAndTabBarRight (renderComponent asModelStatusIndicator) asTabs
      in map (uncurry wrapOverlay) ovls0 ++ [w0]
   wrapOverlay title w =
     centerLayer
@@ -188,7 +193,9 @@ myHandleEvent ev = wrappingActions $
       PrevTab -> callIntoTabs prevTab
       SwapTabNext -> callIntoTabs swapTabNext
       SwapTabPrev -> callIntoTabs swapTabPrev
-      AppComponentMsg acev -> handleTabs $ handleEvent (AppEvent acev)
+      AppComponentMsg acev -> do
+        handleModelStatusIndicator $ handleEvent (AppEvent acev)
+        handleTabs $ handleEvent (AppEvent acev)
     -- We rebuild the events here to convert the app event type
     VtyEvent k -> handleTabs $ handleEvent (VtyEvent k)
     MouseDown rname btn mods loc -> handleTabs $ handleEvent (MouseDown rname btn mods loc)
@@ -234,6 +241,21 @@ handleTabs act = do
     -- When Tabs returns Canceled, this means the last tab errored out. Push the default tab instead
     Canceled -> pushDefaultTab
 
+-- Like handleTabs with callIntoTabs inlined.
+handleModelStatusIndicator ::
+  (?actx :: AppContext) =>
+  ComponentEventM' ModelStatusIndicator.ModelStatusIndicator -> EventM AppResourceName AppState ()
+handleModelStatusIndicator act = do
+  actx <- gets asContext
+  msi <- use asModelStatusIndicatorL
+  (msi', (ret, events)) <- nestEventM msi $ runComponentEventM' actx act
+  case ret of
+    Continue -> return ()
+    Canceled -> return ()
+    Confirmed impossible -> absurd impossible
+  forM_ events absurd
+  asModelStatusIndicatorL .= msi'
+
 pushDefaultTab :: EventM AppResourceName AppState ()
 pushDefaultTab = do
   actx <- use asContextL
@@ -269,7 +291,8 @@ myAppStartEvent = do
   -- See Brick's `MouseDemo.hs`
   vty <- getVtyHandle
   liftIO $ Vty.setMode (Vty.outputIface vty) Vty.Mouse True
-  -- Push default tab
+  -- Push default tab. This is slightly more convenient to do here than when the AppState is
+  -- constructed b/c we can re-use the pushDefaultTab function. No other reason it's here.
   pushDefaultTab
 
 app :: App AppState AppRootMsg AppResourceName

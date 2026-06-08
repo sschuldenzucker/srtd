@@ -13,7 +13,7 @@ import Brick.Keybindings (Binding, bind, ctrl, meta)
 import Brick.Keybindings.KeyConfig (binding)
 import Brick.Widgets.List qualified as L
 import Brick.Widgets.Table
-import Control.Monad (when)
+import Control.Monad (replicateM, when)
 import Control.Monad.Except
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (MonadReader, ask, asks)
@@ -272,6 +272,7 @@ rootKeymap =
       , kmLeaf_ (bind 'N') "New as prev sibling" $ pushInsertNewItemRelToCur insBefore
       , kmLeaf_ (bind 'S') "New as first child" $ pushInsertNewItemRelToCur insFirstChild
       , kmLeaf_ (bind 's') "New as last child" $ pushInsertNewItemRelToCur insLastChild
+      , kmLeaf_ (bind 'a') "Quick add to inbox" pushQuickAddToInbox
       , ( kmLeaf_ (bind 'e') "Edit name" $ do
             state <- get
             case mtCurWithAttr state of
@@ -323,6 +324,8 @@ rootKeymap =
         )
       , -- (kmSub (bind 'm') moveSingleModeKeymap),
         (kmSub (bind 'M') moveSubtreeModeKeymap)
+      , (kmSub (bind 'y') yankKeymap)
+      , (kmSub (bind 'p') pasteKeymap)
       , (kmSub (bind 'D') deleteKeymap)
       , ( kmLeaf (binding KEnter []) "Hoist" $ withCurOrElse (return Continue) $ \cur -> do
             notFoundToAER_ $ moveRootToEID cur
@@ -496,6 +499,24 @@ moveSubtreeModeKeymap =
       -- SOMEDAY hierarchy-breaking '<' (dedent)
       ]
 
+yankKeymap :: Keymap (ComponentEventM' MainTree)
+yankKeymap =
+  kmMake
+    "Yank"
+    [ kmLeaf (bind 'y') "Copy subtree to clipboard" copyCurToClipboard
+    , kmLeaf_ (bind 'x') "Cut subtree to clipboard" cutCurToClipboard
+    ]
+
+pasteKeymap :: Keymap (ComponentEventM' MainTree)
+pasteKeymap =
+  kmMake
+    "Paste"
+    [ kmLeaf (bind 'p') "After current item" $ pasteClipboardRel insAfter
+    , kmLeaf (bind 'P') "Before current item" $ pasteClipboardRel insBefore
+    , kmLeaf (bind 's') "As last child" $ pasteClipboardRel insLastChild
+    , kmLeaf (bind 'S') "As first child" $ pasteClipboardRel insFirstChild
+    ]
+
 openExternallyKeymap :: Keymap (ComponentEventM' MainTree)
 openExternallyKeymap =
   kmMake
@@ -565,6 +586,9 @@ goKeymap =
     [ kmLeaf_ (bind 'g') "Top" $ callIntoTreeView $ TV.moveToBeginning
     , -- For completeness
       kmLeaf_ (bind 'e') "End" $ callIntoTreeView $ TV.moveToEnd
+    , kmLeaf (bind 'C') "Clipboard" $ notFoundToAER_ $ moveRootToEID Clipboard
+    , kmLeaf (bind 'I') "Inbox" $ notFoundToAER_ $ moveRootToEID Inbox
+    , kmLeaf (bind 'V') "Vault" $ notFoundToAER_ $ moveRootToEID Vault
     , ( kmLeaf (binding KBS []) "De-hoist, keep pos" $ do
           -- SOMEDAY some code duplication vs the other de-hoist.
           mt <- get
@@ -663,6 +687,10 @@ spaceKeymap =
                      in hhfSetCollapseds c_eids val hhf
               modifyHideHierarchyFilter (hhfSetCollapseds [cur] False . f)
         )
+    , kmLeaf_ (bind 'R') "Global refile" $ pushRefileOverlay Vault "Global refile"
+    , kmLeaf_ (bind 'r') "Local refile" $ do
+        root <- gets mtRoot
+        pushRefileOverlay root "Local refile"
     , kmLeaf_ (bind 'n') "New as parent" $ withCur $ \cur -> do
         -- Copied from 'pushInsertNewItemRelToCur' but that function can't handle "insert as parent".
         let cb name = do
@@ -677,20 +705,8 @@ spaceKeymap =
                   callIntoTreeView $ TV.moveToEID eid
                   return Continue
         pushOverlay (newNodeOverlay "" "New Item as Parent") cb (return Continue) absurd
-    , kmLeaf_ (bind 'j') "Quick jump" $ do
-        tv <- gets mtTreeView
-        let cb (mCompiledRegex, eid) = do
-              callIntoTreeView $ do
-                TV.moveToEID eid
-                whenJust mCompiledRegex $ \rxs ->
-                  TV.tvSearchRxL .= Just rxs
-              return Continue
-        s <- maybe "" cwsSource <$> gets (TV.tvSearchRx . mtTreeView)
-        pushOverlay
-          (QF.quickFilterFromTreeView QF.NodeSelection tv s "Quick jump")
-          cb
-          (return Continue)
-          absurd
+    , kmLeaf_ (bind 'J') "Global quick jump (hoist)" pushGlobalQuickJumpOverlay
+    , kmLeaf_ (bind 'j') "Quick jump" pushLocalQuickJumpOverlay
     ]
 
 -- SOMEDAY these actions should be functions in MainTree
@@ -790,6 +806,105 @@ pushInsertNewItemRelToCur go = do
             return Continue
   pushOverlay (newNodeOverlay "" "New Item") cb (return Continue) absurd
 
+pushQuickAddToInbox :: ComponentEventM MainTree ()
+pushQuickAddToInbox = do
+  let cb name = do
+        ztime <- asks acZonedTime
+        let attr = attrMinimal (zonedTimeToUTC ztime) name
+        uuid <- liftIO nextRandom
+        modifyModelAsync $ insertNewNormalWithNewId uuid attr Inbox insLastChild
+        return Continue
+  pushOverlay (newNodeOverlay "" "Quick Add to INBOX") cb (return Continue) absurd
+
+pushLocalQuickJumpOverlay :: ComponentEventM MainTree ()
+pushLocalQuickJumpOverlay = do
+  tv <- gets mtTreeView
+  initSearch <- currentSearchSource
+  let cb (mCompiledRegex, eid) = do
+        callIntoTreeView $ do
+          TV.moveToEID eid
+          whenJust mCompiledRegex $ \rxs ->
+            TV.tvSearchRxL .= Just rxs
+        return Continue
+  pushOverlay
+    (QF.quickFilterFromTreeView QF.NodeSelection tv initSearch "Quick jump")
+    cb
+    (return Continue)
+    absurd
+
+pushGlobalQuickJumpOverlay :: ComponentEventM MainTree ()
+pushGlobalQuickJumpOverlay = do
+  actx <- ask
+  model' <- liftIO $ getModel (acModelServer actx)
+  initSearch <- currentSearchSource
+  let mtv = TV.makeFromModel' (appContext2FilterContext actx) Vault defaultFilter model'
+  case mtv of
+    Left _err -> return ()
+    Right mkTreeView ->
+      let
+        mk rname =
+          QF.quickFilterFromTreeView
+            QF.NodeSelection
+            (mkTreeView False Config.scrolloff (rname <> "treeview"))
+            initSearch
+            "Global quick jump"
+            rname
+        cb (_mCompiledRegex, eid) = do
+          _ <- notFoundToAER_ $ moveRootToEID eid
+          -- Different from local quick jump, we do _not_ set the search rx here b/c it just doesn't
+          -- make much sense based on user intent.
+          return Continue
+       in
+        pushOverlay mk cb (return Continue) absurd
+
+currentSearchSource :: (MonadState MainTree m) => m Text
+currentSearchSource = maybe "" cwsSource <$> gets (TV.tvSearchRx . mtTreeView)
+
+pushRefileOverlay :: EID -> Text -> ComponentEventM MainTree ()
+pushRefileOverlay pickerRoot title = withCur $ \source -> do
+  actx <- ask
+  model' <- liftIO $ getModel (acModelServer actx)
+  initSearch <- currentSearchSource
+  let mtv =
+        TV.makeFromModel' (appContext2FilterContext actx) pickerRoot (refileDestinationFilter source) model'
+  case mtv of
+    Left _err -> return ()
+    Right mkTreeView ->
+      let
+        mk rname =
+          QF.quickFilterFromTreeView
+            QF.RefileDestinationSelection
+            (mkTreeView False Config.scrolloff (rname <> "treeview"))
+            initSearch
+            title
+            rname
+        cb (QF.RefileDestination insertion anchor) = do
+          -- This must be sync so the temporary no-follow setting applies to the reload. Refile
+          -- should leave the focus alone, just refile "away from" the current item.
+          -- Alternatively, we could just not set this and then refile would follow if this is set,
+          -- but that's a bit inconsistent b/c _global_ refile may refile into a different root and
+          -- then we cannot follow (at least not without changing our root as well).
+          -- MAYBE I guess we could retain the follow setting on local refile but not global. I'm
+          -- not sure this would be more intuitive, though. Maybe it would be.
+          withLensValue mtDoFollowItemL False $
+            modifyModelSync_ $
+              moveSubtreeRelToAnchor source anchor insertion
+          return Continue
+       in
+        pushOverlay mk cb (return Continue) absurd
+
+refileDestinationFilter :: EID -> Filter
+refileDestinationFilter source =
+  Filter
+    { fiName = "refile destinations"
+    , fiDesc = "Non-done items excluding the source subtree"
+    , fiIncludeDone = False
+    , fiPostprocess = filterIdForestWithIds isDestination
+    }
+ where
+  isDestination eid llabel =
+    eid /= source && all ((/= source) . gEID) (gLocalBreadcrumbs llabel)
+
 setStatus :: (MonadState MainTree m, MonadReader AppContext m, MonadIO m) => Status -> m ()
 setStatus status' = withCur $ \cur -> do
   ztime <- asks acZonedTime
@@ -835,6 +950,50 @@ moveCurRelativeDynamic dgo = withCur $ \cur -> do
   forest <- gets (stForest . mtSubtree)
   withLensValue mtDoFollowItemL True $
     modifyModelSync_ (moveSubtreeRelFromForestDynamic cur dgo forest)
+
+copyCurToClipboard :: ComponentEventM MainTree (AppEventReturn ())
+copyCurToClipboard = do
+  mcur <- gets mtCur
+  case mcur of
+    Nothing -> return Continue
+    Just cur -> do
+      mserver <- asks acModelServer
+      -- We need the current full model here to count IDs in the unfiltered subtree before generating
+      -- UUIDs. This duplicates some work with the eventual model update; see
+      -- 'copySubtreeToClipboardWithNewIds'.
+      model <- liftIO $ getModel mserver
+      case forestFindTree cur (forest model) of
+        Nothing -> notFoundToAER_ $ replaceExceptT callIntoTreeView TV.reloadModel
+        Just tree -> do
+          -- This count can race with later model changes; see 'copySubtreeToClipboardWithNewIds'.
+          uuids <- liftIO $ replicateM (length $ subtreeNormalIds tree) nextRandom
+          modifyModelAsync $ copySubtreeToClipboardWithNewIds uuids cur
+          return Continue
+
+cutCurToClipboard :: ComponentEventM MainTree ()
+cutCurToClipboard = withCur $ \cur ->
+  modifyModelAsync $ cutSubtreeToClipboard cur
+
+pasteClipboardRel :: InsertWalker IdLabel -> ComponentEventM MainTree (AppEventReturn ())
+pasteClipboardRel insRequested = do
+  mcur <- gets mtCur
+  root <- gets mtRoot
+  let (anchor, ins) = case mcur of
+        Just cur -> (cur, insRequested)
+        Nothing -> (root, insLastChild)
+  mserver <- asks acModelServer
+  -- This can race with another clipboard edit before the model update below. That's tolerable
+  -- because the value is only used to focus the pasted node after reload.
+  --
+  -- SOMEDAY let model modification calls return data so this focus target can come from the same
+  -- model transaction as the paste.
+  mpayload <- clipboardFirstEntry <$> liftIO (getModel mserver)
+  case mpayload of
+    Nothing -> return Continue
+    Just payload -> do
+      notFoundToAER_ $ do
+        modifyModelSync $ pasteFirstClipboardEntryRelTo anchor ins
+        replaceExceptT callIntoTreeView $ TV.moveToEID payload
 
 -- ** Model Modification
 

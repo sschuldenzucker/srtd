@@ -34,6 +34,8 @@ fg = "tx"
 
 "tab_bar" = {bg = "bg-2", fg = "tx-2"}
 "tab_bar.selected.tab_title" = {fg = "yellow", style = "underline"}
+"inbox_indicator" = {fg = "bg", bg = "blue"}
+"clipboard_indicator" = {fg = "bg", bg = "green"}
 
 "header_row" = {bg = "bg-2"}
 

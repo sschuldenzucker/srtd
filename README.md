@@ -14,7 +14,6 @@ I wrote srtd because I wanted an app that actually represents how I work, rather
 
 This project is **early stage**. Here are a few features that aren't implemented yet but would be expected for this tool to fulfill its promise. Most of them are somewhat low-hanging fruit I think.
 
-- **Copy & paste** of items/subtrees.
 - **An inbox and processing pipeline.** (I don't really use inboxes b/c I always forget to process but maybe we can make it actually useful).
 - **Notes.** I've been using NONE items for this so far and it works fine, but something explicit may be useful. This should probably just integrate plaintext files.
 - **Priority markers.** I think the naive version of these is a crutch and lead to escalation (e.g., everything is prio 1 after a while; maybe we can build something actually useful here though).
@@ -61,6 +60,14 @@ To run `safe_run.sh` (with backups), you also need [timegaps](https://gehrcke.de
 See the keybindings overlay for help. Press `n` to create a new item, `s` to create a sub-items, `t` to assign statuses, and `d` to assign 4 kinds of due dates (deadline, goalline, scheduled, remind). Move items using `M-j/k`/`</>` or `M`. Use `v` to switch views/filters. Go back in submenus with `backspace` and exit submenus and overlays with `esc`. Press `C-q` from any screen to quit. Dates can be entered as ISO dates (`2025-10-29`) or in natural language (`tomorrow`/`tom`, `tue`, `in 1 week`/`1w`, etc.); time of day is supported (`13:00`). 
 
 Use `./safe_run.sh` to pull from a dev repo, compile, and run with backups. See that script. You'll need to change config variables.
+
+### Clipboard
+
+srtd has copy/cut/paste for items and whole subtrees, but the clipboard is a bit unusual. There is a persistent top-level `CLIPBOARD` node next to `VAULT` and `INBOX`; copied or cut items are appended there, and paste takes the first clipboard entry. You can open it with `g C`, inspect it, edit it, reorder it, or clear it like regular data. `g V` returns to `VAULT`.
+
+Use `y y` to copy the selected subtree and `y x` to cut it. Paste commands are under `p`: `p p` pastes after the current item, `p P` before it, `p s` as last child, and `p S` as first child. Copying creates fresh UUIDs for every copied item; cutting and pasting preserve UUIDs. The clipboard is a bit funky b/c srtd items have identities, not just content.
+
+SOMEDAY Those identities are not very user-facing yet, so not super clear if this is even gonna matter in the long run. It will matter when we introduce links, though; then cut & paste preserves links (like moving), which is important.
 
 ## Development Docs
 
@@ -120,5 +127,4 @@ There are about as many todo apps as atoms in the visible universe, here are my 
 - todo.txt: Basically no structure.
 - Emacs Org Mode: I tried to use this and failed. It's supposed to be great once you get the hang of it but I didn't.
 - [Smos](https://github.com/NorfairKing/smos?tab=readme-ov-file): Probably closest to srtd. It's very opinionated (as is srtd) but some of the opinions never quite clicked for me.
-
 

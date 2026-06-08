@@ -49,4 +49,5 @@ bg = "base"
 fg = "text"
 
 [theme]
-# Empty, all inherited. (but *has* to be there right now)
+"inbox_indicator" = {fg = "base", bg = "blue"}
+"clipboard_indicator" = {fg = "base", bg = "green"}

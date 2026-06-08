@@ -12,6 +12,8 @@ module Srtd.Components.QuickFilter (
   QueryEntry (..),
   NodeSelection (..),
   NodeSelectionOrQueryEntry (..),
+  RefileDestinationSelection (..),
+  RefileDestination (..),
 
   -- * Construction
   quickFilterFromTreeView,
@@ -26,7 +28,7 @@ import Data.Text (Text)
 import Data.Void (Void)
 import Graphics.Vty.Input (Key (..), Modifier (MMeta))
 import Lens.Micro.Platform
-import Srtd.Attr (EID)
+import Srtd.Attr (EID, IdLabel)
 import Srtd.BrickHelpers (pattern SomeMouseUp, pattern SomeVtyOtherEvent, pattern VtyKeyEvent)
 import Srtd.Component
 import Srtd.Components.CompilingTextEntry (
@@ -39,6 +41,7 @@ import Srtd.Components.CompilingTextEntry qualified as CTE
 import Srtd.Components.TreeStatusBar (BreadcrumbDirection (..), statusBarW)
 import Srtd.Components.TreeView (TreeView (..))
 import Srtd.Components.TreeView qualified as TV
+import Srtd.Data.TreeZipper (InsertWalker, insAfter, insBefore, insFirstChild, insLastChild)
 import Srtd.Keymap
 import Srtd.Log
 import Srtd.Model
@@ -67,6 +70,15 @@ data NodeSelection = NodeSelection
 -- enters the query. In the latter case, the currently selected node is also returned and can
 -- optionally be used to center the view or so.
 data NodeSelectionOrQueryEntry = NodeSelectionOrQueryEntry
+
+-- | Variant that lets the user choose a refile destination and placement.
+data RefileDestinationSelection = RefileDestinationSelection
+
+-- | Chosen destination target and insertion position for a refile operation.
+--
+-- The 'EID' is the anchor chosen by the user: either the currently selected row, or the picker root
+-- for the root-confirm shortcuts. Only child insertions are exposed for picker-root shortcuts.
+data RefileDestination = RefileDestination (InsertWalker IdLabel) EID
 
 -- | Class of all variants
 class VariantBehavior v where
@@ -175,15 +187,20 @@ instance (VariantBehavior v) => AppComponent (QuickFilter v) where
 
   componentTitle = kmName . cur . kmzResetRoot . sKMZ
 
-  componentKeyDesc s = (kmzDesc . sKMZ $ s) & kdPairsL %~ (++ extraPairs)
+  componentKeyDesc s = (kmzDesc kmz) & kdPairsL %~ (++ extraPairs)
    where
     -- HACK. Some keys we map through dispatch, but they're not in our keymap.
-    -- SOMEDAY that's ugly.
-    extraPairs =
-      [ ("Tab", "Complete")
-      , ("C-l", "Clear")
-      , ("C-d", "Clear")
-      ]
+    -- These keys are handled by `sTextEntry` when dispatch ends up there.
+    -- NB this isn't even technically quite correct.
+    -- This issue asks a deeper question, namely how I should deal with "inherited" keymaps of child components.
+    extraPairs
+      | kmzIsToplevel kmz =
+          [ ("Tab", "Complete")
+          , ("C-l", "Clear")
+          , ("C-d", "Clear")
+          ]
+      | otherwise = []
+    kmz = sKMZ s
 
 -- | Push a given filter into our TreeView, unless it's Invalid.
 --
@@ -231,6 +248,49 @@ instance VariantBehavior NodeSelection where
     case mcur of
       Nothing -> return Continue
       Just cur -> return $ Confirmed (mv, cur)
+
+instance VariantBehavior RefileDestinationSelection where
+  type ConfirmType RefileDestinationSelection = RefileDestination
+
+  onTryConfirm = confirmSelectedRefileDestination insLastChild
+
+  extraKeys =
+    [ kmSub (binding KEnter [MMeta]) refilePlacementKeymap
+    ]
+
+refilePlacementKeymap :: Keymap (ComponentEventM' (QuickFilter RefileDestinationSelection))
+refilePlacementKeymap =
+  kmMake
+    "Refile placement"
+    [ kmLeaf (bind 's') "Selected as last child" $
+        confirmSelectedRefileDestination insLastChild
+    , kmLeaf (bind 'S') "Selected as first child" $
+        confirmSelectedRefileDestination insFirstChild
+    , kmLeaf (bind 'p') "After selected" $
+        confirmSelectedRefileDestination insAfter
+    , kmLeaf (bind 'P') "Before selected" $
+        confirmSelectedRefileDestination insBefore
+    , kmLeaf (bind 'r') "Root as last child" $
+        confirmRootRefileDestination insLastChild
+    , kmLeaf (bind 'R') "Root as first child" $
+        confirmRootRefileDestination insFirstChild
+    ]
+
+confirmSelectedRefileDestination ::
+  InsertWalker IdLabel ->
+  ComponentEventM' (QuickFilter RefileDestinationSelection)
+confirmSelectedRefileDestination insertion = do
+  mcur <- gets (TV.tvCur . sTreeView)
+  case mcur of
+    Nothing -> return Continue
+    Just cur -> return $ Confirmed (RefileDestination insertion cur)
+
+confirmRootRefileDestination ::
+  InsertWalker IdLabel ->
+  ComponentEventM' (QuickFilter RefileDestinationSelection)
+confirmRootRefileDestination insertion = do
+  rootEID <- gets (root . cValue . TV.tvSubtree . sTreeView)
+  return $ Confirmed (RefileDestination insertion rootEID)
 
 data NodeOrQueryConfirmed q
   = NodeSelected (Maybe (CompiledWithSource q)) EID

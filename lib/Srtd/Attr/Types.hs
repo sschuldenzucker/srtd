@@ -36,7 +36,7 @@ import Lens.Micro.Platform (Lens', view, _1, _2)
 import Srtd.Dates (DateOrTime, DateRule)
 import Srtd.Util (safeHead)
 
-data EID = Inbox | Vault | EIDNormal (UUID) deriving (Eq, Ord, Show)
+data EID = Inbox | Vault | Clipboard | EIDNormal (UUID) deriving (Eq, Ord, Show)
 
 -- | The default Ord instance (i.e., the order of constructors) is by actionability.
 data Status
@@ -176,12 +176,14 @@ instance ToJSON EID where
   -- SOMEDAY implement toEncoding for speed, I can't be bothered rn.
   toJSON Inbox = String "INBOX"
   toJSON Vault = String "VAULT"
+  toJSON Clipboard = String "CLIPBOARD"
   toJSON (EIDNormal uuid) = String (UUID.toText uuid)
 
 instance FromJSON EID where
   parseJSON (String txt)
     | txt == "INBOX" = return Inbox
     | txt == "VAULT" = return Vault
+    | txt == "CLIPBOARD" = return Clipboard
     | otherwise = case UUID.fromText txt of
         Just uuid -> return $ EIDNormal uuid
         Nothing -> fail $ "Invalid UUID: " ++ Text.unpack txt

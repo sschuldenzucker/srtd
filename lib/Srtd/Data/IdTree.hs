@@ -7,7 +7,6 @@ To be imported qualified.
 module Srtd.Data.IdTree where
 
 import Control.Monad ((<=<))
-import Data.Function (on)
 import Data.List (sortBy)
 import Data.Maybe (fromMaybe)
 import Data.Tree
@@ -108,6 +107,28 @@ filterSpliceIdForestWithIds p = withIdForest filter'
   filter' forest =
     forest >>= \(Node l cs) ->
       if uncurry p l then [Node l (filter' cs)] else cs
+
+-- | Remove the tree with the given ID, returning the removed tree and the remaining forest.
+forestRemoveTreeById :: (Eq id) => id -> IdForest id a -> Maybe (Tree (id, a), IdForest id a)
+forestRemoveTreeById tgt (IdForest forest) = do
+  tgtLoc <- zFindId tgt (Z.fromForest forest)
+  let tgtTree = Z.tree tgtLoc
+      forest' = Z.forest . zForestRoot . Z.delete $ tgtLoc
+  return (tgtTree, IdForest forest')
+
+-- | Append a tree as the last child of the given parent ID.
+forestAppendTreeBelowId :: (Eq id) => id -> Tree (id, a) -> IdForest id a -> IdForest id a
+forestAppendTreeBelowId tgt tree idforest@(IdForest forest) = fromMaybe idforest $ do
+  tgtLoc <- zFindId tgt (Z.fromForest forest)
+  let forest' = Z.forest . zForestRoot . Z.insert tree . Z.last . Z.children $ tgtLoc
+  return $ IdForest forest'
+
+-- | Return the root ID of the first child of the given parent, if it exists.
+forestFirstChildId :: (Eq id) => id -> IdForest id a -> Maybe id
+forestFirstChildId tgt forest = do
+  loc <- zForestFindId tgt forest
+  child <- Z.firstChild loc
+  return . fst . Z.label $ child
 
 -- | Modify the forest below the given target ID by a function. No-op if the ID is not found.
 onForestBelowId ::
