@@ -408,6 +408,237 @@ The MCP surface should probably start conservative: read/search plus quick-add, 
 - `optparse-applicative`: already used and good for CLI expansion.
 - MCP Haskell support: investigate current state before committing; if the ecosystem is thin, a small JSON-RPC server over stdio may be simpler than waiting for a mature library.
 
+### Haskell Protocol Library Options
+
+This part is a standard-ish problem, so avoid hand-rolling too much. The most plausible options:
+
+#### `servant` + `wai`/`warp`
+
+`servant` lets us define a type-level API, write a server, and derive Haskell clients from the same API definition. That matches the "Haskell clients import command type library and submit commands" goal well. It also gives a straightforward REST/JSON shape for non-Haskell clients and good docs/tooling.
+
+Pros:
+
+- Mature Haskell ecosystem.
+- Type-directed Haskell client generation.
+- Obvious JSON-over-HTTP API for CLI/MCP adapters.
+- Easy to expose simple endpoints: `POST /command`, `GET /model`, `GET /changes?since=...`.
+- `warp` is robust and already fits common Haskell web-service patterns.
+
+Cons:
+
+- HTTP is slightly heavier than a local socket protocol.
+- REST-ish APIs are a somewhat awkward fit for bidirectional event streams, though SSE/streaming/WebSocket add-ons exist.
+- Local daemon discovery/ownership still needs custom code.
+
+Verdict: best boring default if we accept localhost HTTP. Probably the lowest-risk path.
+
+#### `json-rpc`
+
+The `json-rpc` package is a Haskell JSON-RPC 2.0 library with request IDs, responses, notifications, peer-to-peer-style send/receive, arbitrary transports, and basic TCP support. This is close to the shape we want: commands are requests, results are responses, events can be notifications, and command IDs fit naturally.
+
+Pros:
+
+- Protocol matches command submission better than REST.
+- Request IDs and responses are built into the protocol.
+- Transport-independent enough to use TCP, Unix sockets, stdio, or something custom.
+- The package is recent enough and on Stackage.
+
+Cons:
+
+- Less universally familiar than HTTP REST.
+- We still need to define method names, params schemas, auth/capability handshake, discovery, and event resync semantics.
+- Haskell ecosystem around JSON-RPC is smaller than around `servant`.
+
+Verdict: probably the best semantic fit for `srtd`'s internal local protocol.
+
+#### `jsonrpc`
+
+The `jsonrpc` package is newer and lightweight: mostly protocol types, Aeson instances, errors, and type classes for method dispatch. It may be a good choice if we want to own the transport and server loop while avoiding message-shape boilerplate.
+
+Pros:
+
+- Small dependency footprint.
+- Modern package, tested with current GHC.
+- Good if we want explicit control over transport and lifecycle.
+
+Cons:
+
+- Not a full client/server runtime.
+- Very new and low-adoption at time of writing.
+
+Verdict: good for message types; less helpful if the goal is "do not write the protocol loop."
+
+#### `lsp`
+
+The Haskell `lsp` package has a mature JSON-RPC transport and request/notification machinery. It is battle-tested through Haskell Language Server, but it is shaped around the Language Server Protocol.
+
+Pros:
+
+- Mature JSON-RPC-ish infrastructure.
+- Handles requests, notifications, cancellation, progress, and stateful sessions.
+
+Cons:
+
+- Semantically wrong domain. We'd inherit LSP concepts we do not want.
+- Likely more confusing than helpful for a task daemon.
+
+Verdict: **useful as inspiration, not as the `srtd` protocol library.**
+
+#### `grapesy` / gRPC
+
+`grapesy` is a modern native Haskell gRPC implementation from Well-Typed. It supports clients and servers, streaming modes, JSON or protobuf-style message formats, deadlines/cancellation, flow control, TLS, and strong type safety.
+
+Pros:
+
+- Serious RPC implementation.
+- Good for cross-language clients.
+- Streaming could handle subscriptions.
+- Robustness story is strong.
+
+Cons:
+
+- More ceremony than `srtd` probably needs.
+- Protobuf/gRPC tooling may be a distraction for a local single-user daemon.
+- HTTP/2 and gRPC concepts are overkill unless external non-Haskell clients become important.
+
+Verdict: impressive but probably too heavy for the first implementation.
+
+#### D-Bus
+
+The Haskell `dbus` package is mature and D-Bus handles service discovery, bus names, RPC-ish calls, and signals. It is attractive on Linux desktops.
+
+Pros:
+
+- Solves service discovery and single-name ownership.
+- Good fit for desktop IPC on Linux.
+- Mature Haskell library.
+
+Cons:
+
+- D-Bus daemon dependency.
+- Much less appealing on macOS.
+- Bus/object/interface semantics are awkward for this app.
+
+Verdict: not a good default for this project, especially given macOS use.
+
+#### `typed-protocols`
+
+`typed-protocols` gives strongly typed session protocols. It is powerful and principled.
+
+Pros:
+
+- Very strong protocol correctness.
+- Good for explicit state machines and pipelining.
+
+Cons:
+
+- Significant design overhead.
+- Not a batteries-included daemon/client stack.
+- Probably more abstraction than this project needs right now.
+
+Verdict: intellectually appealing, practically too much for this slice.
+
+#### Cloud Haskell / `distributed-process`
+
+Cloud Haskell gives Erlang-style distributed processes and typed serializable messages.
+
+Pros:
+
+- Natural if we wanted Haskell-only actor distribution.
+- Interesting for trusted Haskell processes.
+
+Cons:
+
+- Wrong public protocol shape for CLI, MCP, and non-Haskell clients.
+- Adds distributed-system concepts we do not need for one local daemon.
+
+Verdict: not the normal-client protocol. At most an internal/experimental Haskell-only path.
+
+#### ZeroMQ / raw sockets
+
+ZeroMQ and raw `network` sockets can work, but they mostly solve transport, not the command/result protocol.
+
+Pros:
+
+- Flexible and fast.
+- Good for pub/sub if needed.
+
+Cons:
+
+- We would still design framing, request IDs, errors, retries, auth, and resync.
+- ZeroMQ adds a C/system dependency.
+
+Verdict: avoid unless the higher-level options fail.
+
+#### Lifecycle Helpers
+
+No package seems to remove the need to write discover-or-start ownership logic. Useful supporting packages:
+
+- `filelock`: portable file locking; good for the owner lock.
+- `network-run`: simple TCP client/server runner if we choose TCP.
+- `warp`: if using HTTP.
+- `directory`, `filepath`, `unix`, `process`: runtime dirs, metadata, sockets/PIDs, and spawning.
+
+Provisional recommendation:
+
+1. Use structured Haskell command/result types with Aeson instances no matter what.
+2. For the first external service API, choose either:
+   - `json-rpc` over a local transport, if we want command-shaped RPC; or
+   - `servant` + `warp`, if we want the boring HTTP ecosystem and easy manual/debug access.
+3. Keep MCP as an adapter over the same internal command API, not the daemon's only protocol.
+4. Implement discover-or-start separately using `filelock` plus runtime metadata.
+
+### Protocol Performance For TUI Key Repeat
+
+The performance target should be set by the TUI's worst common editing path, not by quick-add. Example: holding `M-j` to move an item down may send one command and receive one result per key repeat. If that feels laggy, the architecture has failed.
+
+Rough intuition:
+
+- Human-noticeable latency starts well below 100ms for repeated key actions. For fluid TUI editing, aim for p50 under 2ms and p99 under 10ms for protocol round trip plus server command execution, excluding any expensive model recompute that already exists today.
+- Local IPC can be fast enough. Published local benchmarks often put Unix-domain-socket round trips in the low microseconds to sub-millisecond range and faster than TCP loopback. TCP loopback is still probably fine if tuned, but UDS gives more margin and avoids port/discovery annoyances.
+- JSON encoding is likely not the bottleneck for tiny commands like `MoveSubtreeRelative`. The important distinction is message framing vs HTTP. A local JSON-RPC message still needs some frame boundary, e.g. length-prefix, newline-delimited JSON, or LSP-style `Content-Length` headers. That does not imply HTTP. HTTP is an optional outer protocol, mostly attractive for generic/debug/external APIs, and unnecessary for the TUI hot path.
+- Connection setup must never happen per command. Clients should hold a persistent connection/session.
+- Autosave must not block the command response. The server should update in memory, force the new model enough for correctness, publish a revision/result, and let saving remain debounced/asynchronous.
+- The wire should be independently very fast. If model operations or derived-attr recomputation dominate latency, that is a separate model-performance problem to fix, not an excuse for a slow protocol.
+
+Protocol implications:
+
+- Prefer a persistent local connection for the TUI: Unix domain socket where possible, Windows named pipe later if needed.
+- Prefer framed JSON-RPC or a similarly small request/response protocol over REST for hot TUI commands.
+- Do not route local TUI commands through HTTP by default. `servant`/HTTP is probably okay for quick-add, MCP adapter work, external debugging, and maybe a secondary API, but it is not the default TUI-daemon protocol.
+- If using HTTP for some surface anyway, require keepalive, no TLS on localhost/UDS, and ideally a Unix-socket-capable client/server path.
+- gRPC can be fast, especially over a persistent HTTP/2 connection, but it adds enough ceremony that it should earn its keep with benchmarks or cross-language needs.
+- Raw sockets would be fastest but would throw away too much standard machinery. JSON-RPC over UDS is probably the sweet spot.
+
+Potential fast architecture:
+
+- One persistent TUI session to the daemon.
+- TUI sends `CommandRequest { requestId, commandId, command }`.
+- Daemon replies `CommandResult { requestId, commandId, revision, affectedIds, focusHint }`.
+- Daemon separately streams `ModelUpdate` notifications to subscribers.
+- TUI command submission can be synchronous for direct manipulation commands like move, while model update notifications handle other clients' changes.
+
+Batching is tempting but should not be required for baseline usability. A command like "move down 20 times" can be optimized later, but ordinary key repeat should already feel good. Client-side optimistic state forecast is a fallback complexity, not the plan.
+
+Performance recommendation:
+
+1. Prototype `json-rpc` over a persistent Unix domain socket.
+2. Build a microbenchmark for `MoveSubtreeRelative` with a realistic model size.
+3. Measure p50/p95/p99 for:
+   - pure model command execution in-process,
+   - same-process `submitCommand`,
+   - JSON-RPC over UDS,
+   - optionally `servant`/Warp over localhost keepalive.
+4. Do not choose the protocol before measuring the hot-path command.
+
+Tentative ranking for the TUI hot path:
+
+1. Same-process command submission: best when available.
+2. JSON-RPC over persistent Unix domain socket: likely best external-client path.
+3. gRPC over persistent local connection: likely fast, but heavier.
+4. Servant/Warp HTTP over keepalive localhost: probably acceptable, but needs proof.
+5. REST with new connections or file-lock one-shot writes: unacceptable for key repeat.
+
 ## Blockers and Footguns
 
 ### Opaque Model Mutations As Client API
