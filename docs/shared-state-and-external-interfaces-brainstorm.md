@@ -229,6 +229,276 @@ Later version:
 - SQLite tables for snapshots, events, metadata, clients, and sync state.
 - JSON remains an export/import format.
 
+## Draft Model Modification Commands
+
+This list comes from chasing calls to `modifyModelOnServer` through `Srtd.Components.MainTree`. The direct public-ish mutation helpers are currently:
+
+- `modifyAttrByEID`
+- `modifyAncestorAttrsByEID`
+- `deleteSubtree`
+- `deleteSingleSplice`
+- `insertNewNormalWithNewId`
+- `insertNewNormalAsParentWithNewId`
+- `moveSubtreeRelFromForest`
+- `moveSubtreeRelFromForestDynamic`
+- `moveSubtreeRelToAnchor`
+- `copySubtreeToClipboardWithNewIds`
+- `cutSubtreeToClipboard`
+- `pasteFirstClipboardEntryRelTo`
+- `sortShallowBelow`
+- `sortDeepBelow`
+
+The command vocabulary should describe user/domain intent, not arbitrary Haskell functions. A sketch:
+
+```haskell
+data ModelCommand
+  = CreateItem CreateItem
+  | UpdateItemAttrs UpdateItemAttrs
+  | UpdateAncestorAttrs UpdateAncestorAttrs
+  | DeleteItem DeleteItem
+  | MoveItem MoveItem
+  | CopyItemToClipboard CopyItemToClipboard
+  | CutItemToClipboard CutItemToClipboard
+  | PasteClipboardItem PasteClipboardItem
+  | SortChildren SortChildren
+```
+
+Supporting serializable vocabulary:
+
+```haskell
+data InsertPosition
+  = Before EID
+  | After EID
+  | FirstChildOf EID
+  | LastChildOf EID
+
+data CreatePlacement
+  = CreateAt InsertPosition
+  | CreateAsParentOf EID
+
+data DeleteMode
+  = DeleteSubtree
+  | DeleteSingleAndSpliceChildren
+
+data SortDepth
+  = SortShallow
+  | SortDeep
+
+data SortKey
+  = SortByActionability
+```
+
+### Create Commands
+
+Current callers:
+
+- `n`: new as next sibling -> `insertNewNormalWithNewId uuid attr cur insAfter`
+- `N`: new as previous sibling -> `insertNewNormalWithNewId uuid attr cur insBefore`
+- `s`: new as last child -> `insertNewNormalWithNewId uuid attr cur insLastChild`
+- `S`: new as first child -> `insertNewNormalWithNewId uuid attr cur insFirstChild`
+- `a`: quick-add to inbox -> `insertNewNormalWithNewId uuid attr Inbox insLastChild`
+- `SPC n`: new as parent -> `insertNewNormalAsParentWithNewId uuid attr cur`
+- no current item fallback for normal create: create as last child of current root.
+
+Candidate command:
+
+```haskell
+data CreateItem = CreateItem
+  { ciName :: String
+  , ciPlacement :: CreatePlacement
+  , ciClientProvidedId :: Maybe UUID
+  }
+```
+
+The server should fill `created`, `lastModified`, and `lastStatusModified`. It may accept client-provided UUIDs, but it should return the actual created `EID`.
+
+### Attribute Commands
+
+Current callers:
+
+- Edit name -> `modifyAttrByEID cur (setLastModified now . nameL .~ name')`
+- Set status -> `modifyAttrByEID cur (setLastStatusModified now . statusL .~ status')`
+- Touch status timestamp -> `modifyAttrByEID cur (setLastStatusModified now)`
+- Set one date field -> `modifyAttrByEID cur (setLastModified now . dateField .~ date')`
+- Delete all dates -> `modifyAttrByEID cur (setLastModified now . datesL .~ noDates)`
+- Delete dates on ancestors -> `modifyAncestorAttrsByEID cur f`, where `f` clears dates and touches `lastModified` only for ancestors with non-empty dates.
+
+Candidate commands:
+
+```haskell
+data UpdateItemAttrs = UpdateItemAttrs
+  { uiaTarget :: EID
+  , uiaPatch :: AttrPatch
+  }
+
+data AttrPatch
+  = SetName String
+  | SetStatus Status
+  | TouchStatus
+  | SetDate DateField (Maybe DateOrTime)
+  | ClearAllDates
+
+data DateField
+  = Deadline
+  | Goalline
+  | Scheduled
+  | Remind
+
+data UpdateAncestorAttrs = UpdateAncestorAttrs
+  { uaaTarget :: EID
+  , uaaPatch :: AncestorAttrPatch
+  }
+
+data AncestorAttrPatch
+  = ClearAncestorDates
+```
+
+This is the first place where replacing arbitrary functions matters. `modifyAttrByEID cur f` is too broad for a protocol. Most current uses collapse nicely into `AttrPatch`, but ancestor edits are less obviously general.
+
+### Delete Commands
+
+Current callers:
+
+- `D D`: delete subtree -> `deleteSubtree cur`
+- `D d`: delete single item and splice its children into the parent -> `deleteSingleSplice cur`
+
+Candidate command:
+
+```haskell
+data DeleteItem = DeleteItem
+  { diTarget :: EID
+  , diMode :: DeleteMode
+  }
+```
+
+The command interpreter should reject deleting required top-level roots such as `INBOX`, `VAULT`, and `CLIPBOARD`, unless an explicit admin/migration command exists.
+
+### Move And Refile Commands
+
+Current callers:
+
+- `M-j` / root `M-j`: move down same level -> `moveSubtreeRelFromForest cur goNextSibling insAfter visibleForest`
+- `M-k` / root `M-k`: move up same level -> `moveSubtreeRelFromForest cur goPrevSibling insBefore visibleForest`
+- `<`: move after parent -> `moveSubtreeRelFromForest cur goParent insAfter visibleForest`
+- `>`: move as last child of previous sibling -> `moveSubtreeRelFromForest cur goPrevSibling insLastChild visibleForest`
+- move mode `j`: preorder down -> `moveSubtreeRelFromForestDynamic cur dtoNextPreorder visibleForest`
+- move mode `k`: preorder up -> `moveSubtreeRelFromForestDynamic cur dtoPrevPreorder visibleForest`
+- move mode `h`: before parent -> `moveSubtreeRelFromForest cur goParent insBefore visibleForest`
+- move mode `L`: last child of next sibling -> `moveSubtreeRelFromForest cur goNextSibling insLastChild visibleForest`
+- move mode `l`: first child of next sibling -> `moveSubtreeRelFromForest cur goNextSibling insFirstChild visibleForest`
+- global/local refile -> `moveSubtreeRelToAnchor source anchor insertion`
+- cut to clipboard -> `moveSubtreeRelToAnchor cur Clipboard insLastChild`
+
+There are two kinds of move commands hiding here:
+
+```haskell
+data MoveItem
+  = MoveItemToPosition
+      { miTarget :: EID
+      , miPosition :: InsertPosition
+      }
+  | MoveItemByVisibleRelation
+      { miTarget :: EID
+      , miContext :: MoveContext
+      , miRelation :: MoveRelation
+      }
+
+data MoveContext = MoveContext
+  { mcRoot :: EID
+  , mcFilter :: Maybe FilterSpec
+  , mcHidden :: Maybe HiddenSpec
+  }
+
+data MoveRelation
+  = MoveAfterNextSibling
+  | MoveBeforePreviousSibling
+  | MoveAfterParent
+  | MoveBeforeParent
+  | MoveAsLastChildOfPreviousSibling
+  | MoveAsFirstChildOfNextSibling
+  | MoveAsLastChildOfNextSibling
+  | MovePreorderDown
+  | MovePreorderUp
+```
+
+For external clients, `MoveItemToPosition` is the clean command. It is what refile already resolves to: target plus explicit anchor/placement.
+
+For the TUI, repeated keyboard moves operate inside the current visible filtered tree. That does not cleanly serialize as "move to anchor X" until the client or server resolves the current visible context. Options:
+
+- Client resolves the anchor/placement and sends `MoveItemToPosition`. This keeps the server command simple but trusts the client's view snapshot.
+- Client sends `MoveItemByVisibleRelation` plus root/filter/collapse context. The server reconstructs the visible tree and resolves the move transactionally.
+- TUI remains same-process for these operations longer, while the command vocabulary matures.
+
+My preference: make `MoveItemToPosition` the canonical command, and add `MoveItemByVisibleRelation` only if the TUI needs server-side resolution to avoid stale-view races.
+
+### Clipboard Commands
+
+Current callers:
+
+- `y y`: copy subtree to persistent clipboard -> pre-count normal IDs, generate UUIDs in UI, `copySubtreeToClipboardWithNewIds uuids cur`
+- `y x`: cut subtree to persistent clipboard -> `cutSubtreeToClipboard cur`
+- `p p/P/s/S`: paste first clipboard item relative to current/root -> `pasteFirstClipboardEntryRelTo anchor insertion`
+
+Candidate commands:
+
+```haskell
+data CopyItemToClipboard = CopyItemToClipboard
+  { ctcTarget :: EID
+  }
+
+data CutItemToClipboard = CutItemToClipboard
+  { cutTarget :: EID
+  }
+
+data PasteClipboardItem = PasteClipboardItem
+  { pciClipboardItem :: ClipboardSelection
+  , pciPosition :: InsertPosition
+  }
+
+data ClipboardSelection
+  = FirstClipboardItem
+  | ClipboardItem EID
+```
+
+Copy should allocate replacement UUIDs inside the server transaction. Paste should choose the payload and return the pasted/moved ID inside the command result. This removes current races where the UI counts IDs or reads the first clipboard entry before submitting the mutation.
+
+### Sort Commands
+
+Current callers:
+
+- `; t`: sort current node's children shallow by actionability -> `sortShallowBelow compareActionabilityForSort cur`
+- `; D t`: sort current node's subtree deep by actionability -> `sortDeepBelow compareActionabilityForSort cur`
+- `; R t`: sort current root's children shallow by actionability.
+- `; R D t`: sort current root's subtree deep by actionability.
+
+Candidate command:
+
+```haskell
+data SortChildren = SortChildren
+  { scRoot :: EID
+  , scDepth :: SortDepth
+  , scKey :: SortKey
+  }
+```
+
+The arbitrary comparator cannot cross the protocol. The current UI only exposes actionability sort, so `SortKey` can start as a single-constructor enum.
+
+### Things That Do Not Cleanly Fit Yet
+
+- **Arbitrary attr functions.** `modifyAttrByEID` and `modifyAncestorAttrsByEID` take Haskell functions. The command API needs an explicit `AttrPatch` language. Start small: name, status, touch status, set date, clear dates.
+- **Ancestor mutation.** `ClearAncestorDates` is the only current ancestor edit. It conditionally mutates multiple ancestors. It should probably be its own named command rather than a generic "patch ancestors" feature.
+- **Visible-tree-relative moves.** `moveSubtreeRelFromForest` depends on a `haystack` captured from the current `MainTree` filtered subtree. This is UI context, not model state. The command design needs to decide whether the client resolves to an explicit `InsertPosition` or the server receives enough view context to reproduce the move.
+- **Walker functions.** `GoWalker`, `InsertWalker`, and `DynamicMoveWalker` are functions and cannot be wire commands. Replace them with `InsertPosition`, `MoveRelation`, and maybe `MoveContext`.
+- **Synchronous focus coupling.** Several operations use `modifyModelSync` because the TUI needs the new model immediately to focus the created/pasted/moved item. Command results should carry `createdId`, `movedId`, `pastedId`, or a `focusHint`.
+- **Timestamps are currently UI-side.** Name/date/status edits and item creation use `acZonedTime` in the TUI. In the command model, the server should own timestamps so all clients behave consistently.
+- **UUID allocation is split.** Create currently allocates UUIDs in the UI. That is not inherently wrong, but copy-to-clipboard pre-counts subtree IDs before submitting a pure update, which can race. Prefer server-side allocation for copy; creation can support either server IDs or optional client-provided IDs.
+- **Clipboard semantics are model mutations but also workflow state.** The persistent `CLIPBOARD` root makes them normal model moves/copies, but the command names should stay workflow-level because copy refreshes IDs and paste means "first clipboard entry" today.
+- **Deletion safety.** Current model helpers can target any `EID`. Commands should define behavior for required roots and probably reject deleting or moving `INBOX`, `VAULT`, and `CLIPBOARD` through normal clients.
+- **Sort semantics.** Sorting updates physical order but does not update item `lastModified`. That may be intentional; the command API should make the decision explicit for all hierarchy changes.
+- **Hierarchy edits and timestamps.** Moves, refile, cut/paste, delete, and sort do not currently touch `lastModified` because it only tracks attr changes. If that remains intentional, document it in command semantics.
+- **No-op vs error.** Many model helpers silently no-op if an ID is missing or a move is invalid. External commands should return errors or explicit no-op results so clients and agents are not left guessing.
+- **Top-level/synthetic nodes.** The `EID` type allows `Inbox`, `Vault`, and `Clipboard` anywhere, but semantically they are required top-level roots. Commands should encode or validate that invariant.
+
 ## Protocol and Client Approaches
 
 ### One-Shot CLI With File Lock
