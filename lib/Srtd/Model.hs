@@ -5,6 +5,7 @@ module Srtd.Model where
 
 -- Really just a helper here. Should prob not import this for separation
 import Brick (suffixLenses)
+import Control.Applicative ((<|>))
 import Control.Category ((>>>))
 import Data.Aeson hiding ((.=))
 import Data.Function (on)
@@ -15,8 +16,8 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Time (TimeZone, ZonedTime (zonedTimeZone), addUTCTime, zonedTimeToUTC)
-import Data.Tree
 import Data.Traversable (mapAccumL)
+import Data.Tree
 import Data.UUID (UUID)
 import GHC.Generics
 import Lens.Micro.Platform
@@ -227,7 +228,7 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
       ( label
       , LocalDerivedAttr
           { ldParentActionability =
-              applyActionabilityTransparencyFallback (gStatus plabel) (ldParentActionability parLDAttr) max
+              _inheritParentActionability (gStatus plabel) (ldParentActionability parLDAttr)
           , ldBreadcrumbs = plilabel : ldBreadcrumbs parLDAttr
           , ldLevel = ldLevel parLDAttr + 1
           , ldIsCollapsed = False
@@ -236,6 +237,21 @@ addLocalDerivedAttrs = withIdForest $ transformForestTopDown _go
           }
       )
     )
+  -- This follows our default inheritance rules PLUS making None children inherit from the parent,
+  -- which is not part of the default rules b/c it would have unintended consequences for plain
+  -- notes.
+  _inheritParentActionability c p =
+    fromMaybe (max c p) $
+      applyActionabilityTransparency c p
+        <|> _childNoneTransparency c p
+  _childNoneTransparency = \cases
+    None p -> Just p
+    _ _ -> Nothing
+
+-- applyActionabilityTransparencyFallback
+-- (gStatus plabel)
+-- (ldParentActionability parLDAttr)
+-- max
 
 -- | Reset 'ldLevel'. Needed when we change the structure of the tree.
 --

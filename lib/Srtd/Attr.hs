@@ -287,6 +287,11 @@ applyActionabilityTransparency :: Status -> Status -> Maybe Status
 applyActionabilityTransparency c_ p_ = case (c_, p_) of
   -- A None parent is fully transparent
   (c, None) -> Just c
+  -- We do NOT apply the following rule b/c that would (e.g.) make notes below Next nodes be Next
+  -- themselves, which is not intended. We do apply this for `ldParentActionability` though.
+  -- A None child is also fully transparent
+  -- (None, p) -> Just p
+  --
   -- A Next parent with a WIP child is itself WIP.
   -- This a little bit inconsistent but we typically *mean* this.
   -- Con: there's no way to pause a WIP task using a Next parent now. (until we implement a "force

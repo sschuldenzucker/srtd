@@ -2,6 +2,7 @@ module Main (main) where
 
 import Test.DateTests
 import Test.ModelClipboardTests
+import Test.ModelLocalActionabilityTests
 import Test.ModelMoveTests
 import Test.QueryTests
 import Test.Tasty
@@ -17,7 +18,18 @@ testTests :: TestTree
 testTests = testGroup "Test tests" [unit_additionTest]
 
 tests :: TestTree
-tests = testGroup "Tests" [testTests, dateTests, queryTests, treeTests, regexTests, modelClipboardTests, modelMoveTests]
+tests =
+  testGroup
+    "Tests"
+    [ testTests
+    , dateTests
+    , queryTests
+    , treeTests
+    , regexTests
+    , modelClipboardTests
+    , modelLocalActionabilityTests
+    , modelMoveTests
+    ]
 
 main :: IO ()
 main = defaultMain tests
