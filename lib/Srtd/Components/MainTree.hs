@@ -1138,6 +1138,8 @@ renderItemDetails ztime (eid, llabel) =
       , [str "Actionability", str (show $ gLocalActionability llabel)]
       , [str "Child Actionability", str (show $ gChildActionability llabel)]
       , [str "Parent Actionability", str (show $ gParentActionability llabel)]
+      , [str "Global Actionability", str (show $ gGlobalActionability llabel)]
+      , [str "Local Actionability", str (show $ gLocalActionability llabel)]
       , spacerRow
       , sectionHeaderRow "Metadata"
       ]
