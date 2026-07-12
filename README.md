@@ -71,6 +71,8 @@ SOMEDAY Those identities are not very user-facing yet, so not super clear if thi
 
 ## Development Docs
 
+This is a jj repo. jj is fully git compatible, so you can ignore jj if you don't like it. But if you do, you can use the commit metadata it has attached.
+
 srtd is written in Haskell using the [Brick](https://github.com/jtdaugherty/brick/) TUI framework. I'm using Haskell because I have _very_ limited time to work on this and debugging crashes shouldn't be part of that. This works pretty well.
 
 Haddock docs are generated to `docs/build_haddock/` using `just docs`, and there's also more docs files there:

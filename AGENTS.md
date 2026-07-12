@@ -3,6 +3,18 @@
 
 See `README.md` for a high-level description of what's going on here. See its `Development Docs` section for - uh - development docs. See `docs/` for more detail.
 
+# Version Control
+
+This is a jj repository colocated with git. Since jj is git-compatible, you _can_ just ignore jj for read-only operations. However, using jj may give richer metadata in some cases.
+
+- Note that we'll often be in a "detached head" state from git's perspective. This is normal.
+- Use `jj log` to inspect history.
+- Use `jj diff` to inspect current status.
+- Feel free to use `jj new` to create checkpoints before potentially disruptive operations. Make sure every commit is named with a message starting "codex: "
+- Feel free to modify history around *those* checkpoint commits starting in "codex: ".
+- NEVER modify any other history unless I EXPLICITLY tell you to.
+- NEVER modify immutable changes.
+
 # Coding Style
 
 ## Overall style
