@@ -118,7 +118,7 @@ nextTab, prevTab, swapTabNext, swapTabPrev :: ComponentEventM (Tabs s) ()
 nextTab = tTabsL %= lzCircRight
 prevTab = tTabsL %= lzCircLeft
 swapTabNext = tTabsL %= lzSwapRightCirc
-swapTabPrev = tTabsL %= lzSwapRightCirc
+swapTabPrev = tTabsL %= lzSwapLeftCirc
 
 switchToTabID :: Int -> ComponentEventM (Tabs s) ()
 switchToTabID i = tTabsL %= lzFindBegin ((i ==) . fst)
@@ -190,7 +190,9 @@ handleActiveTab act =
       ise <- popTab
       return $ if ise then Confirmed () else Continue
 
-renderTabBar :: (AppComponent s) => Widget AppResourceName -> AppResourceName -> LZ.Zipper (Int, s) -> Widget AppResourceName
+renderTabBar ::
+  (AppComponent s) =>
+  Widget AppResourceName -> AppResourceName -> LZ.Zipper (Int, s) -> Widget AppResourceName
 renderTabBar rightW rname tabs =
   withDefAttr AppAttr.tab_bar $
     let (front, cur, back) = lzSplit3 tabs
