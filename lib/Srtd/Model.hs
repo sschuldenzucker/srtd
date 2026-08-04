@@ -510,6 +510,20 @@ f_NotDelayedByLastModified =
      in gLocalActionability llabel <= Open || (created . gLatestAutodates $ llabel) >= cutoffTime
   cmp = comparing (lastStatusModified . gLatestAutodates)
 
+f_notDoneByLastModified :: Filter
+f_notDoneByLastModified =
+  Filter
+    { fiName = "non-delayed by last modified"
+    , fiDesc =
+        "Tree without done items without further reshaping, ordered by recursive last-status-modified"
+    , fiIncludeDone = False
+    , fiPostprocess = go
+    }
+ where
+  go :: (?fctx :: FilterContext) => STForest -> STForest
+  go = sortIdForestBy cmp True
+  cmp = comparing (lastStatusModified . gLatestAutodates)
+
 f_stalledProjects :: Filter
 f_stalledProjects =
   Filter

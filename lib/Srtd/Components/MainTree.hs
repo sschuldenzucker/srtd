@@ -125,7 +125,8 @@ filterBindings :: [(Char, Filter)]
 filterBindings =
   [ ('n', f_notDone)
   , ('u', f_deepByDates)
-  , ('m', f_NotDelayedByLastModified)
+  , ('m', f_notDoneByLastModified)
+  , ('M', f_NotDelayedByLastModified)
   , ('F', f_flatByDates)
   , ('N', f_nextFlatByDates)
   , ('W', f_waitingFlatByDates)
