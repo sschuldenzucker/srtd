@@ -513,7 +513,7 @@ f_NotDelayedByLastModified =
 f_notDoneByLastModified :: Filter
 f_notDoneByLastModified =
   Filter
-    { fiName = "non-delayed by last modified"
+    { fiName = "by last modified"
     , fiDesc =
         "Tree without done items without further reshaping, ordered by recursive last-status-modified"
     , fiIncludeDone = False
