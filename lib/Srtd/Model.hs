@@ -15,7 +15,14 @@ import Data.Ord (Down (..), comparing)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as T
-import Data.Time (TimeZone, ZonedTime (zonedTimeZone), addUTCTime, zonedTimeToUTC)
+import Data.Time (
+  TimeZone,
+  UTCTime,
+  ZonedTime (zonedTimeZone),
+  addUTCTime,
+  nominalDay,
+  zonedTimeToUTC,
+ )
 import Data.Traversable (mapAccumL)
 import Data.Tree
 import Data.UUID (UUID)
@@ -570,6 +577,30 @@ f_projectOverview =
         , (compareAttrDates tz `on` gEarliestImpliedOrChildDates tz) llabel1 llabel2
         , comparing gLocalActionability llabel1 llabel2
         ]
+
+f_recentlyDone :: Filter
+f_recentlyDone =
+  Filter
+    { fiName = "recently completed"
+    , fiDesc =
+        "Recently completed items (2 weeks), nested inside other items or not, without duplicate ancestors"
+    , fiIncludeDone = True
+    , fiPostprocess = go
+    }
+ where
+  go :: (?fctx :: FilterContext) => STForest -> STForest
+  go =
+    sortIdForestBy cmp False
+      . resetLdLevel
+      . filterIdForestFlat pAccept pSelect
+  -- Performance optimization: Exclude old nodes
+  pAccept llabel = (lastStatusModified . gLatestAutodates $ llabel) >= cutoffTime
+  pSelect llabel =
+    gStatus llabel == Done && (lastStatusModified . gAutoDates $ llabel) >= cutoffTime
+  cmp = comparing (lastStatusModified . gAutoDates)
+  -- SOMEDAY this rule, literally 2 weeks back, is probably not quite the right one.
+  cutoffTime :: (?fctx :: FilterContext) => UTCTime
+  cutoffTime = addUTCTime (negate $ 14 * nominalDay) (zonedTimeToUTC . fcZonedTime $ ?fctx)
 
 -- | Intermediate structure to build the filter for hiding levels.
 --

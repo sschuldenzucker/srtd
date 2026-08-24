@@ -133,6 +133,7 @@ filterBindings =
   , ('s', f_stalledProjects)
   , ('p', f_projectOverview)
   , ('a', f_all)
+  , ('d', f_recentlyDone)
   ]
 
 -- ** Convenience Accessors
