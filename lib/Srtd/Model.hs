@@ -592,6 +592,8 @@ f_recentlyDone =
   go =
     sortIdForestBy cmp False
       . resetLdLevel
+      -- TODO I think this should just be a flat list without children. nbd b/c we can fold but the
+      -- children bring no value here.
       . filterIdForestFlat pAccept pSelect
   -- Performance optimization: Exclude old nodes
   pAccept llabel = (lastStatusModified . gLatestAutodates $ llabel) >= cutoffTime
